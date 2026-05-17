@@ -1,0 +1,81 @@
+ObjC.import("Foundation");
+
+function readText(path) {
+  return $.NSString.stringWithContentsOfFileEncodingError(path, $.NSUTF8StringEncoding, null).js;
+}
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+const root = "/Users/mt_hagar/Documents/Playground/ppt-dicom-viewer";
+eval(readText(root + "/src/eat-shared.js"));
+
+const shared = this.HagradEatShared;
+assert(shared, "Shared EAT helpers were not loaded.");
+assert(shared.safeString("  hi  ") === "hi", "safeString should trim text.");
+assert(shared.safeString(null) === null, "safeString should ignore non-strings.");
+assert(shared.prettifyPatientName("DOE^JANE") === "DOE JANE", "prettifyPatientName should normalize carets.");
+assert(shared.formatDicomDate("20260329") === "2026-03-29", "formatDicomDate should format YYYYMMDD.");
+assert(shared.formatDicomTime("134512.9") === "13:45:12", "formatDicomTime should format HHMMSS.");
+assert(
+  shared.combineDateTime({ studyDate: "20260329", studyTime: "134512" }) === "2026-03-29 13:45:12",
+  "combineDateTime should join date and time."
+);
+assert(shared.parseDicomAgeToYears("018M") === 1.5, "parseDicomAgeToYears should convert months to years.");
+
+const reconstructionA = {
+  label: "VMI 40 keV",
+  records: [
+    {
+      studyInstanceUID: "1.2.3",
+      seriesInstanceUID: "4.5.6",
+      frameOfReferenceUID: "7.8.9",
+      patientId: "ABC123",
+      sopInstanceUID: "1",
+      instanceNumber: 1,
+      rows: 512,
+      columns: 512,
+      pixelSpacing: [0.7, 0.7],
+      sliceThickness: 3,
+      file: { name: "slice1.dcm", size: 1000, lastModified: 1 },
+    },
+    {
+      studyInstanceUID: "1.2.3",
+      seriesInstanceUID: "4.5.6",
+      frameOfReferenceUID: "7.8.9",
+      patientId: "ABC123",
+      sopInstanceUID: "2",
+      instanceNumber: 2,
+      rows: 512,
+      columns: 512,
+      pixelSpacing: [0.7, 0.7],
+      sliceThickness: 3,
+      file: { name: "slice2.dcm", size: 1001, lastModified: 2 },
+    },
+  ],
+};
+const reconstructionB = JSON.parse(JSON.stringify(reconstructionA));
+const reconstructionC = JSON.parse(JSON.stringify(reconstructionA));
+reconstructionC.records[0].seriesInstanceUID = "different";
+
+const keyA = shared.buildBackendStudyCacheKey(reconstructionA);
+const keyB = shared.buildBackendStudyCacheKey(reconstructionB);
+const keyC = shared.buildBackendStudyCacheKey(reconstructionC);
+
+assert(keyA === keyB, "Equivalent reconstructions should generate the same cache key.");
+assert(keyA !== keyC, "Different reconstructions should generate different cache keys.");
+
+console.log(
+  JSON.stringify(
+    {
+      ok: true,
+      helperCount: Object.keys(shared).length,
+      cacheKeySample: keyA,
+    },
+    null,
+    2
+  )
+);

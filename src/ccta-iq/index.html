@@ -1,0 +1,1677 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HAGRad CCTA IQ</title>
+    <link rel="stylesheet" href="/src/ccta-iq/ccta-iq.css?v=20260517-mpr-sync-footerless" />
+  </head>
+  <body>
+    <main class="app ccta-iq-app">
+      <header class="shell-card hero">
+        <div class="hero-copy">
+          <p class="eyebrow">HAGRad Viewer</p>
+          <h1>HAGRad Image Quality</h1>
+          <nav class="hero-workflow-switcher" aria-label="HAGRad workflow apps">
+            <span class="workflow-switcher-label">Workflows</span>
+            <a
+              class="workflow-switcher-link"
+              href="/src/viewer.html"
+              target="hagrad-viewer"
+              rel="noopener"
+              data-help="Main DICOM research viewer with presentation, MPR, annotation, and export tools."
+            >
+              Viewer
+            </a>
+            <a
+              class="workflow-switcher-link is-active"
+              href="/src/ccta-iq/index.html"
+              target="hagrad-ccta-iq"
+              rel="noopener"
+              data-help="Objective and subjective coronary CTA image-quality analysis."
+            >
+              Image Quality
+            </a>
+            <a
+              class="workflow-switcher-link"
+              href="/src/eat.html"
+              target="hagrad-eat"
+              rel="noopener"
+              data-help="Epicardial adipose tissue workflow for CT-based EAT analysis."
+            >
+              EAT
+            </a>
+            <a
+              class="workflow-switcher-link"
+              href="/src/qca/index.html"
+              target="hagrad-qca"
+              rel="noopener"
+              data-help="Quantitative coronary angiography workflow for invasive angiography frames."
+            >
+              QCA
+            </a>
+          </nav>
+          <p class="research-disclaimer">
+            Research use only. Not for clinical diagnosis or patient care.
+          </p>
+        </div>
+
+        <div class="hero-actions">
+          <div class="status-pill" id="status-pill">Ready for a coronary CTA stack</div>
+          <div class="hero-control-stack">
+            <div class="hero-load-row">
+              <label class="button primary" for="dicom-input">Load DICOM</label>
+              <label class="button secondary" for="dicom-folder-input">Load Folder</label>
+            </div>
+            <input id="dicom-input" type="file" multiple accept=".dcm,.dicom,application/dicom" />
+            <input
+              id="dicom-folder-input"
+              type="file"
+              multiple
+              webkitdirectory
+              directory
+              accept=".dcm,.dicom,application/dicom"
+            />
+            <label class="button secondary" for="dicom-add-input">Add Recon Files</label>
+            <input
+              id="dicom-add-input"
+              type="file"
+              multiple
+              accept=".dcm,.dicom,application/dicom"
+            />
+            <button id="clear-button" class="button secondary" type="button">Clear Study</button>
+          </div>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="shell-card sidebar">
+          <div class="sidebar-tabs">
+            <button class="sidebar-tab is-active" data-sidebar-tab-button="case" type="button">Workflow</button>
+            <button class="sidebar-tab" data-sidebar-tab-button="study-rules" type="button">Study Rules</button>
+            <button class="sidebar-tab" data-sidebar-tab-button="annotate" type="button">Objective</button>
+            <button class="sidebar-tab" data-sidebar-tab-button="subjective" type="button">Subjective</button>
+            <button class="sidebar-tab" data-sidebar-tab-button="export" type="button">Export</button>
+          </div>
+
+          <section class="sidebar-section" data-section-id="workflow-map" data-sidebar-tab="case">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Workflow</h2>
+                <span class="section-note" id="iq-workflow-note">Load a CCTA study to begin objective and subjective IQ review.</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <div class="workflow-step-grid workflow-step-grid-compact">
+                <button class="workflow-step-card is-button" data-iq-jump-tab="case" type="button">
+                  <span class="workflow-step-index">1</span>
+                  <strong>Load &amp; Review</strong>
+                  <span>Choose axial or 4-up MPR, then navigate with the familiar viewer tools.</span>
+                </button>
+                <button class="workflow-step-card is-button" data-iq-jump-tab="study-rules" type="button">
+                  <span class="workflow-step-index">2</span>
+                  <strong>Study Rules</strong>
+                  <span>Build or load the objective and subjective protocol before reader work starts.</span>
+                </button>
+                <button class="workflow-step-card is-button" data-iq-jump-tab="annotate" type="button">
+                  <span class="workflow-step-index">3</span>
+                  <strong>Objective ROIs</strong>
+                  <span>Place the protocol-defined coronary, muscle, and noise ROIs for the active patient.</span>
+                </button>
+                <button class="workflow-step-card is-button" data-iq-jump-tab="subjective" type="button">
+                  <span class="workflow-step-index">4</span>
+                  <strong>Subjective Scores</strong>
+                  <span>Score noise, sharpness, motion, and overall image quality while the image stays visible.</span>
+                </button>
+                <button class="workflow-step-card is-button" data-iq-jump-tab="export" type="button">
+                  <span class="workflow-step-index">5</span>
+                  <strong>Export</strong>
+                  <span>Set research and patient study IDs, then export one Excel workbook plus one summary PNG.</span>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <div class="sidebar-category" data-sidebar-tab="study-rules">Protocol</div>
+
+          <section class="sidebar-section" data-section-id="study-rules-intro" data-sidebar-tab="study-rules">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Study Rules</h2>
+                <span class="section-note">Full protocol builder in the center workspace.</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <p class="hint">
+                This mode hides the CT presentation window so the full middle area can become an
+                interactive protocol table. Objective and subjective review tabs immediately follow
+                whatever you save here.
+              </p>
+              <p class="hint">
+                Use presets as a starting point, then add ROI targets, edit labels/colors, and choose
+                exactly which SNR/CNR summaries the export should compute.
+              </p>
+            </div>
+          </section>
+
+          <div class="sidebar-category" data-sidebar-tab="case">Study</div>
+
+          <section class="sidebar-section" data-section-id="patient-project" data-sidebar-tab="case" data-project-workflow>
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Project</h2>
+                <span class="section-note" id="project-summary">No project selected</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <label class="number-field" for="project-select">
+                <span>Active Project</span>
+                <select id="project-select">
+                  <option value="">No project selected</option>
+                </select>
+              </label>
+              <div class="inline-actions">
+                <button id="project-refresh-button" class="button tertiary" type="button">Refresh</button>
+                <button id="project-next-id-button" class="button tertiary" type="button">Next ID</button>
+              </div>
+              <div class="numeric-grid">
+                <label class="number-field" for="project-create-name-input">
+                  <span>New Project Name</span>
+                  <input id="project-create-name-input" type="text" placeholder="stent_clari" />
+                </label>
+                <div class="number-field static-field">
+                  <span>Create</span>
+                  <button id="project-create-button" class="button tertiary" type="button">Create Project</button>
+                </div>
+              </div>
+              <div class="numeric-grid">
+                <label class="number-field" for="project-case-id-input">
+                  <span>Project Case ID</span>
+                  <input id="project-case-id-input" type="text" placeholder="stent_clari_001" />
+                </label>
+                <label class="number-field" for="project-case-label-input">
+                  <span>Case Label</span>
+                  <input id="project-case-label-input" type="text" placeholder="Optional note or alias" />
+                </label>
+              </div>
+              <p class="hint">
+                When a project is selected, measurement and baseline exports are appended to that
+                project’s CSV files automatically. The suggested case ID follows the pattern
+                `project_slug_001`, `project_slug_002`, and so on, but you can edit it any time.
+              </p>
+            </div>
+          </section>
+
+          <section class="sidebar-section" data-section-id="patient-cases" data-sidebar-tab="case" data-project-workflow>
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Project Cases</h2>
+                <span class="section-note" id="project-case-browser-note">No project selected</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <label class="number-field" for="project-case-filter-input">
+                <span>Find Case</span>
+                <input id="project-case-filter-input" type="text" placeholder="Search case ID, label, patient ID" />
+              </label>
+              <div id="project-duplicate-shell" class="project-callout is-hidden">
+                <div class="project-callout-header">
+                  <strong>Potential Duplicates</strong>
+                  <span id="project-duplicate-note">No duplicate matches</span>
+                </div>
+                <div id="project-duplicate-list" class="project-case-list project-case-list-compact"></div>
+              </div>
+              <div id="project-case-list" class="project-case-list">
+                <p class="annotation-empty">Select a project to browse saved cases.</p>
+              </div>
+              <div class="inline-actions">
+                <button id="project-restore-session-button" class="button tertiary" type="button">
+                  Restore Session
+                </button>
+              </div>
+              <p class="hint" id="project-session-note">
+                Autosave will start once a project case and study are loaded together.
+              </p>
+            </div>
+          </section>
+
+          <section class="sidebar-section" data-section-id="patient-series" data-sidebar-tab="case">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Patient &amp; Series</h2>
+                <span class="section-note" id="reconstruction-summary">0 loaded</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <div class="recon-list" id="reconstruction-list"></div>
+            </div>
+          </section>
+
+          <section class="sidebar-section" data-section-id="view-mode" data-sidebar-tab="case">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>View Mode</h2>
+                <span class="section-note">Presentation or 4-up MPR</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <div class="pill-grid">
+                <button class="pill-button is-active" data-layout="presentation" type="button">
+                  Presentation
+                </button>
+                <button class="pill-button" data-layout="mpr" type="button">4-up MPR</button>
+              </div>
+            </div>
+          </section>
+
+          <div class="sidebar-category" data-sidebar-tab="annotate">Objective Review</div>
+
+          <section class="sidebar-section" data-section-id="annotate-tools" data-sidebar-tab="annotate">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Tools</h2>
+                <span class="section-note" id="tool-context-note">Primary mouse button</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <div class="tool-clusters">
+                <div class="tool-cluster">
+                  <div class="tool-cluster-header">Viewer Tools</div>
+                  <div class="tool-grid">
+                    <button class="tool-button is-active" data-tool="windowLevel" type="button">WW/WL</button>
+                    <button class="tool-button" data-tool="pan" type="button">Pan</button>
+                    <button class="tool-button" data-tool="zoom" type="button">Zoom</button>
+                    <button class="tool-button" data-tool="length" type="button">Length</button>
+                    <button class="tool-button" data-tool="arrow" type="button">Arrow</button>
+                    <button class="tool-button" data-tool="text" type="button">Text Label</button>
+                  </div>
+                </div>
+                <div class="tool-cluster">
+                  <div class="tool-cluster-header">ROI Tools</div>
+                  <div class="tool-grid">
+                    <div class="tool-group roi-tool-group">
+                      <button
+                        id="roi-tool-trigger"
+                        class="tool-button tool-group-trigger"
+                        data-tool-group-toggle="roi"
+                        type="button"
+                        aria-expanded="false"
+                        aria-haspopup="true"
+                      >
+                        <span>ROI</span>
+                        <small id="roi-tool-active-label">Open ROI Tools</small>
+                      </button>
+                      <div id="roi-tool-menu" class="tool-submenu is-hidden" data-tool-submenu="roi" role="menu">
+                        <button class="tool-submenu-button" data-tool="probe" type="button" role="menuitem">Probe</button>
+                        <button class="tool-submenu-button" data-tool="circularRoi" type="button" role="menuitem">ROI Circle</button>
+                        <button class="tool-submenu-button" data-tool="freehandRoi" type="button" role="menuitem">ROI Draw</button>
+                        <button class="tool-submenu-button" data-tool="segmentationRoi" type="button" role="menuitem">ROI Multiple Click</button>
+                        <button class="tool-submenu-button" data-tool="brushRoi" type="button" role="menuitem">ROI Brush</button>
+                        <button class="tool-submenu-button" data-tool="contourCorrect" type="button" role="menuitem">Adjust ROI</button>
+                        <button class="tool-submenu-button" data-tool="eraser" type="button" role="menuitem">Eraser</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="tool-scope-group" data-tool-scope="circularRoi">
+                <p class="hint">
+                  `ROI Circle` starts from the initial click as the center. Drag outward to size it,
+                  release to create it, then left drag inside to move it or drag the single outer
+                  handle to resize it.
+                </p>
+                <p class="hint">Right-click an existing circular ROI to show its edit state.</p>
+              </div>
+              <div class="tool-scope-group" data-tool-scope="brushRoi">
+                <div class="numeric-grid">
+                  <label class="number-field" for="brush-min-input">
+                    <span>Brush Min HU</span>
+                    <input id="brush-min-input" type="number" min="-2048" max="4000" step="1" value="-190" />
+                  </label>
+                  <label class="number-field" for="brush-max-input">
+                    <span>Brush Max HU</span>
+                    <input id="brush-max-input" type="number" min="-2048" max="4000" step="1" value="-30" />
+                  </label>
+                </div>
+                <label class="number-field" for="brush-size-input">
+                  <span>Brush Size (mm)</span>
+                  <input id="brush-size-input" type="number" min="0.5" max="40" step="0.5" value="4" />
+                </label>
+                <div class="inline-actions">
+                  <button id="brush-shrink-button" class="button tertiary" type="button">Shrink -</button>
+                  <button id="brush-grow-button" class="button tertiary" type="button">Grow +</button>
+                </div>
+                <p class="hint">
+                  `ROI Brush` paints a threshold-aware continuous ROI. Hold the mouse button down to
+                  paint, then use `Grow +` or `Shrink -` to refine it.
+                </p>
+              </div>
+              <div class="tool-scope-group" data-tool-scope="eraser">
+                <label class="number-field" for="eraser-size-input">
+                  <span>Eraser Size (mm)</span>
+                  <input id="eraser-size-input" type="number" min="0.5" max="60" step="0.5" value="6" />
+                </label>
+                <p class="hint">
+                  `Eraser` uses a round brush. It trims ROI contours and brush ROIs, and removes other
+                  annotations it touches.
+                </p>
+              </div>
+              <div class="tool-scope-group" data-tool-scope="freehandRoi segmentationRoi edit">
+                <div class="inline-actions">
+                  <button id="copy-roi-button" class="button tertiary" type="button">Copy ROI</button>
+                  <button id="paste-roi-button" class="button tertiary" type="button">Paste ROI</button>
+                </div>
+                <p class="hint">
+                  `ROI Draw` traces freehand while you hold the left mouse button, then closes when
+                  you release. `ROI Multiple Click` places discrete points and finishes on double-click,
+                  then smooths the final contour so it does not keep polygon edges.
+                </p>
+                <p class="hint">Press `Space` after finishing a guided ROI to move to the next requested target.</p>
+              </div>
+              <div class="tool-scope-group" data-tool-scope="contourCorrect">
+                <p class="hint">
+                  `Adjust ROI` refines the selected ROI contour. Start on or just beside an
+                  existing ROI, it will auto-select it, then redraw the part you want to replace
+                  and release to blend the correction into the ROI.
+                </p>
+                <p class="hint">
+                  Keyboard shortcut: `A`.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section class="sidebar-section" data-section-id="iq-targets" data-sidebar-tab="annotate">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>ROI Targets</h2>
+                <span class="section-note" id="iq-target-summary">Select or customize a target before drawing.</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <label class="number-field" for="iq-target-select">
+                <span>Active Target</span>
+                <select id="iq-target-select"></select>
+              </label>
+              <div class="iq-target-list" id="iq-target-list"></div>
+              <p class="hint" id="reconstruction-transfer-note">
+                Load multiple reconstructions, finish the reference ROI set on one reconstruction,
+                then use `Copy Measurements To All Reconstructions` in Actions for reconstruction-labeled output.
+              </p>
+              <p class="hint">
+                Objective targets are defined once per study in `Study Rules`. This tab is for
+                placing the ROIs efficiently during patient review.
+              </p>
+            </div>
+          </section>
+
+          <div class="sidebar-category" data-sidebar-tab="define-objective">Study Setup</div>
+
+          <section class="sidebar-section" data-section-id="iq-define-objective" data-sidebar-tab="define-objective">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Define Objective</h2>
+                <span class="section-note" id="iq-target-protocol-note">Choose a preset and tailor the ROI targets for this study.</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <div class="iq-target-editor">
+                <div class="iq-target-editor-head">
+                  <div>
+                    <strong>Objective ROI Protocol</strong>
+                    <span>Select a preset first, then keep only the target labels, notes, and colors you want to measure.</span>
+                  </div>
+                </div>
+                <div class="objective-model-grid">
+                  <label class="number-field" for="iq-objective-model-select">
+                    <span>Select Preset</span>
+                      <select id="iq-objective-model-select">
+                        <option value="coronary_detailed">Model 1: Coronary, detailed</option>
+                        <option value="coronary_simple">Model 2: Coronary, simple</option>
+                        <option value="coronary_perivascular">Model 3: Coronary, perivascular</option>
+                        <option value="late_enhancement">Model 4: Late Enhancement</option>
+                        <option value="stent_imager">Model 5: Stent_imager</option>
+                        <option value="custom_blank">Model 6: Custom blank</option>
+                      </select>
+                  </label>
+                  <div class="objective-model-note-card">
+                    <strong id="iq-objective-model-label">Model 1: Coronary, detailed</strong>
+                    <span id="iq-objective-model-note">Detailed coronary protocol with proximal/distal vessel targets, muscle background, and aortic-root noise.</span>
+                  </div>
+                </div>
+                <label class="number-field" for="iq-target-define-select">
+                  <span>Existing ROI Targets</span>
+                  <select id="iq-target-define-select"></select>
+                </label>
+                <div class="iq-target-list iq-target-protocol-list" id="iq-target-define-list"></div>
+                <div class="numeric-grid">
+                  <label class="number-field" for="iq-target-category-select">
+                    <span>Role</span>
+                    <select id="iq-target-category-select">
+                      <option value="coronary">Signal / Vessel</option>
+                      <option value="background">Background</option>
+                      <option value="noise">Noise</option>
+                    </select>
+                  </label>
+                  <label class="number-field" for="iq-target-label-input">
+                    <span>ROI Label</span>
+                    <input id="iq-target-label-input" type="text" placeholder="RCA proximal, LAD, LV Cavum..." />
+                  </label>
+                </div>
+                <div class="numeric-grid">
+                  <label class="number-field" for="iq-target-segment-input">
+                    <span>Segment / Note</span>
+                    <input id="iq-target-segment-input" type="text" placeholder="1, 5/6, distal, septal..." />
+                  </label>
+                  <label class="number-field" for="iq-target-color-input">
+                    <span>Color</span>
+                    <input id="iq-target-color-input" type="color" value="#fdba90" />
+                  </label>
+                </div>
+                <p class="hint compact-hint" id="iq-target-editor-meta-note">
+                  Built-in coronary presets keep RCA/LAD/LCx and proximal/distal grouping internally, so the later SNR/CNR output stays meaningful without making the editor crowded.
+                </p>
+                <div class="inline-actions">
+                  <button id="iq-target-save-button" class="button tertiary" type="button">Save Target</button>
+                  <button id="iq-target-add-button" class="button tertiary" type="button">Add Target</button>
+                </div>
+                <div class="inline-actions">
+                  <button id="iq-target-delete-button" class="button tertiary danger-button" type="button">Delete Target</button>
+                </div>
+              </div>
+              <p class="hint" id="iq-target-editor-help">
+                Use `Coronary, detailed` when you need proximal/distal vessel analysis, `Coronary, simple`
+                when one signal ROI per vessel is enough, and `Late Enhancement` when contrast is read
+                against myocardium with noise taken from the LV cavum signal ROI.
+              </p>
+            </div>
+          </section>
+
+          <section class="sidebar-section" data-section-id="iq-objective-summary" data-sidebar-tab="annotate">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Objective Summary</h2>
+                <span class="section-note" id="iq-objective-note">No IQ ROI set completed yet.</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <div class="iq-summary-grid" id="iq-summary-grid">
+                <div class="metric-card">
+                  <span>Signal Total</span>
+                  <strong>-</strong>
+                </div>
+              </div>
+              <div class="iq-chart-grid">
+                <div class="iq-chart-card">
+                  <strong>Signal / Noise / Background</strong>
+                  <div id="iq-snb-chart" class="iq-bar-chart iq-bar-chart-empty">Complete the required ROIs to show the chart.</div>
+                </div>
+                <div class="iq-chart-card">
+                  <strong>SNR / CNR</strong>
+                  <div id="iq-snrcnr-chart" class="iq-bar-chart iq-bar-chart-empty">Complete the required ROIs to show the chart.</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section
+            class="sidebar-section"
+            data-section-id="annotate-actions"
+            data-default-collapsed="true"
+            data-ui-level="advanced"
+            data-sidebar-tab="annotate"
+          >
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Actions</h2>
+                <span class="section-note" id="history-summary">0 undo / 0 redo</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="false">+</button>
+            </div>
+            <div class="section-body">
+              <div class="inline-actions">
+                <button id="undo-button" class="button tertiary" type="button">Undo</button>
+                <button id="redo-button" class="button tertiary" type="button">Redo</button>
+              </div>
+              <div class="inline-actions">
+                <button id="reset-button" class="button tertiary" type="button">Reset View</button>
+                <button id="clear-measurements-button" class="button tertiary" type="button">Clear Annotations</button>
+              </div>
+              <div class="inline-actions">
+                <button id="sync-measurements-button" class="button tertiary" type="button">
+                  Copy Measurements To All Reconstructions
+                </button>
+              </div>
+              <p class="hint">
+                `Undo` and `Redo` cover annotation work, including drawing, editing, erasing, brush
+                refinement, and copying measurements across reconstructions.
+              </p>
+              <p class="hint">
+                `Copy Measurements To All Reconstructions` sends ROI, ROI Brush, length, probe, and
+                profile measurements from the active reconstruction to the other loaded reconstructions
+                for the same patient.
+              </p>
+            </div>
+          </section>
+
+          <div class="sidebar-category" data-sidebar-tab="annotate">Display</div>
+
+          <section
+            class="sidebar-section"
+            data-section-id="display-mpr"
+            data-tool-panel="mprCursor"
+            data-ui-level="advanced"
+            data-sidebar-tab="annotate"
+          >
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>MPR</h2>
+                <span class="section-note">Rotation, zoom, and shared MPR position</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+            <label class="slider-field" for="mpr-axial-rotation">
+              <span>Axial Rotation</span>
+              <input id="mpr-axial-rotation" type="range" min="-180" max="180" step="1" value="0" />
+            </label>
+            <label class="slider-field" for="mpr-coronal-rotation">
+              <span>Coronal Rotation</span>
+              <input id="mpr-coronal-rotation" type="range" min="-180" max="180" step="1" value="0" />
+            </label>
+            <label class="slider-field" for="mpr-sagittal-rotation">
+              <span>Sagittal Rotation</span>
+              <input id="mpr-sagittal-rotation" type="range" min="-180" max="180" step="1" value="0" />
+            </label>
+            <div class="numeric-grid">
+              <label class="number-field" for="mpr-axial-input">
+                <span>Axial</span>
+                <input id="mpr-axial-input" type="number" min="-180" max="180" step="1" value="0" />
+              </label>
+              <label class="number-field" for="mpr-coronal-input">
+                <span>Coronal</span>
+                <input id="mpr-coronal-input" type="number" min="-180" max="180" step="1" value="0" />
+              </label>
+            </div>
+            <label class="number-field" for="mpr-sagittal-input">
+              <span>Sagittal</span>
+              <input id="mpr-sagittal-input" type="number" min="-180" max="180" step="1" value="0" />
+            </label>
+            <div class="inline-actions">
+              <button id="sync-mpr-button" class="button tertiary is-active" type="button">Sync Zoom/Pan: On</button>
+              <button id="reset-mpr-button" class="button tertiary" type="button">Reset MPR</button>
+              <button id="mpr-overlay-toggle-button" class="button tertiary is-active" type="button">Hide Crosses</button>
+            </div>
+            <p class="hint">
+              In 4-up MPR, drag the shared crosshair center directly. Rotation still comes from the
+              three angle controls below it or from the colored plane lines.
+            </p>
+            <p class="hint">
+              You can also grab a colored MPR line directly in the viewport to rotate that plane
+              with the mouse. The current viewport stays fixed while the other MPR projections
+              rotate.
+            </p>
+            </div>
+          </section>
+
+          <section class="sidebar-section" data-section-id="display-voi" data-tool-panel="windowLevel" data-sidebar-tab="annotate">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>WW / WL</h2>
+                <span class="section-note" id="voi-readout">W 800 / L 250</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <div class="numeric-grid">
+                <label class="number-field" for="window-width-input">
+                  <span>Width</span>
+                  <input id="window-width-input" type="number" min="1" max="4000" step="1" value="800" />
+                </label>
+                <label class="number-field" for="window-center-input">
+                  <span>Level</span>
+                  <input id="window-center-input" type="number" min="-1200" max="3000" step="1" value="250" />
+                </label>
+              </div>
+
+              <label class="slider-field" for="window-width-slider">
+                <span>Window width</span>
+                <input id="window-width-slider" type="range" min="1" max="4000" step="1" value="800" />
+              </label>
+
+              <label class="slider-field" for="window-center-slider">
+                <span>Window level</span>
+                <input id="window-center-slider" type="range" min="-1200" max="3000" step="1" value="250" />
+              </label>
+
+              <div class="voi-presets-block">
+                <div class="compact-subheading">
+                  <span>Presets</span>
+                  <small>One click display windows</small>
+                </div>
+                <div class="pill-grid presets-grid">
+                  <button class="pill-button" data-preset="coronary" type="button">Coronary</button>
+                  <button class="pill-button" data-preset="softTissue" type="button">Soft Tissue</button>
+                  <button class="pill-button" data-preset="lung" type="button">Lung</button>
+                  <button class="pill-button" data-preset="bone" type="button">Bone</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div class="sidebar-category" data-sidebar-tab="subjective">Reader Scoring</div>
+
+          <section class="sidebar-section" data-section-id="iq-subjective" data-sidebar-tab="subjective">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Subjective Analysis</h2>
+                <span class="section-note" id="iq-subjective-note">Use the configured Likert buttons or keyboard while the image remains visible.</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <details class="subjective-subsection subjective-scoring-panel" open>
+                <summary class="subjective-subsection-summary">
+                  <div>
+                    <strong>Score Current Series</strong>
+                    <span>Use the Likert buttons or keyboard numbers for the active reconstruction.</span>
+                  </div>
+                  <span class="subjective-progress" id="iq-subjective-progress">0 / 5 completed</span>
+                </summary>
+                <div class="subjective-subsection-body">
+                  <div class="subjective-series-shell">
+                    <div class="subjective-series-copy">
+                      <div class="subjective-series-index" id="iq-subjective-series-index">Series 0 of 0</div>
+                      <div class="subjective-series-detail" id="iq-subjective-series-detail">Load a study to begin blinded subjective scoring.</div>
+                    </div>
+                    <div class="subjective-series-actions">
+                      <button id="iq-subjective-prev-button" class="button tertiary" type="button">Previous Series</button>
+                      <button id="iq-subjective-next-button" class="button tertiary" type="button">Next Series</button>
+                      <button id="iq-subjective-toggle-label-button" class="button tertiary" type="button">Show Label</button>
+                    </div>
+                  </div>
+                  <div class="subjective-card-list" id="iq-subjective-card-list"></div>
+                  <p class="hint">
+                    Click a card to focus it. Keyboard numbers score the active card when the
+                    configured scale has a matching single-key value; otherwise use the visible buttons.
+                    `Cmd/Ctrl + Left/Right` switches loaded series while you stay on the same scoring page.
+                  </p>
+                </div>
+              </details>
+            </div>
+          </section>
+
+          <div class="sidebar-category" data-sidebar-tab="define-subjective">Study Setup</div>
+
+          <section class="sidebar-section" data-section-id="iq-define-subjective" data-sidebar-tab="define-subjective">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Define Subjective</h2>
+                <span class="section-note" id="iq-subjective-protocol-note">Default 4-point CCTA IQ Likert categories.</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <div class="subjective-protocol-editor" id="iq-subjective-protocol-editor">
+                <div class="iq-target-editor-head">
+                  <div>
+                    <strong>Subjective Scoring Protocol</strong>
+                    <span>Define the categories and Likert scale once for this study. These scores drive the Subjective tab.</span>
+                  </div>
+                </div>
+                <div class="numeric-grid">
+                  <label class="number-field" for="iq-subjective-field-select">
+                    <span>Category</span>
+                    <select id="iq-subjective-field-select"></select>
+                  </label>
+                  <label class="number-field" for="iq-subjective-scale-select">
+                    <span>Scale</span>
+                    <select id="iq-subjective-scale-select">
+                      <option value="2">2-point (0/1)</option>
+                      <option value="4">4-point</option>
+                      <option value="5">5-point</option>
+                      <option value="__custom__">Other...</option>
+                    </select>
+                  </label>
+                </div>
+                <label class="number-field" for="iq-subjective-label-input">
+                  <span>Category Name</span>
+                  <input id="iq-subjective-label-input" type="text" placeholder="Noise, Sharpness, Motion artifacts..." />
+                </label>
+                <div class="subjective-description-editor" id="iq-subjective-description-editor"></div>
+                <div class="inline-actions">
+                  <button id="iq-subjective-save-button" class="button tertiary" type="button">Save Category</button>
+                  <button id="iq-subjective-add-button" class="button tertiary" type="button">Add Category</button>
+                </div>
+                <div class="inline-actions">
+                  <button id="iq-subjective-delete-button" class="button tertiary danger-button" type="button">Delete Category</button>
+                </div>
+              </div>
+              <p class="hint">
+                Define the reader scoring protocol before starting a study. It remains saved as your
+                default until you change it or reset the built-in defaults from Study Rules.
+              </p>
+            </div>
+          </section>
+
+          <div class="sidebar-category" data-sidebar-tab="export">Export</div>
+
+          <section class="sidebar-section" data-section-id="iq-export" data-sidebar-tab="export">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Research Export</h2>
+                <span class="section-note" id="iq-export-note">One Excel workbook plus one summary PNG.</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <div class="export-grid">
+                <button id="iq-open-export-button" class="button primary" type="button">Prepare Export</button>
+              </div>
+              <p class="hint">
+                The dedicated export workflow writes one Excel workbook with `Metadata`,
+                `objective`, and `subjective` sheets for all loaded reconstructions and mirrors it
+                into the HAGRad outbox path.
+              </p>
+            </div>
+          </section>
+
+          <section class="sidebar-section" data-section-id="iq-roi-table" data-sidebar-tab="export">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>ROI Table</h2>
+                <span class="section-note" id="iq-roi-table-note">Current reconstruction objective measurements.</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <div class="iq-table-shell">
+                <table class="iq-table">
+                  <thead>
+                    <tr>
+                      <th>ROI</th>
+                      <th>Type</th>
+                      <th>Mean</th>
+                      <th>SD</th>
+                      <th>Min</th>
+                      <th>Max</th>
+                      <th>Area</th>
+                    </tr>
+                  </thead>
+                  <tbody id="iq-roi-table-body">
+                    <tr>
+                      <td colspan="7" class="iq-table-empty">No IQ ROIs yet.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <div class="sidebar-category ccta-iq-legacy" data-sidebar-tab="export">Analysis</div>
+
+          <section class="sidebar-section ccta-iq-legacy" data-section-id="analysis-profile" data-ui-level="advanced" data-sidebar-tab="export">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Profile Analysis</h2>
+                <span class="section-note" id="profile-status">No profile selected</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <div class="profile-chart-shell">
+                <canvas id="profile-chart" class="profile-chart" width="320" height="180"></canvas>
+              </div>
+              <div class="inline-actions">
+                <button id="profile-reset-auto-button" class="button tertiary" type="button">
+                  Reset Profile Auto
+                </button>
+              </div>
+              <dl class="profile-metrics" id="profile-metrics">
+                <div class="meta-row">
+                  <dt>Selection</dt>
+                  <dd>Draw a line or square profile to see the curve and edge metrics here.</dd>
+                </div>
+              </dl>
+              <p class="hint">
+                In stent mode, you can drag the colored guide lines on the curve to fine-tune the
+                cutoffs manually. The measurements update automatically.
+              </p>
+              <p class="hint">
+                `Line Profile` samples HU along one line. `Square Profile` averages a rectangular band
+                into a cleaner 1D profile for stent analysis.
+              </p>
+              <p class="hint">
+                Right-click any annotation to edit it directly. The `Edit` button still works too if
+                you prefer it.
+              </p>
+              <p class="hint">
+                The profile panel now reports stent-style metrics: strut peak HU, strut FWHM, lumen
+                FWHM, and 10-90% edge sharpness.
+              </p>
+            </div>
+          </section>
+
+          <section class="sidebar-section ccta-iq-legacy" data-section-id="analysis-export" data-default-collapsed="true" data-sidebar-tab="export">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Export</h2>
+                <span class="section-note">PNG and CSV output</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="false">+</button>
+            </div>
+            <div class="section-body">
+              <div class="export-grid">
+                <button id="export-current-button" class="button tertiary" type="button">Export Current PNG</button>
+                <button id="export-grid-button" class="button tertiary" type="button">Export 4-up PNG</button>
+                <button id="export-measurements-button" class="button tertiary" type="button">
+                  Export Measurements
+                </button>
+                <button id="finish-close-button" class="button primary" type="button">
+                  Finish &amp; Close
+                </button>
+                <button id="export-baseline-button" class="button tertiary" type="button">
+                  Export Baseline Characteristics
+                </button>
+              </div>
+              <p class="hint">
+                `Export Measurements` downloads one combined PNG plus a CSV that opens in Excel.
+              </p>
+              <p class="hint">
+                Before measurement export, HAGRad asks for a `Study ID`. That value is written into
+                the PNG header and becomes the first column in the measurement CSV.
+              </p>
+              <p class="hint">
+                `Export Baseline Characteristics` creates a structured CSV from the loaded DICOM
+                headers, reconstruction metadata, computed scan geometry, and any dose or contrast
+                reports that were included in the loaded files.
+              </p>
+            </div>
+          </section>
+
+          <div class="sidebar-category ccta-iq-legacy" data-ui-level="advanced" data-sidebar-tab="case">Reference</div>
+
+          <section
+            class="sidebar-section ccta-iq-legacy"
+            data-section-id="reference-study"
+            data-default-collapsed="true"
+            data-ui-level="advanced"
+            data-sidebar-tab="case"
+          >
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Study Info</h2>
+                <span class="section-note" id="measurement-count">0 annotations</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="false">+</button>
+            </div>
+            <div class="section-body">
+            <dl class="meta-list">
+              <div class="meta-row">
+                <dt>Patient</dt>
+                <dd id="meta-patient">No study loaded</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Patient ID</dt>
+                <dd id="meta-patient-id">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Series</dt>
+                <dd id="meta-series">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Modality</dt>
+                <dd id="meta-modality">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Slices</dt>
+                <dd id="meta-slices">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Matrix</dt>
+                <dd id="meta-matrix">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Spacing</dt>
+                <dd id="meta-spacing">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Thickness</dt>
+                <dd id="meta-thickness">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Acquired</dt>
+                <dd id="meta-time">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Position</dt>
+                <dd id="meta-position">-</dd>
+              </div>
+            </dl>
+            </div>
+          </section>
+
+          <section
+            class="sidebar-section compact ccta-iq-legacy"
+            data-section-id="reference-help"
+            data-default-collapsed="true"
+            data-ui-level="advanced"
+            data-sidebar-tab="export"
+          >
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Shortcuts &amp; Help</h2>
+                <span class="section-note">Editable key map for daily use</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="false">+</button>
+            </div>
+            <div class="section-body">
+              <div class="inline-actions">
+                <button id="shortcut-reset-button" class="button tertiary" type="button">Reset Shortcuts</button>
+              </div>
+              <div class="shortcut-table-shell">
+                <table class="shortcut-table">
+                  <thead>
+                    <tr>
+                      <th>Action</th>
+                      <th>Shortcut</th>
+                    </tr>
+                  </thead>
+                  <tbody id="shortcut-table-body">
+                    <tr>
+                      <td colspan="2">Loading shortcuts...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p class="hint">
+                Edit the `Shortcut` cells to fit your workflow. Reassigned keys override presets and are saved locally on this Mac.
+              </p>
+              <p class="hint">
+                Fixed shortcuts stay the same: `Cmd/Ctrl+Z` undo, `Shift+Cmd/Ctrl+Z` redo,
+                `Cmd/Ctrl+C` copy ROI, `Cmd/Ctrl+V` paste ROI, `Delete` removes the selected annotation.
+              </p>
+              <p class="hint">
+                Mouse wheel scrolls slices. Click a viewport to focus it. Arrow keys scroll the focused
+                viewport.
+              </p>
+              <p class="hint">
+                Use your chosen `MPR Coord` shortcut to reposition the shared crosshair directly in any
+                viewport.
+              </p>
+              <p class="hint">
+                Loaded reconstructions share one MPR coordinate system, so switching reconstructions
+                keeps the same position, rotation, and zoom.
+              </p>
+              <p class="hint">
+                `Load DICOM Files` lets you select normal `.dcm` files. `Load Folder` is there if you
+                want to pick one whole patient folder at once.
+              </p>
+            </div>
+          </section>
+        </aside>
+
+        <section class="viewer-column">
+          <div class="shell-card stage">
+            <section class="study-rules-workspace is-hidden" id="study-rules-workspace" aria-label="Study rules builder">
+              <div class="study-rules-hero">
+                <div>
+                  <p class="eyebrow">Study Rules</p>
+                  <h2>Build the image-quality protocol</h2>
+                  <p>
+                    Define objective ROI targets, subjective Likert categories, and the exact SNR/CNR
+                    summaries before the reader starts measuring. The viewer comes back automatically
+                    when you switch to Objective or Subjective.
+                  </p>
+                </div>
+                <div class="study-rules-savebar">
+                  <label class="number-field" for="study-rules-saved-select">
+                    <span>Saved Rules</span>
+                    <select id="study-rules-saved-select">
+                      <option value="">Current unsaved rules</option>
+                    </select>
+                  </label>
+                  <label class="number-field" for="study-rules-name-input">
+                    <span>Protocol Name</span>
+                    <input id="study-rules-name-input" type="text" placeholder="CCTA IQ pilot protocol" />
+                  </label>
+                  <div class="study-rules-save-actions">
+                    <button id="study-rules-save-button" class="button primary" type="button">Save Rules</button>
+                    <button id="study-rules-save-new-button" class="button tertiary" type="button">Save As New</button>
+                    <button id="study-rules-delete-button" class="button tertiary danger-button" type="button">Delete Saved</button>
+                    <button id="iq-reset-protocols-button" class="button tertiary danger-button" type="button">Reset Built-in Defaults</button>
+                  </div>
+                  <p class="hint compact-hint">
+                    Reset restores the built-in objective presets and subjective defaults after confirmation.
+                  </p>
+                </div>
+              </div>
+
+              <div class="study-rules-layout">
+                <section class="study-rules-panel study-rules-panel-objective">
+                  <div class="study-rules-panel-header">
+                    <div>
+                      <h3>Objective Image Quality</h3>
+                      <p id="study-objective-summary">Choose a preset or build your own objective ROI model.</p>
+                    </div>
+                    <label class="number-field compact-field" for="study-objective-model-select">
+                      <span>Preset Model</span>
+                      <select id="study-objective-model-select">
+                        <option value="coronary_detailed">Model 1: Coronary, detailed</option>
+                        <option value="coronary_simple">Model 2: Coronary, simple</option>
+                        <option value="coronary_perivascular">Model 3: Coronary, perivascular</option>
+                        <option value="late_enhancement">Model 4: Late Enhancement</option>
+                        <option value="stent_imager">Model 5: Stent_imager</option>
+                        <option value="custom_blank">Model 6: Custom blank</option>
+                      </select>
+                    </label>
+                    <button
+                      class="study-rules-panel-toggle"
+                      data-study-rules-panel-toggle
+                      type="button"
+                      aria-expanded="true"
+                      aria-controls="study-objective-panel-body"
+                    >Hide</button>
+                  </div>
+
+                  <div class="study-rules-panel-body" id="study-objective-panel-body">
+                    <div class="study-rules-model-note" id="study-objective-model-note">
+                      Detailed coronary protocol with proximal/distal vessel targets, muscle background, and aortic-root noise.
+                    </div>
+
+                    <div class="study-table-shell">
+                      <table class="study-rules-table study-objective-table">
+                        <thead>
+                          <tr>
+                            <th class="study-target-order-heading">Move</th>
+                            <th>Use</th>
+                            <th>ROI</th>
+                            <th>ROI Label</th>
+                            <th>Mean HU</th>
+                            <th>SD HU</th>
+                            <th>Min HU</th>
+                            <th>Max HU</th>
+                            <th>Group / Note</th>
+                            <th>Color</th>
+                            <th>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody id="study-objective-target-table-body"></tbody>
+                      </table>
+                    </div>
+
+                    <div class="study-rules-row-actions">
+                      <button id="study-objective-add-target-button" class="button tertiary" type="button">Add ROI Target</button>
+                      <button id="study-objective-apply-preset-button" class="button tertiary" type="button">Reload Selected Preset</button>
+                    </div>
+
+                    <div class="metric-rule-panel">
+                      <div class="metric-rule-copy">
+                        <h4>Computed Metrics</h4>
+                        <p>
+                          Choose the outputs you want. The formula cards below are the exact
+                          objective summary rows calculated and exported.
+                        </p>
+                      </div>
+                      <div class="metric-rule-grid">
+                        <label class="check-field"><input id="study-metric-signal-enabled" type="checkbox" checked /> Signal</label>
+                        <label class="check-field"><input id="study-metric-background-enabled" type="checkbox" checked /> Background</label>
+                        <label class="check-field"><input id="study-metric-noise-enabled" type="checkbox" checked /> Noise</label>
+                        <label class="check-field"><input id="study-metric-snr-enabled" type="checkbox" checked /> SNR</label>
+                        <label class="check-field"><input id="study-metric-cnr-enabled" type="checkbox" checked /> CNR</label>
+                        <label class="check-field"><input id="study-metric-total-enabled" type="checkbox" checked /> Total signal</label>
+                        <label class="check-field"><input id="study-metric-vessel-enabled" type="checkbox" checked /> Per vessel / structure</label>
+                        <label class="check-field"><input id="study-metric-proximal-enabled" type="checkbox" checked /> Proximal</label>
+                        <label class="check-field"><input id="study-metric-distal-enabled" type="checkbox" checked /> Distal</label>
+                        <label class="check-field"><input id="study-metric-custom-group-enabled" type="checkbox" /> Other groups</label>
+                      </div>
+                      <div class="metric-source-grid">
+                        <label class="number-field" for="study-metric-background-source">
+                          <span>CNR Background</span>
+                          <select id="study-metric-background-source"></select>
+                        </label>
+                        <label class="number-field" for="study-metric-noise-source">
+                          <span>SNR/CNR Noise</span>
+                          <select id="study-metric-noise-source"></select>
+                        </label>
+                      </div>
+                      <div class="metric-rule-preview" id="study-metric-preview">
+                        SNR = Signal / Noise. CNR = (Signal - Background) / Noise.
+                      </div>
+                      <div class="metric-formula-composer">
+                        <div class="metric-formula-copy">
+                          <div>
+                            <h4>Metric Equation Builder</h4>
+                            <p>
+                              Define the exact formulas exported for this study. Click a metric row,
+                              insert ROI/stat tokens, and edit the equation directly.
+                            </p>
+                          </div>
+                          <button id="study-formula-metric-add-button" class="button tertiary" type="button">Add Formula</button>
+                        </div>
+                        <div class="metric-formula-layout">
+                          <div class="metric-formula-list" id="study-formula-metric-list"></div>
+                          <div class="metric-formula-editor">
+                            <div class="numeric-grid">
+                              <label class="number-field" for="study-formula-metric-name-input">
+                                <span>Metric Label</span>
+                                <input id="study-formula-metric-name-input" type="text" placeholder="CNR_total" />
+                              </label>
+                              <label class="number-field" for="study-formula-metric-unit-input">
+                                <span>Unit</span>
+                                <input id="study-formula-metric-unit-input" type="text" placeholder="HU, ratio, blank..." />
+                              </label>
+                            </div>
+                            <label class="number-field formula-field" for="study-formula-metric-expression-input">
+                              <span>Equation</span>
+                              <textarea
+                                id="study-formula-metric-expression-input"
+                                rows="4"
+                                spellcheck="false"
+                                placeholder="(avg(signal.mean) - avg(background.mean)) / avg(noise.sd)"
+                              ></textarea>
+                            </label>
+                            <div
+                              id="study-formula-metric-color-preview"
+                              class="formula-color-preview"
+                              aria-live="polite"
+                            ></div>
+                            <div class="formula-token-palette" id="study-formula-token-palette"></div>
+                            <p class="hint compact-hint">
+                              Type directly in the equation field. Supported operators: +, -, *, /, %, ^,
+                              parentheses, constants PI/E, and functions abs, sqrt, pow, min, max, round, floor, ceil, log, log10, and exp.
+                            </p>
+                            <div class="study-rules-row-actions">
+                              <button id="study-formula-metric-save-button" class="button tertiary" type="button">Save Formula</button>
+                              <button id="study-formula-metric-delete-button" class="button tertiary danger-button" type="button">Delete Formula</button>
+                            </div>
+                            <div class="metric-rule-preview" id="study-formula-metric-preview">
+                              Formula preview appears here once a study or ROI rows are available.
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="study-rules-panel study-rules-panel-subjective is-collapsed">
+                  <div class="study-rules-panel-header">
+                    <div>
+                      <h3>Subjective Image Quality</h3>
+                      <p id="study-subjective-summary">Define categories, mixed scales, and wording for reader scoring.</p>
+                    </div>
+                    <label class="number-field compact-field" for="study-subjective-scale-select">
+                      <span>Default Category Scale</span>
+                      <select id="study-subjective-scale-select">
+                        <option value="2">2-point (0/1)</option>
+                        <option value="4">4-point</option>
+                        <option value="5">5-point</option>
+                        <option value="__custom__">Other...</option>
+                      </select>
+                    </label>
+                    <button
+                      class="study-rules-panel-toggle"
+                      data-study-rules-panel-toggle
+                      type="button"
+                      aria-expanded="false"
+                      aria-controls="study-subjective-panel-body"
+                    >Show</button>
+                  </div>
+
+                  <div class="study-rules-panel-body" id="study-subjective-panel-body">
+                    <div class="study-score-labels" id="study-subjective-score-labels"></div>
+
+                    <div class="study-table-shell">
+                      <table class="study-rules-table study-subjective-table">
+                        <thead>
+                          <tr>
+                            <th class="study-target-order-heading">Move</th>
+                            <th>Category</th>
+                            <th>Scale</th>
+                            <th>Template</th>
+                            <th>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody id="study-subjective-table-body"></tbody>
+                      </table>
+                    </div>
+
+                    <div class="study-rules-row-actions">
+                      <button id="study-subjective-add-category-button" class="button tertiary" type="button">Add Subjective Category</button>
+                      <button id="study-subjective-reset-button" class="button tertiary" type="button">Reload CCTA Defaults</button>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </section>
+
+            <div class="empty-state" id="empty-state">
+              <p class="empty-title">Drop a DICOM series here</p>
+              <p class="empty-copy">
+                Load a stack of axial CT slices and the viewer will create one large presentation
+                viewport plus true axial, coronal, and sagittal reformats.
+              </p>
+              <p class="empty-copy subtle">
+                This viewer is meant for presentation and teaching workflows, not diagnostic use.
+              </p>
+            </div>
+
+            <div class="viewport-grid layout-presentation" id="viewport-grid">
+              <article class="viewport-panel is-presentation is-active" data-viewport-id="presentation" tabindex="0">
+                <header class="viewport-header">
+                  <span>Presentation (Axial)</span>
+                  <span class="viewport-readout" id="presentation-readout">0 / 0</span>
+                </header>
+                <div class="viewport-element" id="viewport-presentation"></div>
+                <div class="viewport-tool-hud" data-tool-hud></div>
+                <div class="viewport-mini-actions with-header-offset">
+                  <button
+                    id="presentation-reset-window-button"
+                    class="viewport-mini-button"
+                    type="button"
+                    aria-label="Reset default windowing"
+                    title="Reset default windowing"
+                  >↺</button>
+                  <button
+                    id="presentation-reset-fit-button"
+                    class="viewport-mini-button"
+                    type="button"
+                    aria-label="Reset zoom and center"
+                    title="Reset zoom and center"
+                  >⛶</button>
+                  <button
+                    id="presentation-focus-toggle-button"
+                    class="viewport-mini-button"
+                    type="button"
+                    aria-label="Enter immersive CCTA IQ focus view"
+                    title="Immersive focus view"
+                  >⤢</button>
+                </div>
+                <div class="orientation-overlay">
+                  <span class="orientation-label top">A</span>
+                  <span class="orientation-label bottom">P</span>
+                  <span class="orientation-label left">R</span>
+                  <span class="orientation-label right">L</span>
+                </div>
+                <div class="viewport-fast-scroll">
+                  <label for="presentation-fast-scroll-slider">Slice</label>
+                  <input
+                    id="presentation-fast-scroll-slider"
+                    type="range"
+                    min="0"
+                    max="0"
+                    step="1"
+                    value="0"
+                    disabled
+                  />
+                  <span id="presentation-fast-scroll-value">0 / 0</span>
+                </div>
+              </article>
+
+              <article class="viewport-panel" data-viewport-id="axial" tabindex="0">
+                <header class="viewport-header">
+                  <span>Coronal</span>
+                  <span class="viewport-readout" id="axial-readout">Coronal -</span>
+                </header>
+                <div class="viewport-element" id="viewport-axial"></div>
+                <div class="viewport-tool-hud" data-tool-hud></div>
+                <div class="orientation-overlay">
+                  <span class="orientation-label top">A</span>
+                  <span class="orientation-label bottom">P</span>
+                  <span class="orientation-label left">R</span>
+                  <span class="orientation-label right">L</span>
+                </div>
+              </article>
+
+              <article class="viewport-panel" data-viewport-id="sagittal" tabindex="0">
+                <header class="viewport-header">
+                  <span>Axial</span>
+                  <span class="viewport-readout" id="sagittal-readout">Axial -</span>
+                </header>
+                <div class="viewport-element" id="viewport-sagittal"></div>
+                <div class="viewport-tool-hud" data-tool-hud></div>
+                <div class="orientation-overlay">
+                  <span class="orientation-label top">A</span>
+                  <span class="orientation-label bottom">P</span>
+                  <span class="orientation-label left">R</span>
+                  <span class="orientation-label right">L</span>
+                </div>
+              </article>
+
+              <article class="viewport-panel" data-viewport-id="coronal" tabindex="0">
+                <header class="viewport-header">
+                  <span>Sagittal</span>
+                  <span class="viewport-readout" id="coronal-readout">Sagittal -</span>
+                </header>
+                <div class="viewport-element" id="viewport-coronal"></div>
+                <div class="viewport-tool-hud" data-tool-hud></div>
+                <div class="orientation-overlay">
+                  <span class="orientation-label top">A</span>
+                  <span class="orientation-label bottom">P</span>
+                  <span class="orientation-label left">R</span>
+                  <span class="orientation-label right">L</span>
+                </div>
+              </article>
+            </div>
+            <div class="presentation-focus-dock focus-workflow-dock" aria-label="Focus workflow controls">
+              <button class="focus-pill-button" data-focus-workflow-tab="case" type="button">Workflow</button>
+              <button class="focus-pill-button" data-focus-workflow-tab="annotate" type="button">Objective</button>
+              <button class="focus-pill-button" data-focus-workflow-tab="subjective" type="button">Subjective</button>
+              <button class="focus-pill-button" data-focus-workflow-tab="export" type="button">Export</button>
+            </div>
+            <div class="presentation-focus-dock focus-action-dock" aria-label="Focus case actions">
+              <label class="focus-pill-button focus-file-button" for="dicom-input">Load</label>
+              <label class="focus-pill-button focus-file-button" for="dicom-folder-input">Folder</label>
+              <button id="focus-iq-export-button" class="focus-pill-button" type="button">
+                Export IQ
+              </button>
+              <button id="presentation-focus-exit-button" class="focus-pill-button focus-exit-button" type="button">
+                Exit
+              </button>
+            </div>
+          </div>
+
+        </section>
+      </section>
+    </main>
+
+    <div id="iq-export-modal" class="modal-shell is-hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-iq-export-close></div>
+      <section
+        class="modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="iq-export-title"
+        aria-describedby="iq-export-copy"
+      >
+        <header class="modal-header">
+          <div class="modal-copy">
+            <p class="eyebrow">HAGRad CCTA IQ</p>
+            <h2 id="iq-export-title">Export CCTA IQ Results</h2>
+            <p id="iq-export-copy" class="modal-text">
+              Define both study IDs before export. The export creates one Excel workbook with
+              separate Metadata, objective, and subjective sheets, plus one summary PNG for the
+              loaded reconstructions. Loaded reconstructions stay clearly labeled throughout.
+            </p>
+          </div>
+          <button
+            id="iq-export-close-button"
+            class="button secondary modal-close-button"
+            type="button"
+            aria-label="Close CCTA IQ export options"
+          >
+            Close
+          </button>
+        </header>
+
+        <div class="modal-option-list">
+          <label class="number-field" for="iq-export-study-select">
+            <span>Research Study</span>
+            <select id="iq-export-study-select">
+              <option value="">No study selected</option>
+            </select>
+          </label>
+          <div class="inline-actions">
+            <label class="number-field" for="iq-export-study-create-input">
+              <span>New Study</span>
+              <input id="iq-export-study-create-input" type="text" placeholder="ccta_iq_reader_study" autocomplete="off" />
+            </label>
+            <button id="iq-export-study-create-button" class="button tertiary" type="button">Create Study</button>
+          </div>
+          <p class="hint" id="iq-export-study-target-note">
+            Mirrored exports will also be saved to the HAGRad CCTA IQ outbox folder until a study is selected.
+          </p>
+          <div id="iq-export-readiness-warning" class="iq-export-readiness-warning is-hidden" role="alert">
+            <div class="iq-export-readiness-warning-copy">
+              <strong>Export readiness warning</strong>
+              <p id="iq-export-readiness-warning-text">
+                Some loaded reconstructions still have incomplete objective or subjective image-quality data.
+              </p>
+              <ul id="iq-export-readiness-warning-list"></ul>
+            </div>
+            <button
+              id="iq-export-readiness-warning-close"
+              class="iq-export-readiness-warning-close"
+              type="button"
+              aria-label="Dismiss export readiness warning"
+            >x</button>
+          </div>
+          <div class="numeric-grid">
+            <label class="number-field" for="iq-export-research-id-input">
+              <span>research_study_ID</span>
+              <input id="iq-export-research-id-input" type="text" placeholder="research_001" autocomplete="off" />
+            </label>
+            <label class="number-field" for="iq-export-patient-id-input">
+              <span>patient_study_ID</span>
+              <input id="iq-export-patient-id-input" type="text" placeholder="patient_001" autocomplete="off" />
+            </label>
+          </div>
+
+          <label class="modal-option-card" for="iq-export-metadata">
+            <input id="iq-export-metadata" type="checkbox" checked />
+            <span class="modal-option-copy">
+              <strong>Metadata sheet</strong>
+              <span>Acquisition parameters, reconstruction parameters, radiation dose, and contrast information when available.</span>
+            </span>
+          </label>
+
+          <label class="modal-option-card" for="iq-export-objective">
+            <input id="iq-export-objective" type="checkbox" checked />
+            <span class="modal-option-copy">
+              <strong>Objective sheet</strong>
+              <span>ROI-level rows plus derived signal, noise, background, SNR, and CNR summary rows per reconstruction.</span>
+            </span>
+          </label>
+
+          <label class="modal-option-card" for="iq-export-subjective">
+            <input id="iq-export-subjective" type="checkbox" checked />
+            <span class="modal-option-copy">
+              <strong>Subjective sheet</strong>
+              <span>Reader scores for noise, sharpness, motion artifacts, artifact interference, and overall image quality per loaded reconstruction.</span>
+            </span>
+          </label>
+
+          <label class="modal-option-card" for="iq-export-summary-png">
+            <input id="iq-export-summary-png" type="checkbox" checked />
+            <span class="modal-option-copy">
+              <strong>Summary PNG</strong>
+              <span>One summary sheet with reconstruction previews, statistical graphs, and representative ROI snapshots.</span>
+            </span>
+          </label>
+        </div>
+
+        <footer class="modal-actions">
+          <button id="iq-export-cancel-button" class="button secondary" type="button">Cancel</button>
+          <button id="iq-export-confirm-button" class="button primary" type="button">Export Workbook + PNG</button>
+        </footer>
+      </section>
+    </div>
+
+    <div id="measurement-export-modal" class="modal-shell is-hidden ccta-iq-legacy" aria-hidden="true">
+      <div class="modal-backdrop" data-measurement-modal-close></div>
+      <section
+        class="modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="measurement-export-title"
+        aria-describedby="measurement-export-copy"
+      >
+        <header class="modal-header">
+          <div class="modal-copy">
+            <p class="eyebrow">HAGRad Viewer</p>
+            <h2 id="measurement-export-title">Export Measurements</h2>
+            <p id="measurement-export-copy" class="modal-text">
+              Assign a `Study ID` before exporting. HAGRad will place it into the first CSV column
+              and show it in the exported PNG header.
+            </p>
+          </div>
+          <button
+            id="measurement-export-close-button"
+            class="button secondary modal-close-button"
+            type="button"
+            aria-label="Close measurement export options"
+          >
+            Close
+          </button>
+        </header>
+
+        <div class="modal-option-list">
+          <label class="number-field" for="measurement-export-study-select">
+            <span>Research Study</span>
+            <select id="measurement-export-study-select">
+              <option value="">No study selected</option>
+            </select>
+          </label>
+          <div class="inline-actions">
+            <label class="number-field" for="measurement-export-study-create-input">
+              <span>New Study</span>
+              <input id="measurement-export-study-create-input" type="text" placeholder="stent_clari" autocomplete="off" />
+            </label>
+            <button id="measurement-export-study-create-button" class="button tertiary" type="button">Create Study</button>
+          </div>
+          <p class="hint" id="measurement-export-study-target-note">
+            Mirrored exports go into the general viewer folder until a study is selected.
+          </p>
+          <label class="number-field" for="measurement-export-study-id-input">
+            <span>Study ID</span>
+            <input
+              id="measurement-export-study-id-input"
+              type="text"
+              placeholder="study_001"
+              autocomplete="off"
+            />
+          </label>
+          <p class="hint">
+            Example: `stent_clari_014`, `reader2_case07`, or any lab-specific study code.
+          </p>
+        </div>
+
+        <footer class="modal-actions">
+          <button id="measurement-export-cancel-button" class="button secondary" type="button">Cancel</button>
+          <button id="measurement-export-confirm-button" class="button primary" type="button">Export PNG + CSV</button>
+        </footer>
+      </section>
+    </div>
+
+    <div id="baseline-export-modal" class="modal-shell is-hidden ccta-iq-legacy" aria-hidden="true">
+      <div class="modal-backdrop" data-baseline-modal-close></div>
+      <section
+        class="modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="baseline-export-title"
+        aria-describedby="baseline-export-copy"
+      >
+        <header class="modal-header">
+          <div class="modal-copy">
+            <p class="eyebrow">HAGRad Viewer</p>
+            <h2 id="baseline-export-title">Export Baseline Characteristics</h2>
+            <p id="baseline-export-copy" class="modal-text">
+              Choose which broad groups should be included in the CSV. All groups are enabled by
+              default, and you can turn off sections like contrast or radiation before export.
+            </p>
+          </div>
+          <button
+            id="baseline-export-close-button"
+            class="button secondary modal-close-button"
+            type="button"
+            aria-label="Close baseline export options"
+          >
+            Close
+          </button>
+        </header>
+
+        <div class="modal-option-list">
+          <label class="number-field" for="baseline-export-study-select">
+            <span>Research Study</span>
+            <select id="baseline-export-study-select">
+              <option value="">No study selected</option>
+            </select>
+          </label>
+          <div class="inline-actions">
+            <label class="number-field" for="baseline-export-study-create-input">
+              <span>New Study</span>
+              <input id="baseline-export-study-create-input" type="text" placeholder="contrast_metrics" autocomplete="off" />
+            </label>
+            <button id="baseline-export-study-create-button" class="button tertiary" type="button">Create Study</button>
+          </div>
+          <p class="hint" id="baseline-export-study-target-note">
+            Mirrored exports go into the general viewer folder until a study is selected.
+          </p>
+          <label class="number-field" for="baseline-export-study-id-input">
+            <span>Study ID</span>
+            <input
+              id="baseline-export-study-id-input"
+              type="text"
+              placeholder="study_001"
+              autocomplete="off"
+            />
+          </label>
+          <p class="hint">
+            This `Study ID` will be added to the CSV filename and written into the first CSV column.
+          </p>
+
+          <label class="modal-option-card" for="baseline-group-patient-study">
+            <input id="baseline-group-patient-study" type="checkbox" checked />
+            <span class="modal-option-copy">
+              <strong>Patient &amp; Study</strong>
+              <span>Demographics, identifiers, study date/time, institution, scanner, and study counts.</span>
+            </span>
+          </label>
+
+          <label class="modal-option-card" for="baseline-group-reconstruction">
+            <input id="baseline-group-reconstruction" type="checkbox" checked />
+            <span class="modal-option-copy">
+              <strong>Reconstruction &amp; Geometry</strong>
+              <span>Series metadata, matrix, spacing, scan length, kernel, iterative hints, and acquisition geometry.</span>
+            </span>
+          </label>
+
+          <label class="modal-option-card" for="baseline-group-radiation">
+            <input id="baseline-group-radiation" type="checkbox" checked />
+            <span class="modal-option-copy">
+              <strong>Radiation &amp; Dose</strong>
+              <span>CTDIvol, DLP snippets, and dose-related report rows when available.</span>
+            </span>
+          </label>
+
+          <label class="modal-option-card" for="baseline-group-contrast">
+            <input id="baseline-group-contrast" type="checkbox" checked />
+            <span class="modal-option-copy">
+              <strong>Contrast &amp; Reports</strong>
+              <span>Contrast agent, volume, flow, timing, and non-image report summaries or snippets.</span>
+            </span>
+          </label>
+        </div>
+
+        <footer class="modal-actions">
+          <button id="baseline-export-cancel-button" class="button secondary" type="button">Cancel</button>
+          <button id="baseline-export-confirm-button" class="button primary" type="button">Export CSV</button>
+        </footer>
+      </section>
+    </div>
+
+    <div id="tool-hover-tooltip" class="tool-hover-tooltip is-hidden" role="status" aria-live="polite"></div>
+
+    <script src="/vendor/cornerstone.min.js"></script>
+    <script src="/vendor/dicomParser.min.js"></script>
+    <script src="/vendor/cornerstoneWADOImageLoaderNoWebWorkers.bundle.min.js"></script>
+    <script src="/src/shared/hagrad-core.js"></script>
+    <script src="/src/shared/hagrad-profile-analysis.js"></script>
+    <script src="/src/shared/hagrad-export-studies.js"></script>
+    <script src="/src/shared/hagrad-zip.js"></script>
+    <script src="/src/shared/hagrad-overlay-style.js"></script>
+    <script src="/src/ccta-iq/ccta-iq.js?v=20260517-mpr-sync-footerless"></script>
+  </body>
+</html>

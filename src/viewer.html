@@ -1,0 +1,1094 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HAGRad Viewer</title>
+    <link rel="stylesheet" href="/src/viewer.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="shell-card hero">
+        <div class="hero-copy">
+          <p class="eyebrow">HAGRad Viewer</p>
+          <h1>HAGRad Viewer</h1>
+          <nav class="hero-workflow-switcher" aria-label="HAGRad workflow apps">
+            <span class="workflow-switcher-label">Workflows</span>
+            <a
+              class="workflow-switcher-link"
+              href="/src/ccta-iq/index.html"
+              target="hagrad-ccta-iq"
+              rel="noopener"
+              data-help="Objective and subjective coronary CTA image-quality analysis."
+            >
+              Image Quality
+            </a>
+            <a
+              class="workflow-switcher-link"
+              href="/src/eat.html"
+              target="hagrad-eat"
+              rel="noopener"
+              data-help="Epicardial adipose tissue workflow for CT-based EAT analysis."
+            >
+              EAT
+            </a>
+            <a
+              class="workflow-switcher-link"
+              href="/src/qca/index.html"
+              target="hagrad-qca"
+              rel="noopener"
+              data-help="Quantitative coronary angiography workflow for invasive angiography frames."
+            >
+              QCA
+            </a>
+          </nav>
+          <p class="research-disclaimer">
+            Research use only. Not for clinical diagnosis or patient care.
+          </p>
+        </div>
+
+        <div class="hero-actions">
+          <div class="status-pill" id="status-pill">Ready for a DICOM stack</div>
+          <div class="hero-control-stack">
+            <div class="hero-load-row">
+              <label class="button primary" for="dicom-input">Load DICOM</label>
+              <label class="button secondary" for="dicom-folder-input">Load Folder</label>
+            </div>
+            <input id="dicom-input" type="file" multiple accept=".dcm,.dicom,application/dicom" />
+            <input
+              id="dicom-folder-input"
+              type="file"
+              multiple
+              webkitdirectory
+              directory
+              accept=".dcm,.dicom,application/dicom"
+            />
+            <label class="button secondary" for="dicom-add-input">Add Recon Files</label>
+            <input
+              id="dicom-add-input"
+              type="file"
+              multiple
+              accept=".dcm,.dicom,application/dicom"
+            />
+            <button id="clear-button" class="button secondary" type="button">Clear Study</button>
+          </div>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="shell-card sidebar">
+          <div class="sidebar-tabs">
+            <button class="sidebar-tab is-active" data-sidebar-tab-button="case" type="button">Case</button>
+            <button class="sidebar-tab" data-sidebar-tab-button="annotate" type="button">Annotate</button>
+            <button class="sidebar-tab" data-sidebar-tab-button="export" type="button">Export</button>
+          </div>
+
+          <div class="sidebar-category" data-sidebar-tab="case">Patient</div>
+
+          <section class="sidebar-section" data-section-id="patient-project" data-sidebar-tab="case" data-project-workflow>
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Project</h2>
+                <span class="section-note" id="project-summary">No project selected</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <label class="number-field" for="project-select">
+                <span>Active Project</span>
+                <select id="project-select">
+                  <option value="">No project selected</option>
+                </select>
+              </label>
+              <div class="inline-actions">
+                <button id="project-refresh-button" class="button tertiary" type="button">Refresh</button>
+                <button id="project-next-id-button" class="button tertiary" type="button">Next ID</button>
+              </div>
+              <div class="numeric-grid">
+                <label class="number-field" for="project-create-name-input">
+                  <span>New Project Name</span>
+                  <input id="project-create-name-input" type="text" placeholder="stent_clari" />
+                </label>
+                <div class="number-field static-field">
+                  <span>Create</span>
+                  <button id="project-create-button" class="button tertiary" type="button">Create Project</button>
+                </div>
+              </div>
+              <div class="numeric-grid">
+                <label class="number-field" for="project-case-id-input">
+                  <span>Project Case ID</span>
+                  <input id="project-case-id-input" type="text" placeholder="stent_clari_001" />
+                </label>
+                <label class="number-field" for="project-case-label-input">
+                  <span>Case Label</span>
+                  <input id="project-case-label-input" type="text" placeholder="Optional note or alias" />
+                </label>
+              </div>
+              <p class="hint">
+                When a project is selected, measurement and baseline exports are appended to that
+                project’s CSV files automatically. The suggested case ID follows the pattern
+                `project_slug_001`, `project_slug_002`, and so on, but you can edit it any time.
+              </p>
+            </div>
+          </section>
+
+          <section class="sidebar-section" data-section-id="patient-cases" data-sidebar-tab="case" data-project-workflow>
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Project Cases</h2>
+                <span class="section-note" id="project-case-browser-note">No project selected</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <label class="number-field" for="project-case-filter-input">
+                <span>Find Case</span>
+                <input id="project-case-filter-input" type="text" placeholder="Search case ID, label, patient ID" />
+              </label>
+              <div id="project-duplicate-shell" class="project-callout is-hidden">
+                <div class="project-callout-header">
+                  <strong>Potential Duplicates</strong>
+                  <span id="project-duplicate-note">No duplicate matches</span>
+                </div>
+                <div id="project-duplicate-list" class="project-case-list project-case-list-compact"></div>
+              </div>
+              <div id="project-case-list" class="project-case-list">
+                <p class="annotation-empty">Select a project to browse saved cases.</p>
+              </div>
+              <div class="inline-actions">
+                <button id="project-restore-session-button" class="button tertiary" type="button">
+                  Restore Session
+                </button>
+              </div>
+              <p class="hint" id="project-session-note">
+                Autosave will start once a project case and study are loaded together.
+              </p>
+            </div>
+          </section>
+
+          <section class="sidebar-section" data-section-id="patient-series" data-sidebar-tab="case">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Patient &amp; Series</h2>
+                <span class="section-note" id="reconstruction-summary">0 loaded</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <div class="recon-list" id="reconstruction-list"></div>
+            </div>
+          </section>
+
+          <section class="sidebar-section" data-section-id="view-mode" data-sidebar-tab="case">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>View Mode</h2>
+                <span class="section-note">Presentation or 4-up MPR</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <div class="pill-grid">
+                <button class="pill-button is-active" data-layout="presentation" type="button">
+                  Presentation
+                </button>
+                <button class="pill-button" data-layout="mpr" type="button">4-up MPR</button>
+              </div>
+            </div>
+          </section>
+
+          <div class="sidebar-category" data-sidebar-tab="annotate">Annotate</div>
+
+          <section class="sidebar-section" data-section-id="annotate-tools" data-sidebar-tab="annotate">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Tools</h2>
+                <span class="section-note" id="tool-context-note">Primary mouse button</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <div class="tool-clusters">
+                <div class="tool-cluster">
+                  <div class="tool-cluster-header">Viewer Tools</div>
+                  <div class="tool-grid">
+                    <button class="tool-button is-active" data-tool="windowLevel" type="button">WW/WL</button>
+                    <button class="tool-button" data-tool="pan" type="button">Pan</button>
+                    <button class="tool-button" data-tool="zoom" type="button">Zoom</button>
+                    <button class="tool-button" data-tool="length" type="button">Length</button>
+                    <button class="tool-button" data-tool="arrow" type="button">Arrow</button>
+                    <button class="tool-button" data-tool="text" type="button">Text Label</button>
+                  </div>
+                </div>
+                <div class="tool-cluster">
+                  <div class="tool-cluster-header">Interface Tools</div>
+                  <div class="tool-grid">
+                    <div class="tool-group interface-tool-group">
+                      <button
+                        id="interface-tool-trigger"
+                        class="tool-button tool-group-trigger"
+                        data-tool-group-toggle="interface"
+                        type="button"
+                        aria-expanded="false"
+                        aria-haspopup="true"
+                      >
+                        <span>Interface</span>
+                        <small id="interface-tool-active-label">Open Interface Tools</small>
+                      </button>
+                      <div id="interface-tool-menu" class="tool-submenu is-hidden" data-tool-submenu="interface" role="menu">
+                        <button class="tool-submenu-button" data-tool="lineProfile" type="button" role="menuitem">Stent Line</button>
+                        <button class="tool-submenu-button" data-tool="squareProfile" type="button" role="menuitem">Stent Square</button>
+                        <button class="tool-submenu-button" data-tool="plaqueLineProfile" type="button" role="menuitem">Plaque Calcified</button>
+                        <button class="tool-submenu-button" data-tool="plaqueNoncalcifiedLineProfile" type="button" role="menuitem">Plaque Noncalcified</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="tool-cluster">
+                  <div class="tool-cluster-header">ROI Tools</div>
+                  <div class="tool-grid">
+                    <div class="tool-group roi-tool-group">
+                      <button
+                        id="roi-tool-trigger"
+                        class="tool-button tool-group-trigger"
+                        data-tool-group-toggle="roi"
+                        type="button"
+                        aria-expanded="false"
+                        aria-haspopup="true"
+                      >
+                        <span>ROI</span>
+                        <small id="roi-tool-active-label">Open ROI Tools</small>
+                      </button>
+                      <div id="roi-tool-menu" class="tool-submenu is-hidden" data-tool-submenu="roi" role="menu">
+                        <button class="tool-submenu-button" data-tool="probe" type="button" role="menuitem">Probe</button>
+                        <button class="tool-submenu-button" data-tool="circularRoi" type="button" role="menuitem">ROI Circle</button>
+                        <button class="tool-submenu-button" data-tool="freehandRoi" type="button" role="menuitem">ROI Draw</button>
+                        <button class="tool-submenu-button" data-tool="segmentationRoi" type="button" role="menuitem">ROI Multiple Click</button>
+                        <button class="tool-submenu-button" data-tool="brushRoi" type="button" role="menuitem">ROI Brush</button>
+                        <button class="tool-submenu-button" data-tool="contourCorrect" type="button" role="menuitem">Adjust ROI</button>
+                        <button class="tool-submenu-button" data-tool="eraser" type="button" role="menuitem">Eraser</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="tool-scope-group" data-tool-scope="circularRoi">
+                <p class="hint">
+                  `ROI Circle` starts from the initial click as the center. Drag outward to size it,
+                  release to create it, then left drag inside to move it or drag the single outer
+                  handle to resize it.
+                </p>
+                <p class="hint">Right-click an existing circular ROI to show its edit state.</p>
+              </div>
+              <div class="tool-scope-group" data-tool-scope="brushRoi">
+                <div class="numeric-grid">
+                  <label class="number-field" for="brush-min-input">
+                    <span>Brush Min HU</span>
+                    <input id="brush-min-input" type="number" min="-2048" max="4000" step="1" value="-190" />
+                  </label>
+                  <label class="number-field" for="brush-max-input">
+                    <span>Brush Max HU</span>
+                    <input id="brush-max-input" type="number" min="-2048" max="4000" step="1" value="-30" />
+                  </label>
+                </div>
+                <label class="number-field" for="brush-size-input">
+                  <span>Brush Size (mm)</span>
+                  <input id="brush-size-input" type="number" min="0.5" max="40" step="0.5" value="4" />
+                </label>
+                <div class="inline-actions">
+                  <button id="brush-shrink-button" class="button tertiary" type="button">Shrink -</button>
+                  <button id="brush-grow-button" class="button tertiary" type="button">Grow +</button>
+                </div>
+                <p class="hint">
+                  `ROI Brush` paints a threshold-aware continuous ROI. Hold the mouse button down to
+                  paint, then use `Grow +` or `Shrink -` to refine it.
+                </p>
+              </div>
+              <div class="tool-scope-group" data-tool-scope="eraser">
+                <label class="number-field" for="eraser-size-input">
+                  <span>Eraser Size (mm)</span>
+                  <input id="eraser-size-input" type="number" min="0.5" max="60" step="0.5" value="6" />
+                </label>
+                <p class="hint">
+                  `Eraser` uses a round brush. It trims ROI contours and brush ROIs, and removes other
+                  annotations it touches.
+                </p>
+              </div>
+              <div class="tool-scope-group" data-tool-scope="freehandRoi segmentationRoi edit">
+                <div class="inline-actions">
+                  <button id="copy-roi-button" class="button tertiary" type="button">Copy ROI</button>
+                  <button id="paste-roi-button" class="button tertiary" type="button">Paste ROI</button>
+                </div>
+                <p class="hint">
+                  `ROI Draw` traces freehand while you hold the left mouse button, then closes when
+                  you release. `ROI Multiple Click` places discrete points and finishes on double-click,
+                  then smooths the final contour so it does not keep polygon edges.
+                </p>
+              </div>
+              <div class="tool-scope-group" data-tool-scope="contourCorrect">
+                <p class="hint">
+                  `Adjust ROI` refines the selected ROI contour. Start on or just beside an
+                  existing ROI, it will auto-select it, then redraw the part you want to replace
+                  and release to blend the correction into the ROI.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section
+            class="sidebar-section"
+            data-section-id="annotate-actions"
+            data-default-collapsed="true"
+            data-ui-level="advanced"
+            data-sidebar-tab="annotate"
+          >
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Actions</h2>
+                <span class="section-note" id="history-summary">0 undo / 0 redo</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="false">+</button>
+            </div>
+            <div class="section-body">
+              <div class="inline-actions">
+                <button id="undo-button" class="button tertiary" type="button">Undo</button>
+                <button id="redo-button" class="button tertiary" type="button">Redo</button>
+              </div>
+              <div class="inline-actions">
+                <button id="reset-button" class="button tertiary" type="button">Reset View</button>
+                <button id="clear-measurements-button" class="button tertiary" type="button">Clear Annotations</button>
+              </div>
+              <div class="inline-actions">
+                <button id="sync-measurements-button" class="button tertiary" type="button">
+                  Copy Measurements To All Reconstructions
+                </button>
+              </div>
+              <p class="hint">
+                `Undo` and `Redo` cover annotation work, including drawing, editing, erasing, brush
+                refinement, and copying measurements across reconstructions.
+              </p>
+              <p class="hint">
+                `Copy Measurements To All Reconstructions` sends ROI, ROI Brush, length, probe, and
+                profile measurements from the active reconstruction to the other loaded reconstructions
+                for the same patient.
+              </p>
+            </div>
+          </section>
+
+          <section class="sidebar-section" data-section-id="annotate-saved" data-sidebar-tab="annotate">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Saved Measurements</h2>
+                <span class="section-note" id="annotation-manager-note">Active reconstruction</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <div class="annotation-list" id="annotation-manager-list">
+                <p class="annotation-empty">No annotations yet.</p>
+              </div>
+              <div class="inline-actions">
+                <button id="annotation-rename-button" class="button tertiary" type="button">
+                  Rename Selected
+                </button>
+              </div>
+              <p class="hint">
+                Click an entry to select it. Double-click it to center the presentation image on that
+                measurement. Use `Rename Selected` to relabel the active measurement.
+              </p>
+            </div>
+          </section>
+
+          <div class="sidebar-category" data-sidebar-tab="annotate">Display</div>
+
+          <section
+            class="sidebar-section"
+            data-section-id="display-mpr"
+            data-ui-level="advanced"
+            data-sidebar-tab="annotate"
+          >
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>MPR</h2>
+                <span class="section-note">Rotation, zoom, and shared MPR position</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+            <label class="slider-field" for="mpr-axial-rotation">
+              <span>Axial Rotation</span>
+              <input id="mpr-axial-rotation" type="range" min="-180" max="180" step="1" value="0" />
+            </label>
+            <label class="slider-field" for="mpr-coronal-rotation">
+              <span>Coronal Rotation</span>
+              <input id="mpr-coronal-rotation" type="range" min="-180" max="180" step="1" value="0" />
+            </label>
+            <label class="slider-field" for="mpr-sagittal-rotation">
+              <span>Sagittal Rotation</span>
+              <input id="mpr-sagittal-rotation" type="range" min="-180" max="180" step="1" value="0" />
+            </label>
+            <div class="numeric-grid">
+              <label class="number-field" for="mpr-axial-input">
+                <span>Axial</span>
+                <input id="mpr-axial-input" type="number" min="-180" max="180" step="1" value="0" />
+              </label>
+              <label class="number-field" for="mpr-coronal-input">
+                <span>Coronal</span>
+                <input id="mpr-coronal-input" type="number" min="-180" max="180" step="1" value="0" />
+              </label>
+            </div>
+            <label class="number-field" for="mpr-sagittal-input">
+              <span>Sagittal</span>
+              <input id="mpr-sagittal-input" type="number" min="-180" max="180" step="1" value="0" />
+            </label>
+            <div class="inline-actions">
+              <button id="sync-mpr-button" class="button tertiary is-active" type="button">Sync Zoom/Pan: On</button>
+              <button id="reset-mpr-button" class="button tertiary" type="button">Reset MPR</button>
+              <button id="mpr-overlay-toggle-button" class="button tertiary is-active" type="button">Hide Crosses</button>
+            </div>
+            <p class="hint">
+              In 4-up MPR, drag the shared crosshair center directly. Rotation still comes from the
+              three angle controls below it or from the colored plane lines.
+            </p>
+            <p class="hint">
+              You can also grab a colored MPR line directly in the viewport to rotate that plane
+              with the mouse. The current viewport stays fixed while the other MPR projections
+              rotate.
+            </p>
+            </div>
+          </section>
+
+          <section class="sidebar-section" data-section-id="display-voi" data-tool-panel="windowLevel" data-sidebar-tab="annotate">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>WW / WL</h2>
+                <span class="section-note" id="voi-readout">W 800 / L 250</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <div class="numeric-grid">
+                <label class="number-field" for="window-width-input">
+                  <span>Width</span>
+                  <input id="window-width-input" type="number" min="1" max="4000" step="1" value="800" />
+                </label>
+                <label class="number-field" for="window-center-input">
+                  <span>Level</span>
+                  <input id="window-center-input" type="number" min="-1200" max="3000" step="1" value="250" />
+                </label>
+              </div>
+
+              <label class="slider-field" for="window-width-slider">
+                <span>Window width</span>
+                <input id="window-width-slider" type="range" min="1" max="4000" step="1" value="800" />
+              </label>
+
+              <label class="slider-field" for="window-center-slider">
+                <span>Window level</span>
+                <input id="window-center-slider" type="range" min="-1200" max="3000" step="1" value="250" />
+              </label>
+
+              <div class="voi-presets-block">
+                <div class="compact-subheading">
+                  <span>Presets</span>
+                  <small id="preset-editor-note">Saved display presets</small>
+                </div>
+                <div class="pill-grid presets-grid" id="preset-grid"></div>
+                <div class="preset-editor">
+                  <div class="numeric-grid">
+                    <label class="number-field" for="preset-name-input">
+                      <span>Preset name</span>
+                      <input id="preset-name-input" type="text" placeholder="My sharp CTA" />
+                    </label>
+                    <div class="number-field static-field">
+                      <span>Use current WW/WL</span>
+                      <button id="preset-save-button" class="button tertiary" type="button">Save Selected</button>
+                    </div>
+                  </div>
+                  <div class="inline-actions">
+                    <button id="preset-add-button" class="button tertiary" type="button">Add New Preset</button>
+                    <button id="preset-reset-button" class="button tertiary" type="button">Reset Presets</button>
+                  </div>
+                  <p class="hint">
+                    Click a preset, adjust width/level above, then save it. Presets stay available after
+                    closing the viewer.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div class="sidebar-category" data-sidebar-tab="export">Analysis</div>
+
+          <section class="sidebar-section" data-section-id="analysis-profile" data-ui-level="advanced" data-sidebar-tab="export">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Profile Analysis</h2>
+                <span class="section-note" id="profile-status">No profile selected</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="true">-</button>
+            </div>
+            <div class="section-body">
+              <div class="profile-chart-shell">
+                <canvas id="profile-chart" class="profile-chart" width="320" height="180"></canvas>
+              </div>
+              <div class="inline-actions">
+                <button id="profile-reset-auto-button" class="button tertiary" type="button">
+                  Reset Profile Auto
+                </button>
+              </div>
+              <dl class="profile-metrics" id="profile-metrics">
+                <div class="meta-row">
+                  <dt>Selection</dt>
+                  <dd>Draw a line or square profile to see the curve and edge metrics here.</dd>
+                </div>
+              </dl>
+              <p class="hint">
+                In stent mode, you can drag the colored guide lines on the curve to fine-tune the
+                cutoffs manually. The measurements update automatically.
+              </p>
+              <p class="hint">
+                `Stent Line` and `Stent Square` quantify the stent-lumen interface. `Plaque Calcified`
+                and `Plaque Noncalcified` quantify plaque-lumen interfaces from contrast lumen into plaque.
+              </p>
+              <p class="hint">
+                Right-click any annotation to edit it directly.
+              </p>
+              <p class="hint">
+                The profile panel now reports stent-style metrics: strut peak HU, strut FWHM, lumen
+                FWHM, and 10-90% edge sharpness.
+              </p>
+            </div>
+          </section>
+
+          <section class="sidebar-section" data-section-id="analysis-export" data-default-collapsed="true" data-sidebar-tab="export">
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Export</h2>
+                <span class="section-note">PNG, cine, and CSV output</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="false">+</button>
+            </div>
+            <div class="section-body">
+              <div class="export-grid">
+                <button id="export-current-button" class="button tertiary" type="button">Export Current PNG</button>
+                <button id="export-grid-button" class="button tertiary" type="button">Export 4-up PNG</button>
+                <button id="export-cine-button" class="button tertiary" type="button">Export Cine Clip</button>
+                <button id="export-measurements-button" class="button tertiary" type="button">
+                  Export Measurements
+                </button>
+                <button id="finish-close-button" class="button primary" type="button">
+                  Finish &amp; Close
+                </button>
+                <button id="export-baseline-button" class="button tertiary" type="button">
+                  Export Baseline Characteristics
+                </button>
+              </div>
+              <p class="hint">
+                `Export Cine Clip` saves a short movie of the whole stack. The file type depends on what
+                your browser supports.
+              </p>
+              <p class="hint">
+                `Export Measurements` downloads one combined PNG plus a CSV that opens in Excel.
+              </p>
+              <p class="hint">
+                Before measurement export, HAGRad asks for a `Study ID`. That value is written into
+                the PNG header and becomes the first column in the measurement CSV.
+              </p>
+              <p class="hint">
+                `Export Baseline Characteristics` creates a structured CSV from the loaded DICOM
+                headers, reconstruction metadata, computed scan geometry, and any dose or contrast
+                reports that were included in the loaded files.
+              </p>
+            </div>
+          </section>
+
+          <div class="sidebar-category" data-ui-level="advanced" data-sidebar-tab="case">Reference</div>
+
+          <section
+            class="sidebar-section"
+            data-section-id="reference-study"
+            data-default-collapsed="true"
+            data-ui-level="advanced"
+            data-sidebar-tab="case"
+          >
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Study Info</h2>
+                <span class="section-note" id="measurement-count">0 annotations</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="false">+</button>
+            </div>
+            <div class="section-body">
+            <dl class="meta-list">
+              <div class="meta-row">
+                <dt>Patient</dt>
+                <dd id="meta-patient">No study loaded</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Patient ID</dt>
+                <dd id="meta-patient-id">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Series</dt>
+                <dd id="meta-series">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Series No</dt>
+                <dd id="meta-series-number">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Modality</dt>
+                <dd id="meta-modality">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Kernel</dt>
+                <dd id="meta-kernel">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Iterative IR</dt>
+                <dd id="meta-iterative">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Slices</dt>
+                <dd id="meta-slices">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Matrix</dt>
+                <dd id="meta-matrix">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Spacing</dt>
+                <dd id="meta-spacing">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Thickness</dt>
+                <dd id="meta-thickness">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Increment</dt>
+                <dd id="meta-increment">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>kVp</dt>
+                <dd id="meta-kvp">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Acquired</dt>
+                <dd id="meta-time">-</dd>
+              </div>
+              <div class="meta-row">
+                <dt>Position</dt>
+                <dd id="meta-position">-</dd>
+              </div>
+            </dl>
+            <div class="inline-actions">
+              <button id="metadata-overlay-toggle-button" class="button tertiary" type="button">Show DICOM Overlay</button>
+              <button id="presentation-series-label-toggle-button" class="button tertiary is-active" type="button">
+                Hide Series Label
+              </button>
+            </div>
+            <p class="hint">
+              Toggle a classic DICOM-style on-image info block with patient, series, slice geometry,
+              kernel, and reconstruction details.
+            </p>
+            </div>
+          </section>
+
+          <section
+            class="sidebar-section compact"
+            data-section-id="reference-help"
+            data-default-collapsed="true"
+            data-ui-level="advanced"
+            data-sidebar-tab="export"
+          >
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>Shortcuts &amp; Help</h2>
+                <span class="section-note">Editable key map for daily use</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="false">+</button>
+            </div>
+            <div class="section-body">
+              <div class="inline-actions">
+                <button id="shortcut-reset-button" class="button tertiary" type="button">Reset Shortcuts</button>
+              </div>
+              <div class="shortcut-table-shell">
+                <table class="shortcut-table">
+                  <thead>
+                    <tr>
+                      <th>Action</th>
+                      <th>Shortcut</th>
+                    </tr>
+                  </thead>
+                  <tbody id="shortcut-table-body">
+                    <tr>
+                      <td colspan="2">Loading shortcuts...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p class="hint">
+                Edit the `Shortcut` cells to fit your workflow. Single-key shortcuts are customizable
+                here and saved locally on this Mac. Reserved keys such as `Space`, `Escape`, and `+/-`
+                stay fixed for viewer navigation.
+              </p>
+              <p class="hint">
+                Fixed shortcuts stay the same: `Cmd/Ctrl+Z` undo, `Shift+Cmd/Ctrl+Z` redo,
+                `Cmd/Ctrl+C` copy ROI, `Cmd/Ctrl+V` paste ROI, `Delete` removes the selected annotation.
+              </p>
+              <p class="hint">
+                Mouse wheel scrolls slices. `Cmd/Ctrl+wheel` zooms toward the cursor. Click a viewport
+                to focus it. Arrow keys scroll the focused viewport. `Cmd/Ctrl+←` and `Cmd/Ctrl+→`
+                switch loaded reconstructions. Space starts cine in the presentation stack.
+              </p>
+              <p class="hint">In 4-up MPR, grab the crosshair center or colored plane lines directly.</p>
+              <p class="hint">
+                Loaded reconstructions share one MPR coordinate system, so switching reconstructions
+                keeps the same position, rotation, and zoom.
+              </p>
+              <p class="hint">
+                `Load DICOM Files` lets you select normal `.dcm` files. `Load Folder` is there if you
+                want to pick one whole patient folder at once.
+              </p>
+            </div>
+          </section>
+        </aside>
+
+        <section class="viewer-column">
+          <div class="shell-card stage">
+            <div class="empty-state" id="empty-state">
+              <p class="empty-title">Drop a DICOM series here</p>
+              <p class="empty-copy">
+                Load a stack of axial CT slices and the viewer will create one large presentation
+                viewport plus true axial, coronal, and sagittal reformats.
+              </p>
+              <p class="empty-copy subtle">
+                This viewer is meant for presentation and teaching workflows, not diagnostic use.
+              </p>
+            </div>
+
+            <div class="viewport-grid layout-presentation" id="viewport-grid">
+              <article class="viewport-panel is-presentation is-active" data-viewport-id="presentation" tabindex="0">
+                <header class="viewport-header">
+                  <span>Presentation (Axial)</span>
+                  <span class="viewport-readout" id="presentation-readout">0 / 0</span>
+                </header>
+                <div class="viewport-element" id="viewport-presentation"></div>
+                <div class="viewport-tool-hud" data-tool-hud></div>
+                <div class="viewport-dicom-overlay is-hidden" id="presentation-dicom-overlay"></div>
+                <div class="presentation-series-label is-hidden" id="presentation-series-label">
+                  <span id="presentation-series-label-text"></span>
+                  <button
+                    id="presentation-series-label-close-button"
+                    class="presentation-series-label-close"
+                    type="button"
+                    aria-label="Hide series label"
+                    title="Hide series label"
+                  >×</button>
+                </div>
+                <div class="viewport-mini-actions with-header-offset">
+                  <button
+                    id="presentation-reset-window-button"
+                    class="viewport-mini-button"
+                    type="button"
+                    aria-label="Reset default windowing"
+                    title="Reset default windowing"
+                  >↺</button>
+                  <button
+                    id="presentation-reset-fit-button"
+                    class="viewport-mini-button"
+                    type="button"
+                    aria-label="Reset zoom and center. In MPR, return to original planes"
+                    title="Reset zoom and center. In MPR, return to original planes"
+                  >⛶</button>
+                  <button
+                    id="presentation-focus-toggle-button"
+                    class="viewport-mini-button"
+                    type="button"
+                    aria-label="Enter immersive presentation focus view"
+                    title="Immersive focus view"
+                  >⤢</button>
+                </div>
+                <div class="orientation-overlay">
+                  <span class="orientation-label top">A</span>
+                  <span class="orientation-label bottom">P</span>
+                  <span class="orientation-label left">R</span>
+                  <span class="orientation-label right">L</span>
+                </div>
+                <div class="viewport-fast-scroll">
+                  <label for="presentation-fast-scroll-slider">Slice</label>
+                  <input
+                    id="presentation-fast-scroll-slider"
+                    type="range"
+                    min="0"
+                    max="0"
+                    step="1"
+                    value="0"
+                    disabled
+                  />
+                  <span id="presentation-fast-scroll-value">0 / 0</span>
+                </div>
+              </article>
+
+              <article class="viewport-panel" data-viewport-id="axial" tabindex="0">
+                <header class="viewport-header">
+                  <span>Coronal</span>
+                  <span class="viewport-readout" id="axial-readout">Coronal -</span>
+                </header>
+                <div class="viewport-element" id="viewport-axial"></div>
+                <div class="viewport-tool-hud" data-tool-hud></div>
+                <div class="viewport-dicom-overlay is-hidden" id="axial-dicom-overlay"></div>
+                <div class="orientation-overlay">
+                  <span class="orientation-label top">A</span>
+                  <span class="orientation-label bottom">P</span>
+                  <span class="orientation-label left">R</span>
+                  <span class="orientation-label right">L</span>
+                </div>
+              </article>
+
+              <article class="viewport-panel" data-viewport-id="sagittal" tabindex="0">
+                <header class="viewport-header">
+                  <span>Axial</span>
+                  <span class="viewport-readout" id="sagittal-readout">Axial -</span>
+                </header>
+                <div class="viewport-element" id="viewport-sagittal"></div>
+                <div class="viewport-tool-hud" data-tool-hud></div>
+                <div class="viewport-dicom-overlay is-hidden" id="sagittal-dicom-overlay"></div>
+                <div class="orientation-overlay">
+                  <span class="orientation-label top">A</span>
+                  <span class="orientation-label bottom">P</span>
+                  <span class="orientation-label left">R</span>
+                  <span class="orientation-label right">L</span>
+                </div>
+              </article>
+
+              <article class="viewport-panel" data-viewport-id="coronal" tabindex="0">
+                <header class="viewport-header">
+                  <span>Sagittal</span>
+                  <span class="viewport-readout" id="coronal-readout">Sagittal -</span>
+                </header>
+                <div class="viewport-element" id="viewport-coronal"></div>
+                <div class="viewport-tool-hud" data-tool-hud></div>
+                <div class="viewport-dicom-overlay is-hidden" id="coronal-dicom-overlay"></div>
+                <div class="orientation-overlay">
+                  <span class="orientation-label top">A</span>
+                  <span class="orientation-label bottom">P</span>
+                  <span class="orientation-label left">R</span>
+                  <span class="orientation-label right">L</span>
+                </div>
+              </article>
+            </div>
+            <div class="presentation-focus-dock focus-workflow-dock" aria-label="Focus workflow controls">
+              <button class="focus-pill-button" data-focus-workflow-tab="case" type="button">Case</button>
+              <button class="focus-pill-button" data-focus-workflow-tab="annotate" type="button">Annotate</button>
+              <button class="focus-pill-button" data-focus-workflow-tab="export" type="button">Export</button>
+            </div>
+            <div class="presentation-focus-dock focus-action-dock" aria-label="Focus case actions">
+              <label class="focus-pill-button focus-file-button" for="dicom-input">Load</label>
+              <label class="focus-pill-button focus-file-button" for="dicom-folder-input">Folder</label>
+              <button id="focus-finish-close-button" class="focus-pill-button" type="button">
+                Finish &amp; Close
+              </button>
+              <button id="presentation-focus-exit-button" class="focus-pill-button focus-exit-button" type="button">
+                Exit
+              </button>
+            </div>
+          </div>
+
+          <footer class="shell-card footer-bar is-hidden" aria-hidden="true">
+            <div class="footer-block">
+              <label class="footer-label" for="slice-slider">Presentation slice</label>
+              <input id="slice-slider" type="range" min="0" max="0" value="0" step="1" disabled />
+              <span class="footer-value" id="slice-summary">0 / 0</span>
+            </div>
+
+            <div class="footer-block compact">
+              <label class="footer-label" for="cine-speed-slider">Cine</label>
+              <input id="cine-speed-slider" type="range" min="1" max="24" value="8" step="1" />
+              <span class="footer-value" id="cine-speed-readout">8 fps</span>
+            </div>
+
+            <div class="footer-actions">
+              <button id="cine-button" class="button secondary" type="button">Play Cine</button>
+            </div>
+          </footer>
+        </section>
+      </section>
+    </main>
+
+    <div id="measurement-export-modal" class="modal-shell is-hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-measurement-modal-close></div>
+      <section
+        class="modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="measurement-export-title"
+        aria-describedby="measurement-export-copy"
+      >
+        <header class="modal-header">
+          <div class="modal-copy">
+            <p class="eyebrow">HAGRad Viewer</p>
+            <h2 id="measurement-export-title">Export Measurements</h2>
+            <p id="measurement-export-copy" class="modal-text">
+              Assign a `Study ID` before exporting. HAGRad will place it into the first CSV column
+              and show it in the exported PNG header.
+            </p>
+          </div>
+          <button
+            id="measurement-export-close-button"
+            class="button secondary modal-close-button"
+            type="button"
+            aria-label="Close measurement export options"
+          >
+            Close
+          </button>
+        </header>
+
+        <div class="modal-option-list">
+          <label class="number-field" for="measurement-export-study-select">
+            <span>Research Study</span>
+            <select id="measurement-export-study-select">
+              <option value="">No study selected</option>
+            </select>
+          </label>
+          <div class="inline-actions">
+            <label class="number-field" for="measurement-export-study-create-input">
+              <span>New Study</span>
+              <input id="measurement-export-study-create-input" type="text" placeholder="stent_clari" autocomplete="off" />
+            </label>
+            <button id="measurement-export-study-create-button" class="button tertiary" type="button">Create Study</button>
+          </div>
+          <p class="hint" id="measurement-export-study-target-note">
+            Mirrored exports go into the general viewer folder until a study is selected.
+          </p>
+          <label class="number-field" for="measurement-export-study-id-input">
+            <span>Study ID</span>
+            <input
+              id="measurement-export-study-id-input"
+              type="text"
+              placeholder="study_001"
+              autocomplete="off"
+            />
+          </label>
+          <p class="hint">
+            Example: `stent_clari_014`, `reader2_case07`, or any lab-specific study code.
+          </p>
+        </div>
+
+        <footer class="modal-actions">
+          <button id="measurement-export-cancel-button" class="button secondary" type="button">Cancel</button>
+          <button id="measurement-export-confirm-button" class="button primary" type="button">Export PNG + CSV</button>
+        </footer>
+      </section>
+    </div>
+
+    <div id="baseline-export-modal" class="modal-shell is-hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-baseline-modal-close></div>
+      <section
+        class="modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="baseline-export-title"
+        aria-describedby="baseline-export-copy"
+      >
+        <header class="modal-header">
+          <div class="modal-copy">
+            <p class="eyebrow">HAGRad Viewer</p>
+            <h2 id="baseline-export-title">Export Baseline Characteristics</h2>
+            <p id="baseline-export-copy" class="modal-text">
+              Choose which broad groups should be included in the CSV. All groups are enabled by
+              default, and you can turn off sections like contrast or radiation before export.
+            </p>
+          </div>
+          <button
+            id="baseline-export-close-button"
+            class="button secondary modal-close-button"
+            type="button"
+            aria-label="Close baseline export options"
+          >
+            Close
+          </button>
+        </header>
+
+        <div class="modal-option-list">
+          <label class="number-field" for="baseline-export-study-select">
+            <span>Research Study</span>
+            <select id="baseline-export-study-select">
+              <option value="">No study selected</option>
+            </select>
+          </label>
+          <div class="inline-actions">
+            <label class="number-field" for="baseline-export-study-create-input">
+              <span>New Study</span>
+              <input id="baseline-export-study-create-input" type="text" placeholder="contrast_metrics" autocomplete="off" />
+            </label>
+            <button id="baseline-export-study-create-button" class="button tertiary" type="button">Create Study</button>
+          </div>
+          <p class="hint" id="baseline-export-study-target-note">
+            Mirrored exports go into the general viewer folder until a study is selected.
+          </p>
+          <label class="number-field" for="baseline-export-study-id-input">
+            <span>Study ID</span>
+            <input
+              id="baseline-export-study-id-input"
+              type="text"
+              placeholder="study_001"
+              autocomplete="off"
+            />
+          </label>
+          <p class="hint">
+            This `Study ID` will be added to the CSV filename and written into the first CSV column.
+          </p>
+
+          <label class="modal-option-card" for="baseline-group-patient-study">
+            <input id="baseline-group-patient-study" type="checkbox" checked />
+            <span class="modal-option-copy">
+              <strong>Patient &amp; Study</strong>
+              <span>Demographics, identifiers, study date/time, institution, scanner, and study counts.</span>
+            </span>
+          </label>
+
+          <label class="modal-option-card" for="baseline-group-reconstruction">
+            <input id="baseline-group-reconstruction" type="checkbox" checked />
+            <span class="modal-option-copy">
+              <strong>Reconstruction &amp; Geometry</strong>
+              <span>Series metadata, matrix, spacing, scan length, kernel, iterative hints, and acquisition geometry.</span>
+            </span>
+          </label>
+
+          <label class="modal-option-card" for="baseline-group-radiation">
+            <input id="baseline-group-radiation" type="checkbox" checked />
+            <span class="modal-option-copy">
+              <strong>Radiation &amp; Dose</strong>
+              <span>CTDIvol, DLP snippets, and dose-related report rows when available.</span>
+            </span>
+          </label>
+
+          <label class="modal-option-card" for="baseline-group-contrast">
+            <input id="baseline-group-contrast" type="checkbox" checked />
+            <span class="modal-option-copy">
+              <strong>Contrast &amp; Reports</strong>
+              <span>Contrast agent, volume, flow, timing, and non-image report summaries or snippets.</span>
+            </span>
+          </label>
+        </div>
+
+        <footer class="modal-actions">
+          <button id="baseline-export-cancel-button" class="button secondary" type="button">Cancel</button>
+          <button id="baseline-export-confirm-button" class="button primary" type="button">Export CSV</button>
+        </footer>
+      </section>
+    </div>
+
+    <script src="/vendor/cornerstone.min.js"></script>
+    <script src="/vendor/dicomParser.min.js"></script>
+    <script src="/vendor/cornerstoneWADOImageLoaderNoWebWorkers.bundle.min.js"></script>
+    <script src="/src/shared/hagrad-core.js"></script>
+    <script src="/src/shared/hagrad-profile-analysis.js"></script>
+    <script src="/src/shared/hagrad-export-studies.js"></script>
+    <script src="/src/shared/hagrad-zip.js"></script>
+    <script src="/src/shared/hagrad-overlay-style.js"></script>
+    <script src="/src/viewer.js"></script>
+  </body>
+</html>

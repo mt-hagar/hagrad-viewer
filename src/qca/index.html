@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HAGRad QCA - Quantitative Coronary Angiography</title>
+    <script>
+      if (window.location.protocol === "file:") {
+        window.location.replace("https://localhost:3020/src/qca/index.html");
+      }
+    </script>
+    <link rel="stylesheet" href="./qca.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="shell-card hero" id="load-panel">
+        <div class="hero-copy">
+          <p class="eyebrow">HAGRad Viewer</p>
+          <h1>HAGRad QCA</h1>
+          <nav class="hero-workflow-switcher" aria-label="HAGRad workflow apps">
+            <span class="workflow-switcher-label">Workflows</span>
+            <a
+              class="workflow-switcher-link"
+              href="/src/viewer.html"
+              target="hagrad-viewer"
+              rel="noopener"
+              data-help="Main DICOM research viewer with presentation, MPR, annotation, and export tools."
+            >
+              Viewer
+            </a>
+            <a
+              class="workflow-switcher-link"
+              href="/src/ccta-iq/index.html"
+              target="hagrad-ccta-iq"
+              rel="noopener"
+              data-help="Objective and subjective coronary CTA image-quality analysis."
+            >
+              Image Quality
+            </a>
+            <a
+              class="workflow-switcher-link"
+              href="/src/eat.html"
+              target="hagrad-eat"
+              rel="noopener"
+              data-help="Epicardial adipose tissue workflow for CT-based EAT analysis."
+            >
+              EAT
+            </a>
+            <a
+              class="workflow-switcher-link is-active"
+              href="/src/qca/index.html"
+              target="hagrad-qca"
+              rel="noopener"
+              data-help="Quantitative coronary angiography workflow for invasive angiography frames."
+            >
+              QCA
+            </a>
+          </nav>
+          <p class="research-disclaimer">
+            Research use only. Not for clinical diagnosis or patient care.
+          </p>
+        </div>
+
+        <div class="hero-actions">
+          <div id="status-pill" class="status-pill">Ready for an XA cine or frame series</div>
+          <div class="hero-control-stack">
+            <div class="direct-load-actions">
+              <button
+                id="load-dicom-button"
+                class="button primary hero-load-button"
+                type="button"
+                title="Open DICOM files"
+              >
+                Load DICOM
+              </button>
+              <button
+                id="load-dicom-folder-button"
+                class="button secondary hero-load-button"
+                type="button"
+                title="Open a DICOM folder"
+              >
+                Load Folder
+              </button>
+            </div>
+            <input id="dicom-input" type="file" multiple accept=".dcm,.dicom,.hqcabundle,application/dicom,application/json" />
+            <input
+              id="dicom-folder-input"
+              type="file"
+              multiple
+              webkitdirectory
+              directory
+              accept=".dcm,.dicom,application/dicom"
+            />
+            <input id="dicom-add-input" type="file" multiple accept=".dcm,.dicom,.hqcabundle,application/dicom,application/json" />
+            <input
+              id="dicom-add-folder-input"
+              type="file"
+              multiple
+              webkitdirectory
+              directory
+              accept=".dcm,.dicom,application/dicom"
+            />
+            <button id="clear-button" class="button secondary" type="button">Clear Study</button>
+          </div>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="shell-card sidebar">
+          <details class="sidebar-section" id="workflow-section" open>
+            <summary class="section-header">
+              <div>
+                <h2>Workflow</h2>
+                <p class="section-note" id="workflow-note">Load a series to begin.</p>
+              </div>
+            </summary>
+            <div class="section-body">
+              <div class="workflow-steps" id="workflow-steps">
+                <button class="workflow-step is-active" data-step="load" type="button">
+                  <span>1</span>
+                  <strong>Load series</strong>
+                  <small>XA cine or multi-file run</small>
+                </button>
+                <button class="workflow-step" data-step="frame" type="button">
+                  <span>2</span>
+                  <strong>Choose still frame</strong>
+                  <small>Lock one frame for QCA</small>
+                </button>
+                <button class="workflow-step" data-step="segment" type="button">
+                  <span>3</span>
+                  <strong>Segment vessel</strong>
+                  <small>Anchors plus semi-auto borders</small>
+                </button>
+                <button class="workflow-step" data-step="review" type="button">
+                  <span>4</span>
+                  <strong>Review and edit</strong>
+                  <small>Centerline, borders, stenosis limits</small>
+                </button>
+                <button class="workflow-step" data-step="export" type="button">
+                  <span>5</span>
+                  <strong>Export</strong>
+                  <small>Combined PNG and Excel</small>
+                </button>
+              </div>
+            </div>
+          </details>
+
+          <details class="sidebar-section" id="series-section" open>
+            <summary class="section-header">
+              <div>
+                <h2>Series</h2>
+                <p class="section-note" id="series-summary">0 loaded</p>
+              </div>
+            </summary>
+            <div class="section-body">
+              <div id="series-list" class="series-list">
+                <p class="empty-copy">No angiography series loaded yet.</p>
+              </div>
+              <label class="field">
+                <span>Current Frame</span>
+                <input id="frame-slider" type="range" min="0" max="0" value="0" step="1" disabled />
+              </label>
+              <div class="two-up">
+                <div class="metric-chip">
+                  <span class="metric-label">Preview</span>
+                  <strong id="preview-frame-readout">0 / 0</strong>
+                </div>
+                <div class="metric-chip">
+                  <span class="metric-label">QCA Frame</span>
+                  <strong id="analysis-frame-readout">None</strong>
+                </div>
+              </div>
+              <div class="inline-actions">
+                <button id="select-frame-button" class="button tertiary" type="button" disabled>
+                  Lock QCA Frame
+                </button>
+                <button id="jump-analysis-frame-button" class="button tertiary" type="button" disabled>
+                  Go To QCA Frame
+                </button>
+              </div>
+              <p class="hint">
+                You can load or append multiple cine series for the same patient and switch between
+                them in the list above. Once a QCA frame is locked, cine scrolling stops until you
+                deselect it. Use up/down arrows to switch series, left/right arrows to move frame
+                by frame, and space to play or pause the cine loop.
+              </p>
+            </div>
+          </details>
+
+          <details class="sidebar-section" id="vessel-section" open>
+            <summary class="section-header">
+              <div>
+                <h2>Vessel</h2>
+                <p class="section-note" id="segmentation-status">Select a still frame to place vessel anchors.</p>
+              </div>
+            </summary>
+            <div class="section-body">
+              <label class="field">
+                <span>Main Category</span>
+                <select id="analysis-category-select">
+                  <option value="coronary_native" selected>Coronary arteries</option>
+                  <option value="coronary_cabg">Coronary arteries, CABG</option>
+                  <option value="lower_extremity">Lower Extremity</option>
+                  <option value="cervicocephalic">Cervicocephalic Arteries</option>
+                </select>
+              </label>
+              <label class="field" id="coronary-vessel-field">
+                <span>Coronary Vessel</span>
+                <select id="vessel-label-input">
+                  <option value="">Choose vessel...</option>
+                  <option value="LM">LM</option>
+                  <option value="LAD" selected>LAD</option>
+                  <option value="LCx">LCx</option>
+                  <option value="RCA">RCA</option>
+                </select>
+              </label>
+              <label class="field" id="lower-ext-side-field" hidden>
+                <span>Side</span>
+                <select id="lower-ext-side-select">
+                  <option value="">Choose side...</option>
+                </select>
+              </label>
+              <label class="field" id="lower-ext-level-field" hidden>
+                <span>Vessel Level</span>
+                <select id="lower-ext-level-select">
+                  <option value="">Choose vessel level...</option>
+                </select>
+              </label>
+              <label class="field" id="segment-location-field">
+                <span id="segment-location-label">Segment Localization</span>
+                <select id="segment-location-select"></select>
+              </label>
+              <label class="field" id="cabg-custom-label-field" hidden>
+                <span>Custom Graft Label</span>
+                <input id="cabg-custom-label-input" type="text" placeholder="Enter custom graft label" />
+              </label>
+              <label class="field">
+                <span>Stenosis Label</span>
+                <input id="lesion-label-input" type="text" placeholder="Optional stenosis label" />
+              </label>
+              <div class="tool-grid">
+                <button class="tool-button" data-mode="zoom" type="button">Zoom</button>
+                <div class="tool-button-pair">
+                  <button class="tool-button" data-mode="windowing" type="button">Window</button>
+                  <button
+                    id="reset-windowing-button"
+                    class="tool-button tool-button-icon"
+                    type="button"
+                    aria-label="Reset windowing"
+                    title="Reset windowing"
+                  >
+                    ↺
+                  </button>
+                </div>
+                <button class="tool-button" data-mode="calibration" type="button">Calibrate</button>
+                <button class="tool-button is-active" data-mode="anchors" type="button">Anchors</button>
+                <button class="tool-button" data-mode="borderHints" type="button">Border Hints</button>
+                <button class="tool-button" data-mode="centerline" type="button">Centerline</button>
+                <button class="tool-button" data-mode="borders" type="button">Borders</button>
+                <button class="tool-button" data-mode="draw" type="button">Draw</button>
+                <button class="tool-button" data-mode="stenosis" type="button">Stenosis</button>
+                <button class="tool-button" data-mode="eraser" type="button">Eraser</button>
+              </div>
+              <div class="inline-actions">
+                <button id="segment-button" class="button tertiary" type="button" disabled>
+                  Segment Vessel
+                </button>
+                <button id="undo-anchor-button" class="button tertiary" type="button" disabled>
+                  Undo Point
+                </button>
+              </div>
+              <div class="inline-actions">
+                <button id="resegment-button" class="button tertiary" type="button" disabled>
+                  Re-segment
+                </button>
+                <button id="clear-segmentation-button" class="button tertiary" type="button" disabled>
+                  Delete / Redraw
+                </button>
+              </div>
+              <p class="hint" id="mode-hint">
+                Double left-click segments only during the initial anchor placement step. After
+                that, use the explicit re-segmentation controls if needed. Optional border hints
+                can be added before segmentation, right-click adds local edit points for the
+                active tool, and `e` enables a click-to-erase circle for overlay controls.
+              </p>
+            </div>
+          </details>
+
+          <details class="sidebar-section" id="qca-section" open>
+            <summary class="section-header">
+              <div>
+                <h2>2D QCA</h2>
+                <p class="section-note" id="measurement-note">No stenosis profile yet.</p>
+              </div>
+            </summary>
+            <div class="section-body">
+              <label class="field">
+                <span>Calibration Object</span>
+                <input
+                  id="calibration-label-input"
+                  type="text"
+                  value="Guide catheter"
+                  placeholder="Guide catheter, marker band, phantom..."
+                />
+              </label>
+              <div class="two-up">
+                <label class="field calibration-field">
+                  <span>Catheter Size</span>
+                  <select id="calibration-french-select">
+                    <option value="4">4F</option>
+                    <option value="5" selected>5F</option>
+                    <option value="6">6F</option>
+                  </select>
+                </label>
+                <div class="metric-chip metric-chip-tall">
+                  <span class="metric-label">Calibration</span>
+                  <strong id="calibration-status-readout">DICOM fallback</strong>
+                  <small id="calibration-detail-readout">Manual line calibration not set.</small>
+                </div>
+              </div>
+              <div class="inline-actions">
+                <button id="start-calibration-button" class="button tertiary" type="button" disabled>
+                  Start Calibration
+                </button>
+                <button id="clear-calibration-button" class="button tertiary" type="button" disabled>
+                  Clear Manual
+                </button>
+              </div>
+              <p class="hint">
+                Prefer a straight, contrast-filled 4F, 5F, or 6F catheter on the same QCA frame
+                and as close as possible to the vessel plane.
+              </p>
+              <div class="metrics-grid">
+                <div class="metric-card">
+                  <span>MLD</span>
+                  <strong id="metric-mld">-</strong>
+                </div>
+                <div class="metric-card">
+                  <span>Reference</span>
+                  <strong id="metric-reference">-</strong>
+                </div>
+                <div class="metric-card">
+                  <span>%DS</span>
+                  <strong id="metric-ds">-</strong>
+                </div>
+                <div class="metric-card">
+                  <span>Stenosis Length</span>
+                  <strong id="metric-length">-</strong>
+                </div>
+              </div>
+              <div class="calibration-box" id="calibration-box">
+                Detector calibration unavailable. Measurements will be shown in pixels until DICOM
+                spacing is present.
+              </div>
+              <div class="single-action">
+                <button id="export-results-button" class="button tertiary" type="button" disabled>
+                  Export PNG + Excel
+                </button>
+              </div>
+              <p class="hint">
+                Phase 1 uses manual same-frame calibration when available and otherwise falls back
+                to DICOM spacing. This remains a research prototype, not a validated commercial QCA
+                system.
+              </p>
+            </div>
+          </details>
+
+          <details class="sidebar-section" id="saved-stenoses-section" open>
+            <summary class="section-header">
+              <div>
+                <h2>Saved Stenoses</h2>
+                <p class="section-note" id="saved-stenoses-summary">No prior stenosis yet.</p>
+              </div>
+            </summary>
+            <div class="section-body">
+              <div id="saved-stenoses-list" class="saved-stenoses-list">
+                <p class="empty-copy">Saved stenoses will appear here after Next Stenosis.</p>
+              </div>
+            </div>
+          </details>
+
+          <details class="sidebar-section" open>
+            <summary class="section-header">
+              <div>
+                <h2>Metadata</h2>
+                <p class="section-note">Series and frame DICOM values for the active QCA run</p>
+              </div>
+            </summary>
+            <div class="section-body">
+              <dl class="meta-list" id="metadata-list">
+                <div class="meta-row">
+                  <dt>Status</dt>
+                  <dd>Load a DICOM series to inspect metadata.</dd>
+                </div>
+              </dl>
+            </div>
+          </details>
+        </aside>
+
+        <section class="analysis-shell">
+          <article class="shell-card viewer-card" id="viewer-section">
+            <header class="viewer-header">
+              <div>
+                <p class="panel-kicker">Selected Still Frame</p>
+                <h2 id="viewer-title">No frame selected</h2>
+              </div>
+              <div class="viewer-header-tools">
+                <div class="viewer-badges">
+                  <span class="viewer-badge" id="frame-badge">Frame 0 / 0</span>
+                  <span class="viewer-badge" id="mode-badge">Mode: Anchors</span>
+                </div>
+                <div class="viewer-tool-row">
+                  <button id="undo-action-button" class="button tertiary" type="button" disabled>
+                    Undo
+                  </button>
+                  <button id="redo-action-button" class="button tertiary" type="button" disabled>
+                    Redo
+                  </button>
+                  <button id="next-lesion-button" class="button tertiary" type="button" disabled>
+                    Next Stenosis
+                  </button>
+                  <button id="finish-close-button" class="button tertiary" type="button" disabled>
+                    Finish &amp; Close
+                  </button>
+                  <div class="viewer-popover">
+                    <button id="display-visibility-button" class="button tertiary viewer-popover-button" type="button">
+                      Display
+                    </button>
+                    <div id="display-visibility-panel" class="viewer-popover-panel" hidden>
+                      <p class="popover-title">Visible Overlays</p>
+                      <div class="popover-toggle-grid">
+                        <button class="popover-toggle is-active" data-overlay-layer="centerline" type="button">
+                          Centerline
+                        </button>
+                        <button class="popover-toggle is-active" data-overlay-layer="borders" type="button">
+                          Borders
+                        </button>
+                        <button class="popover-toggle is-active" data-overlay-layer="lesion" type="button">
+                          Stenosis
+                        </button>
+                        <button class="popover-toggle" data-overlay-layer="lumen" type="button">
+                          Lumen
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="viewer-popover">
+                    <button id="segmentation-reference-button" class="button tertiary viewer-popover-button" type="button">
+                      References
+                    </button>
+                    <div id="segmentation-reference-panel" class="viewer-popover-panel reference-panel" hidden>
+                      <p class="popover-title">Segmentation References</p>
+                      <div class="reference-card-grid">
+                        <div class="reference-card">
+                          <span class="reference-label">Vessel Tone</span>
+                          <div class="reference-row">
+                            <div id="vessel-reference-swatch" class="reference-swatch"></div>
+                            <button id="pick-vessel-reference-button" class="button tertiary" type="button">
+                              Pick On Image
+                            </button>
+                          </div>
+                          <small id="vessel-reference-readout" class="reference-readout">Using anchor average.</small>
+                        </div>
+                        <div class="reference-card">
+                          <span class="reference-label">Background Tone</span>
+                          <div class="reference-row">
+                            <div id="background-reference-swatch" class="reference-swatch"></div>
+                            <button id="pick-background-reference-button" class="button tertiary" type="button">
+                              Pick On Image
+                            </button>
+                          </div>
+                          <small id="background-reference-readout" class="reference-readout">Using local edge average.</small>
+                        </div>
+                      </div>
+                      <div class="single-action">
+                        <button id="clear-reference-tones-button" class="button tertiary" type="button">
+                          Clear Reference Tones
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <button id="projection-help-button" class="button tertiary" type="button">Projection Help</button>
+                </div>
+              </div>
+            </header>
+
+            <div class="canvas-wrap" id="canvas-wrap">
+              <div class="canvas-mini-actions">
+                <button
+                  id="canvas-reset-window-button"
+                  class="canvas-mini-button"
+                  type="button"
+                  aria-label="Reset default windowing"
+                  title="Reset default windowing"
+                >
+                  ↺
+                </button>
+                <button
+                  id="canvas-reset-view-button"
+                  class="canvas-mini-button"
+                  type="button"
+                  aria-label="Reset zoom and center"
+                  title="Reset zoom and center"
+                >
+                  ⛶
+                </button>
+                <button
+                  id="canvas-focus-toggle-button"
+                  class="canvas-mini-button"
+                  type="button"
+                  aria-label="Enter immersive QCA focus view"
+                  title="Immersive focus view"
+                >
+                  ⤢
+                </button>
+              </div>
+              <canvas id="image-canvas" width="1024" height="1024"></canvas>
+              <canvas id="overlay-canvas" width="1024" height="1024"></canvas>
+              <div id="canvas-overlay-message" class="canvas-overlay-message">
+                Load a cine series, preview frames, and lock the best still image for QCA.
+              </div>
+            </div>
+
+            <footer class="viewer-footer">
+              <div class="footer-block">
+                <span class="footer-label">Interaction</span>
+                <strong id="interaction-readout">Mouse wheel scrolls frames. Cmd/Ctrl + wheel zooms, and middle mouse pans anytime.</strong>
+              </div>
+              <div class="footer-block">
+                <span class="footer-label">Pointer</span>
+                <strong id="pointer-readout">x -, y -, value -</strong>
+              </div>
+            </footer>
+            <div class="presentation-focus-dock focus-workflow-dock" aria-label="Focus workflow controls">
+              <button class="focus-pill-button" data-focus-sidebar-section="workflow-section" type="button">Workflow</button>
+              <button class="focus-pill-button" data-focus-sidebar-section="series-section" type="button">Series</button>
+              <button class="focus-pill-button" data-focus-sidebar-section="vessel-section" type="button">Vessel</button>
+              <button class="focus-pill-button" data-focus-sidebar-section="qca-section" type="button">QCA</button>
+              <button class="focus-pill-button" data-focus-sidebar-section="saved-stenoses-section" type="button">Export</button>
+            </div>
+            <div class="presentation-focus-dock focus-action-dock" aria-label="Focus case actions">
+              <label class="focus-pill-button focus-file-button" for="dicom-input">Load</label>
+              <label class="focus-pill-button focus-file-button" for="dicom-folder-input">Folder</label>
+              <button id="focus-finish-close-button" class="focus-pill-button" type="button">
+                Finish &amp; Close
+              </button>
+              <button id="canvas-focus-exit-button" class="focus-pill-button focus-exit-button" type="button">
+                Exit
+              </button>
+            </div>
+          </article>
+
+          <div class="bottom-grid">
+            <article class="shell-card profile-card" id="profile-section">
+              <header class="panel-header">
+                <div>
+                  <p class="panel-kicker">Diameter Profile</p>
+                  <h2>Stenosis Review</h2>
+                </div>
+                <span class="panel-note" id="profile-note">Segment a vessel to see MLD and reference trends.</span>
+              </header>
+              <canvas id="profile-canvas" class="profile-canvas" width="900" height="260"></canvas>
+              <p class="hint">
+                Drag the colored diameter-profile markers directly to adjust proximal reference,
+                stenosis start, cursor, stenosis end, and distal reference positions.
+              </p>
+            </article>
+
+            <article class="shell-card notes-card">
+              <header class="panel-header">
+                <div>
+                  <p class="panel-kicker">Prototype Scope</p>
+                  <h2>Research Notes</h2>
+                </div>
+              </header>
+              <ul class="notes-list">
+                <li>Version 1 is intentionally still-frame only after cine review.</li>
+                <li>Semi-automatic segmentation works best when you place anchors through bends.</li>
+                <li>Border and stenosis editing are first-class controls, not a fallback.</li>
+                <li>Absolute millimeter values still depend on same-frame calibration quality and remain research-only.</li>
+                <li>Phase 2 is where branch handling and more robust vessel tracking should land.</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+      </section>
+
+      <div id="projection-help-modal" class="projection-help-modal" hidden>
+        <div id="projection-help-backdrop" class="projection-help-backdrop"></div>
+        <div class="projection-help-dialog" role="dialog" aria-modal="true" aria-labelledby="projection-help-title">
+          <button id="projection-help-close-button" class="projection-help-close" type="button" aria-label="Close help">
+            x
+          </button>
+          <div class="projection-help-header">
+            <p class="panel-kicker">Angiography Projection Help</p>
+            <h2 id="projection-help-title">LM</h2>
+            <p id="projection-help-subtitle" class="projection-help-subtitle">
+              Common angiographic projections for left main stem.
+            </p>
+            <p class="projection-help-citation">
+              Derived from: Br J Cardiol 2016;23:110-3. doi:10.5837/bjc.2016.028
+            </p>
+          </div>
+          <div class="projection-help-image-wrap">
+            <img id="projection-help-image" class="projection-help-image" alt="Angiography projection guide" />
+          </div>
+          <div class="projection-help-footer">
+            <span id="projection-help-page-indicator" class="projection-help-page-indicator">1 / 4</span>
+            <div class="projection-help-actions">
+              <button id="projection-help-prev-button" class="button tertiary" type="button">Previous</button>
+              <button id="projection-help-next-button" class="button tertiary" type="button">Next</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="localization-modal" class="localization-modal" hidden>
+        <div id="localization-backdrop" class="localization-backdrop"></div>
+        <div class="localization-dialog" role="dialog" aria-modal="true" aria-labelledby="localization-title">
+          <button id="localization-close-button" class="projection-help-close localization-close" type="button" aria-label="Close vessel and segment selection">
+            x
+          </button>
+          <div class="localization-header">
+            <p class="panel-kicker">Next Stenosis</p>
+            <h2 id="localization-title">Select Vessel And Segment</h2>
+            <p id="localization-copy" class="localization-copy">
+              Confirm the vessel selection before you continue, so the next stenosis is labeled correctly.
+            </p>
+          </div>
+          <div class="localization-grid">
+            <label class="field">
+              <span>Main Category</span>
+              <select id="localization-category-select">
+                <option value="" selected>Choose category...</option>
+                <option value="coronary_native">Coronary arteries</option>
+                <option value="coronary_cabg">Coronary arteries, CABG</option>
+                <option value="lower_extremity">Lower Extremity</option>
+                <option value="cervicocephalic">Cervicocephalic Arteries</option>
+              </select>
+            </label>
+            <label class="field" id="localization-coronary-vessel-field">
+              <span>Coronary Vessel</span>
+              <select id="localization-vessel-select">
+                <option value="" selected>Choose vessel...</option>
+                <option value="LM">LM</option>
+                <option value="LAD">LAD</option>
+                <option value="LCx">LCx</option>
+                <option value="RCA">RCA</option>
+              </select>
+            </label>
+            <label class="field" id="localization-lower-ext-side-field" hidden>
+              <span>Side</span>
+              <select id="localization-lower-ext-side-select">
+                <option value="" selected>Choose side...</option>
+              </select>
+            </label>
+            <label class="field" id="localization-lower-ext-level-field" hidden>
+              <span>Vessel Level</span>
+              <select id="localization-lower-ext-level-select">
+                <option value="" selected>Choose vessel level...</option>
+              </select>
+            </label>
+            <label class="field" id="localization-segment-location-field">
+              <span id="localization-segment-location-label">Segment Localization</span>
+              <select id="localization-segment-select" disabled>
+                <option value="" selected>Choose vessel first</option>
+              </select>
+            </label>
+            <label class="field" id="localization-custom-label-field" hidden>
+              <span>Custom Graft Label</span>
+              <input
+                id="localization-custom-label-input"
+                type="text"
+                placeholder="Enter custom graft label"
+              />
+            </label>
+          </div>
+          <div class="localization-actions">
+            <button id="localization-confirm-button" class="button primary" type="button" disabled>
+              Continue
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="finish-close-modal" class="finish-close-modal" hidden>
+        <div id="finish-close-backdrop" class="finish-close-backdrop"></div>
+        <div class="finish-close-dialog" role="dialog" aria-modal="true" aria-labelledby="finish-close-title">
+          <button id="finish-close-modal-close-button" class="projection-help-close finish-close-modal-close" type="button" aria-label="Close finish and close options">
+            x
+          </button>
+          <div class="finish-close-header">
+            <p class="panel-kicker">Finish And Close</p>
+            <h2 id="finish-close-title">Final Export Options</h2>
+            <p class="finish-close-copy">
+              Choose whether this case should also export a portable reopenable bundle with the original DICOM files and editable QCA session state.
+            </p>
+          </div>
+          <label class="finish-close-option" for="export-study-select">
+            <span>
+              <strong>Research Study</strong>
+              <small>Select the persistent study folder for these exports.</small>
+            </span>
+            <select id="export-study-select">
+              <option value="">No study selected</option>
+            </select>
+          </label>
+          <div class="finish-close-actions">
+            <input id="export-study-create-input" class="field-input" type="text" placeholder="qca_validation" />
+            <button id="export-study-create-button" class="button tertiary" type="button">Create Study</button>
+          </div>
+          <p class="finish-close-copy" id="export-study-target-note">
+            Mirrored exports go into the general QCA folder until a study is selected.
+          </p>
+          <label class="finish-close-option" for="finish-close-bundle-checkbox">
+            <input id="finish-close-bundle-checkbox" type="checkbox" />
+            <span>
+              <strong>Include portable case bundle</strong>
+              <small>Exports an additional reopenable bundle file. Default is off.</small>
+            </span>
+          </label>
+          <div class="finish-close-actions">
+            <button id="finish-close-cancel-button" class="button tertiary" type="button">Cancel</button>
+            <button id="finish-close-confirm-button" class="button primary" type="button">Export And Close</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <script src="../../vendor/cornerstone.min.js"></script>
+    <script src="../../vendor/dicomParser.min.js"></script>
+    <script src="../../vendor/cornerstoneWADOImageLoaderNoWebWorkers.bundle.min.js"></script>
+    <script src="../shared/hagrad-export-studies.js"></script>
+    <script src="../shared/hagrad-zip.js"></script>
+    <script src="./qca.js"></script>
+  </body>
+</html>

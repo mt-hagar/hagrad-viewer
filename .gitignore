@@ -1,0 +1,22 @@
+.DS_Store
+.Rhistory
+*.pyc
+__pycache__/
+
+# Local runtime state and generated data
+.cert/
+.tooling/
+.release_work/
+exports_outbox/
+project_lists/
+dist/
+
+# Local secrets
+.env
+.env.local
+.env.pointguard
+
+# OS/editor noise
+.idea/
+.vscode/
+*.swp

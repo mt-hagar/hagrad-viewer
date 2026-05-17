@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HAGRad Viewer – EAT Workflow</title>
+    <link rel="stylesheet" href="/src/eat.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="hero card">
+        <div class="hero-copy">
+          <p class="eyebrow">HAGRad Viewer</p>
+          <h1>HAGRad EAT</h1>
+          <nav class="hero-workflow-switcher" aria-label="HAGRad workflow apps">
+            <span class="workflow-switcher-label">Workflows</span>
+            <a
+              class="workflow-switcher-link"
+              href="/src/viewer.html"
+              target="hagrad-viewer"
+              rel="noopener"
+              data-help="Main DICOM research viewer with presentation, MPR, annotation, and export tools."
+            >
+              Viewer
+            </a>
+            <a
+              class="workflow-switcher-link"
+              href="/src/ccta-iq/index.html"
+              target="hagrad-ccta-iq"
+              rel="noopener"
+              data-help="Objective and subjective coronary CTA image-quality analysis."
+            >
+              Image Quality
+            </a>
+            <a
+              class="workflow-switcher-link is-active"
+              href="/src/eat.html"
+              target="hagrad-eat"
+              rel="noopener"
+              data-help="Epicardial adipose tissue workflow for CT-based EAT analysis."
+            >
+              EAT
+            </a>
+            <a
+              class="workflow-switcher-link"
+              href="/src/qca/index.html"
+              target="hagrad-qca"
+              rel="noopener"
+              data-help="Quantitative coronary angiography workflow for invasive angiography frames."
+            >
+              QCA
+            </a>
+          </nav>
+          <p class="research-disclaimer">
+            Research use only. Not for clinical diagnosis or patient care.
+          </p>
+        </div>
+
+        <div class="hero-actions">
+          <div class="status-pill" id="status-pill">Ready for axial CT reconstructions</div>
+          <div class="hero-control-stack">
+            <div class="hero-load-row">
+              <label class="button primary" for="dicom-input">Load Study</label>
+              <label class="button secondary" for="dicom-folder-input">Load Folder</label>
+            </div>
+            <input id="dicom-input" type="file" multiple accept=".dcm,.dicom,application/dicom" />
+            <div class="hero-load-row">
+              <label class="button secondary" for="recon-input">Add Recon</label>
+              <label class="button secondary" for="recon-folder-input">Add Folder</label>
+            </div>
+            <input id="recon-input" type="file" multiple accept=".dcm,.dicom,application/dicom" />
+            <input
+              id="dicom-folder-input"
+              type="file"
+              multiple
+              webkitdirectory
+              directory
+              accept=".dcm,.dicom,application/dicom"
+            />
+            <input
+              id="recon-folder-input"
+              type="file"
+              multiple
+              webkitdirectory
+              directory
+              accept=".dcm,.dicom,application/dicom"
+            />
+            <button id="clear-button" class="button secondary" type="button">Clear Study</button>
+          </div>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="sidebar card" id="sidebar">
+          <details class="sidebar-group" id="sidebar-group-workflow" open>
+            <summary class="sidebar-group-summary">
+              <div class="sidebar-group-copy">
+                <strong>Workflow</strong>
+                <span>Guide, reconstructions, compare</span>
+              </div>
+            </summary>
+            <div class="sidebar-group-body">
+              <section class="sidebar-section" id="sidebar-section-guide">
+                <div class="section-header">
+                  <h2>Guide</h2>
+                  <span class="section-note" id="guide-step-readout">Step 1 of 6</span>
+                </div>
+                <div class="guide-progress" aria-hidden="true">
+                  <div class="guide-progress-fill" id="guide-progress-fill"></div>
+                </div>
+                <div class="guide-step-list" id="guide-step-list"></div>
+                <article class="guide-focus">
+                  <strong id="guide-action-title">Load reconstructions</strong>
+                  <p id="guide-action-copy">
+                    Start by loading one axial cardiac CT reconstruction. You can add additional matching
+                    or best-effort reconstructions afterward for comparison.
+                  </p>
+                </article>
+                <div class="inline-actions">
+                  <button id="undo-button" class="button tertiary" type="button">Undo</button>
+                  <button id="redo-button" class="button tertiary" type="button">Redo</button>
+                  <button id="save-session-button" class="button tertiary" type="button">Save Session</button>
+                  <label class="button tertiary" for="session-input">Load Session</label>
+                  <input id="session-input" type="file" accept=".json,application/json" />
+                </div>
+                <p class="hint">
+                  Undo/redo tracks the main workflow edits. Session files store range, thresholds,
+                  contours, exclusions, compare state, and transfer state for the same study.
+                </p>
+              </section>
+
+              <section class="sidebar-section" id="sidebar-section-reconstructions">
+                <div class="section-header">
+                  <h2>Reconstructions</h2>
+                  <span class="section-note" id="reconstruction-summary">0 loaded</span>
+                </div>
+                <div class="inline-actions">
+                  <button id="transfer-recons-button" class="button tertiary" type="button">
+                    Copy To Other Recons (T)
+                  </button>
+                </div>
+                <div class="slice-list" id="reconstruction-list"></div>
+                <p class="hint">
+                  Segment on one reconstruction, switch between loaded reconstructions for review, then
+                  copy the contour set to the other reconstructions before export.
+                </p>
+              </section>
+
+              <section class="sidebar-section" id="sidebar-section-compare">
+                <div class="section-header">
+                  <h2>Compare</h2>
+                  <span class="section-note" id="compare-status-note">Off</span>
+                </div>
+                <div class="inline-actions">
+                  <button id="compare-toggle-button" class="button tertiary" type="button">
+                    Compare (V): Off
+                  </button>
+                </div>
+                <label class="number-field" for="compare-select">
+                  <span>Comparison Reconstruction</span>
+                  <select id="compare-select" disabled></select>
+                </label>
+                <p class="hint">
+                  Compare mode keeps slice position and zoom synchronized while showing the transferred
+                  contour and threshold overlay on a second reconstruction.
+                </p>
+              </section>
+            </div>
+          </details>
+
+          <details class="sidebar-group" id="sidebar-group-segmentation" open>
+            <summary class="sidebar-group-summary">
+              <div class="sidebar-group-copy">
+                <strong>Segmentation</strong>
+                <span>Range, tools, slice metrics</span>
+              </div>
+            </summary>
+            <div class="sidebar-group-body">
+              <section class="sidebar-section" id="sidebar-section-range">
+                <div class="section-header">
+                  <h2>Slice Range</h2>
+                  <span class="section-note" id="range-summary">No study loaded</span>
+                </div>
+                <div class="range-grid">
+                  <label class="number-field" for="top-slice-input">
+                    <span>Top</span>
+                    <input id="top-slice-input" type="number" min="1" step="1" value="1" disabled />
+                  </label>
+                  <label class="number-field" for="bottom-slice-input">
+                    <span>Bottom</span>
+                    <input id="bottom-slice-input" type="number" min="1" step="1" value="1" disabled />
+                  </label>
+                </div>
+                <div class="inline-actions">
+                  <button id="set-top-button" class="button tertiary" type="button">Current -> Top ([)</button>
+                  <button id="set-bottom-button" class="button tertiary" type="button">Current -> Bottom (])</button>
+                </div>
+                <div class="inline-actions">
+                  <button id="range-reset-button" class="button tertiary" type="button">Full Stack (F)</button>
+                  <button id="next-pending-button" class="button tertiary" type="button">Next Pending (N)</button>
+                </div>
+                <p class="hint">
+                  Slice numbers are 1-based. The export range is the inclusive span between top and
+                  bottom.
+                </p>
+              </section>
+
+              <section class="sidebar-section" id="sidebar-section-eat-mode">
+                <div class="section-header">
+                  <h2>EAT Mode</h2>
+                  <span class="section-note">Semi-auto, automatic, model assist</span>
+                </div>
+                <div class="tool-grid">
+                  <button class="tool-button is-active" data-tool="contour" type="button">Contour</button>
+                  <button class="tool-button" data-tool="edit" type="button">Adjust</button>
+                  <button class="tool-button" data-tool="erase" type="button">Rubber</button>
+                  <button class="tool-button" data-tool="pan" type="button">Pan (M)</button>
+                  <button class="tool-button" data-tool="zoom" type="button">Zoom (Z)</button>
+                </div>
+                <div class="range-grid">
+                  <label class="number-field" for="threshold-min-input">
+                    <span>HU Min</span>
+                    <input id="threshold-min-input" type="number" min="-1024" max="3071" step="1" value="-190" />
+                  </label>
+                  <label class="number-field" for="threshold-max-input">
+                    <span>HU Max</span>
+                    <input id="threshold-max-input" type="number" min="-1024" max="3071" step="1" value="-30" />
+                  </label>
+                </div>
+                <div class="range-grid">
+                  <label class="number-field" for="erase-radius-input">
+                    <span>Rubber Radius (px)</span>
+                    <input id="erase-radius-input" type="number" min="2" max="80" step="1" value="12" />
+                  </label>
+                  <div class="number-field">
+                    <span>Rubber Size</span>
+                    <div class="pill-grid">
+                      <button class="pill-button is-active" data-erase-preset="normal" type="button">
+                        Normal
+                      </button>
+                      <button class="pill-button" data-erase-preset="big" type="button">Big</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="range-grid">
+                  <div class="number-field">
+                    <span>Rubber Action</span>
+                    <button id="clear-erase-button" class="button tertiary" type="button">
+                      Clear Rubber (Shift+X)
+                    </button>
+                  </div>
+                </div>
+                <div class="inline-actions">
+                  <button id="copy-prev-button" class="button tertiary" type="button">Copy Previous (,)</button>
+                  <button id="copy-next-button" class="button tertiary" type="button">Copy Next (.)</button>
+                  <button id="segment-button" class="button tertiary is-active" type="button">
+                    Let's Go Segment (G)
+                  </button>
+                  <button id="auto-eat-button" class="button tertiary" type="button">Automatic EAT (A)</button>
+                </div>
+                <div class="inline-actions">
+                  <button id="ai-segment-button" class="button tertiary" type="button">Model Assist (I)</button>
+                  <button id="send-training-button" class="button tertiary" type="button">
+                    Store Reference (K)
+                  </button>
+                </div>
+                <dl class="meta-list" id="ai-backend-metrics">
+                  <div class="meta-row">
+                    <dt>Local Model</dt>
+                    <dd id="ai-backend-status">Checking local AI backend...</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Assist Mode</dt>
+                    <dd id="ai-backend-mode">Model Assist uses a trained heart-localization step when available.</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Learning</dt>
+                    <dd id="ai-backend-training">No local reference-standard cases have been stored yet.</dd>
+                  </div>
+                </dl>
+                <div class="inline-actions">
+                  <button id="threshold-defaults-button" class="button tertiary" type="button">
+                    Reset Thresholds
+                  </button>
+                  <button id="clear-contour-button" class="button tertiary" type="button">Clear Slice Contour (X)</button>
+                  <button id="threshold-toggle-button" class="button tertiary is-active" type="button">
+                    Threshold Overlay (O): On
+                  </button>
+                </div>
+                <p class="hint">
+                  In `Contour`, click and drag to trace a closed loop. In `Adjust`, drag a handle to
+                  refine the contour or drag inside the contour to translate it. In `Rubber`, brush
+                  over unwanted pixels to exclude them from the EAT count.
+                </p>
+                <p class="hint">
+                  `Pan (M)` moves the image. `Zoom (Z)` lets you zoom with drag or mouse wheel. `Let's Go Segment`
+                  uses your existing contoured slices as anchors, while `Automatic EAT (A)` tries an image-only
+                  first pass across the slab. Both leave every slice editable afterward.
+                </p>
+                <p class="hint">
+                  `Model Assist (I)` uses the local Python backend and a trained heart-localization model when
+                  available, then imports editable pericardial starting contours back into this review workflow.
+                </p>
+                <p class="hint">
+                  `Store Reference (K)` stores the active reconstruction and your confirmed manual contours as a
+                  local reference bundle, then updates the local contour profile used by future model-assisted runs.
+                </p>
+                <p class="hint">
+                  More shortcuts: `[` top, `]` bottom, `F` full stack, `,`/`.` copy prev/next, `O`
+                  overlay, `V` compare, `T` transfer, `X` clear contour, `Shift+X` clear rubber, `A`
+                  for Automatic EAT, `I` for Model Assist, and `K` for Store Reference.
+                </p>
+              </section>
+
+              <section class="sidebar-section" id="sidebar-section-current-slice">
+                <div class="section-header">
+                  <h2>Current Slice</h2>
+                  <span class="section-note" id="current-slice-status">No slice selected</span>
+                </div>
+                <dl class="meta-list" id="current-slice-metrics">
+                  <div class="meta-row">
+                    <dt>Contour</dt>
+                    <dd>Load a study to begin.</dd>
+                  </div>
+                </dl>
+              </section>
+            </div>
+          </details>
+
+          <details class="sidebar-group" id="sidebar-group-review">
+            <summary class="sidebar-group-summary">
+              <div class="sidebar-group-copy">
+                <strong>Display & Review</strong>
+                <span>Windowing, zoom, slice list</span>
+              </div>
+            </summary>
+            <div class="sidebar-group-body">
+              <section class="sidebar-section" id="sidebar-section-display">
+                <div class="section-header">
+                  <h2>Display</h2>
+                  <span class="section-note">For contour review</span>
+                </div>
+                <div class="pill-grid">
+                  <button class="pill-button is-active" data-preset="cardiac" type="button">Cardiac</button>
+                  <button class="pill-button" data-preset="fat" type="button">Fat</button>
+                  <button class="pill-button" data-preset="wide" type="button">Wide</button>
+                </div>
+                <div class="range-grid">
+                  <label class="number-field" for="window-width-input">
+                    <span>Width</span>
+                    <input id="window-width-input" type="number" min="1" max="4000" step="1" value="450" />
+                  </label>
+                  <label class="number-field" for="window-center-input">
+                    <span>Level</span>
+                    <input id="window-center-input" type="number" min="-1200" max="3000" step="1" value="50" />
+                  </label>
+                </div>
+                <div class="inline-actions">
+                  <button id="zoom-out-button" class="button tertiary" type="button">Zoom Out (-)</button>
+                  <button id="zoom-in-button" class="button tertiary" type="button">Zoom In (+)</button>
+                  <button id="reset-view-button" class="button tertiary" type="button">Reset View (0)</button>
+                </div>
+                <p class="hint" id="zoom-readout">Zoom 100%</p>
+              </section>
+
+              <section class="sidebar-section" id="sidebar-section-slice-review">
+                <div class="section-header">
+                  <h2>Slice Review</h2>
+                  <span class="section-note" id="slice-review-count">0 slices</span>
+                </div>
+                <div class="slice-list" id="slice-list"></div>
+              </section>
+            </div>
+          </details>
+
+          <details class="sidebar-group" id="sidebar-group-export">
+            <summary class="sidebar-group-summary">
+              <div class="sidebar-group-copy">
+                <strong>Export</strong>
+                <span>Study, report, finish</span>
+              </div>
+            </summary>
+            <div class="sidebar-group-body">
+              <section class="sidebar-section" id="sidebar-section-project-list">
+                <div class="section-header">
+                  <h2>Research Study</h2>
+                  <span class="section-note" id="project-summary">No study selected</span>
+                </div>
+                <p class="hint" id="project-status-note">
+                  Choose or create the research study in the Finish &amp; Close popup. EAT exports will be mirrored
+                  into the same study outbox structure used by the other HAGRad apps.
+                </p>
+              </section>
+
+              <section class="sidebar-section" id="sidebar-section-export-summary">
+                <div class="section-header">
+                  <h2>Export Summary</h2>
+                  <span class="section-note" id="summary-coverage">0 reviewed</span>
+                </div>
+                <dl class="meta-list" id="summary-metrics">
+                  <div class="meta-row">
+                    <dt>Total EAT Volume</dt>
+                    <dd>-</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Mean Density</dt>
+                    <dd>-</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Rubber Excluded</dt>
+                    <dd>-</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Threshold</dt>
+                    <dd>Defaults to -190 to -30 HU</dd>
+                  </div>
+                </dl>
+                <div class="inline-actions">
+                  <button id="finish-close-button" class="button primary" type="button">Finish &amp; Close</button>
+                  <button id="export-image-button" class="button tertiary" type="button">Export PNG Report</button>
+                  <button id="export-csv-button" class="button tertiary" type="button">Export CSV</button>
+                </div>
+                <p class="hint">
+                  The PNG report includes representative slices from the active reconstruction plus a
+                  table of all transferred reconstructions. The CSV includes summary and slice-level
+                  EAT measurements, including density SD, for every transferred reconstruction. Export
+                  prompts for a required Study ID, writes it into the PNG and CSV, and mirrors both
+                  files into the selected research study outbox when you choose one in the popup.
+                </p>
+              </section>
+
+              <section class="sidebar-section" id="sidebar-section-study">
+                <div class="section-header">
+                  <h2>Study</h2>
+                  <span class="section-note">Active reconstruction</span>
+                </div>
+                <dl class="meta-list">
+                  <div class="meta-row">
+                    <dt>Patient</dt>
+                    <dd id="meta-patient">No study loaded</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Patient ID</dt>
+                    <dd id="meta-patient-id">-</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Series</dt>
+                    <dd id="meta-series">-</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Slices</dt>
+                    <dd id="meta-slices">-</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Matrix</dt>
+                    <dd id="meta-matrix">-</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Spacing</dt>
+                    <dd id="meta-spacing">-</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Thickness</dt>
+                    <dd id="meta-thickness">-</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Acquired</dt>
+                    <dd id="meta-time">-</dd>
+                  </div>
+                </dl>
+              </section>
+            </div>
+          </details>
+        </aside>
+
+        <section class="viewer-column">
+          <div class="stage card">
+            <div class="viewer-toolbar">
+              <div class="viewer-pill">
+                Slice <strong id="slice-summary">0 / 0</strong>
+              </div>
+              <div class="viewer-pill">
+                Reconstruction <strong id="active-reconstruction-readout">-</strong>
+              </div>
+              <div class="viewer-pill">
+                Compare <strong id="compare-readout">Off</strong>
+              </div>
+              <div class="viewer-pill">
+                Threshold <strong id="threshold-readout">-190 to -30 HU</strong>
+              </div>
+              <div class="viewer-pill">
+                Tool <strong id="tool-summary">Contour</strong>
+              </div>
+            </div>
+
+            <div class="viewer-grid" id="viewer-grid">
+              <section class="viewer-panel">
+                <div class="viewer-panel-header">
+                  <span>Active Reconstruction</span>
+                  <strong id="primary-panel-label">-</strong>
+                </div>
+                <div class="canvas-shell" id="canvas-shell">
+                  <div class="viewport-mini-actions">
+                    <button
+                      id="presentation-reset-window-button"
+                      class="viewport-mini-button"
+                      type="button"
+                      aria-label="Reset default windowing"
+                      title="Reset default windowing"
+                    >↺</button>
+                    <button
+                      id="presentation-reset-fit-button"
+                      class="viewport-mini-button"
+                      type="button"
+                      aria-label="Reset zoom and center"
+                      title="Reset zoom and center"
+                    >⛶</button>
+                    <button
+                      id="presentation-focus-toggle-button"
+                      class="viewport-mini-button"
+                      type="button"
+                      aria-label="Enter immersive EAT focus view"
+                      title="Immersive focus view"
+                    >⤢</button>
+                  </div>
+                  <canvas id="eat-canvas" aria-label="HAGRad Viewer EAT workflow slice viewer"></canvas>
+                  <div class="viewport-tool-hud" id="eat-tool-hud">Contour · middle mouse pans</div>
+                  <div class="viewport-fast-scroll">
+                    <label for="presentation-fast-scroll-slider">Slice</label>
+                    <input
+                      id="presentation-fast-scroll-slider"
+                      type="range"
+                      min="0"
+                      max="0"
+                      step="1"
+                      value="0"
+                      disabled
+                    />
+                    <span id="presentation-fast-scroll-value">0 / 0</span>
+                  </div>
+                  <div class="empty-state" id="empty-state">
+                    <p class="empty-title">Drop an axial CT series here</p>
+                    <p class="empty-copy">
+                      The prototype can load one or more aligned axial CT reconstructions, let you
+                      segment on one, transfer the contours to the others, and export all results
+                      together.
+                    </p>
+                  </div>
+                </div>
+              </section>
+
+              <section class="viewer-panel is-hidden" id="compare-panel">
+                <div class="viewer-panel-header">
+                  <span>Comparison Reconstruction</span>
+                  <strong id="compare-panel-label">-</strong>
+                </div>
+                <div class="canvas-shell" id="compare-shell">
+                  <canvas id="compare-canvas" aria-label="HAGRad Viewer EAT workflow comparison viewer"></canvas>
+                  <div class="empty-state" id="compare-empty-state">
+                    <p class="empty-title">Enable compare mode</p>
+                    <p class="empty-copy">
+                      Choose another loaded reconstruction to review the same slice side by side.
+                    </p>
+                  </div>
+                </div>
+              </section>
+            </div>
+            <div class="presentation-focus-dock focus-workflow-dock" aria-label="Focus workflow controls">
+              <button class="focus-pill-button" data-focus-sidebar-group="sidebar-group-workflow" type="button">Workflow</button>
+              <button class="focus-pill-button" data-focus-sidebar-group="sidebar-group-segmentation" type="button">Segment</button>
+              <button class="focus-pill-button" data-focus-sidebar-group="sidebar-group-review" type="button">Review</button>
+              <button class="focus-pill-button" data-focus-sidebar-group="sidebar-group-export" type="button">Export</button>
+            </div>
+            <div class="presentation-focus-dock focus-action-dock" aria-label="Focus case actions">
+              <label class="focus-pill-button focus-file-button" for="dicom-input">Load</label>
+              <label class="focus-pill-button focus-file-button" for="dicom-folder-input">Folder</label>
+              <button id="focus-finish-close-button" class="focus-pill-button" type="button">
+                Finish &amp; Close
+              </button>
+              <button id="presentation-focus-exit-button" class="focus-pill-button focus-exit-button" type="button">
+                Exit
+              </button>
+            </div>
+          </div>
+
+        </section>
+      </section>
+    </main>
+
+    <div class="modal-backdrop is-hidden" id="export-dialog-backdrop" aria-hidden="true">
+      <div class="modal-card" id="export-dialog" role="dialog" aria-modal="true" aria-labelledby="export-dialog-title">
+        <div class="modal-header">
+          <div>
+            <p class="modal-eyebrow">Export</p>
+            <h2 id="export-dialog-title">Assign Study ID</h2>
+          </div>
+          <button id="export-dialog-cancel" class="button tertiary" type="button">Cancel</button>
+        </div>
+        <p class="modal-copy" id="export-dialog-copy">
+          Enter the Study ID to print on the PNG report and prepend to the CSV export.
+        </p>
+        <label class="number-field modal-field" for="export-study-select">
+          <span>Research Study</span>
+          <select id="export-study-select">
+            <option value="">No study selected</option>
+          </select>
+        </label>
+        <div class="inline-actions">
+          <label class="number-field modal-field" for="export-study-create-input">
+            <span>New Study</span>
+            <input id="export-study-create-input" type="text" placeholder="eat_validation" autocomplete="off" spellcheck="false" />
+          </label>
+          <button id="export-study-create-button" class="button tertiary" type="button">Create Study</button>
+        </div>
+        <p class="hint modal-hint" id="export-study-target-note">
+          Mirrored exports go into the general EAT folder until a study is selected.
+        </p>
+        <label class="number-field modal-field" for="export-study-id-input">
+          <span>Study ID</span>
+          <input
+            id="export-study-id-input"
+            type="text"
+            placeholder="Assign a Study ID"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </label>
+        <p class="hint modal-hint" id="export-dialog-hint">
+          Finish &amp; Close will export both files and then clear the current patient from the viewer.
+        </p>
+        <div class="modal-actions">
+          <button id="export-dialog-confirm" class="button primary" type="button">Export</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/vendor/cornerstone.min.js"></script>
+    <script src="/vendor/dicomParser.min.js"></script>
+    <script src="/vendor/cornerstoneWADOImageLoaderNoWebWorkers.bundle.min.js"></script>
+    <script src="/src/shared/hagrad-export-studies.js"></script>
+    <script src="/src/shared/hagrad-zip.js"></script>
+    <script src="/src/eat-shared.js"></script>
+    <script src="/src/eat.js"></script>
+  </body>
+</html>

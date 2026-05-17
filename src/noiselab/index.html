@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HAGRad NoiseLab</title>
+    <link rel="stylesheet" href="/src/noiselab/noiselab.css" />
+  </head>
+  <body>
+    <main class="noiselab-app">
+      <header class="hero shell-card">
+        <div class="hero-copy">
+          <p class="eyebrow">HAGRad Research Prototype</p>
+          <h1>HAGRad NoiseLab</h1>
+          <p class="hero-text">
+            Standalone scientific workstation for exact square-ROI noise analysis in DICOM CT and other grayscale medical imaging.
+            NoiseLab prioritizes pixel fidelity, explicit units, reproducible ROI geometry, and structured research export.
+          </p>
+          <p class="research-disclaimer">Built as a dedicated HAGRad scientific workflow for reproducible local noise characterization.</p>
+        </div>
+
+        <div class="hero-actions">
+          <div class="hero-load-row">
+            <label class="button primary" for="noiselab-dicom-input">Load DICOM</label>
+            <label class="button secondary" for="noiselab-folder-input">Load Folder</label>
+          </div>
+          <input id="noiselab-dicom-input" type="file" multiple accept=".dcm,.dicom,application/dicom" />
+          <input
+            id="noiselab-folder-input"
+            type="file"
+            multiple
+            webkitdirectory
+            directory
+            accept=".dcm,.dicom,application/dicom"
+          />
+          <button id="noiselab-clear-button" class="button secondary" type="button">Clear Study</button>
+          <div class="status-pill" id="noiselab-status-pill">Ready for scientific image review</div>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="sidebar shell-card">
+          <section class="sidebar-section">
+            <div class="section-header">
+              <div>
+                <h2>Study</h2>
+                <p class="section-note" id="noiselab-study-note">No series loaded</p>
+                <p class="section-note">Click a series, or use Cmd/Ctrl + ↑/↓</p>
+              </div>
+            </div>
+            <div class="section-body">
+              <div id="noiselab-series-list" class="series-list">
+                <p class="empty-copy">Load a DICOM series or drop a study folder into the viewport.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="sidebar-section">
+            <div class="section-header">
+              <div>
+                <h2>Tools</h2>
+                <p class="section-note">Mouse wheel scrolls slices. Cmd/Ctrl + wheel zooms. Middle-button drag pans. Right-drag fast-scrolls.</p>
+              </div>
+            </div>
+            <div class="section-body">
+              <div class="tool-grid">
+                <button class="tool-button is-active" data-tool="select" type="button">Select</button>
+                <button class="tool-button" data-tool="windowLevel" type="button">Window / Level (W)</button>
+                <button class="tool-button" data-tool="zoom" type="button">Zoom (Z)</button>
+                <button class="tool-button" data-tool="pan" type="button">Move / Pan (M)</button>
+                <button class="tool-button" data-tool="squareRoi" type="button">Square ROI</button>
+                <button class="tool-button" data-tool="npsConcentric" type="button">NPS Rings</button>
+              </div>
+              <p class="hint">Keyboard: W = window/level, Z = zoom, M = move/pan, Esc = Select.</p>
+            </div>
+          </section>
+
+          <section class="sidebar-section">
+            <div class="section-header">
+              <div>
+                <h2>Square ROI</h2>
+                <p class="section-note">Drag on the CT image to place a square. Afterwards drag the ROI body to move it, or drag a corner to resize.</p>
+              </div>
+            </div>
+            <div class="section-body">
+              <div class="mode-grid">
+                <label class="mode-option">
+                  <input type="radio" name="square-mode" value="pixel-square" checked />
+                  <span>Pixel-square</span>
+                </label>
+                <label class="mode-option">
+                  <input type="radio" name="square-mode" value="physical-square" />
+                  <span>Physical-square</span>
+                </label>
+              </div>
+
+              <div class="numeric-grid noiselab-advanced-control" hidden>
+                <label class="number-field">
+                  <span>Fixed Pixel Edge</span>
+                  <select id="noiselab-fixed-pixel-size">
+                    <option value="11">11 px</option>
+                    <option value="21" selected>21 px</option>
+                    <option value="31">31 px</option>
+                  </select>
+                </label>
+                <label class="number-field">
+                  <span>Custom Pixel Edge</span>
+                  <input id="noiselab-custom-pixel-size" type="number" min="1" step="1" value="21" />
+                </label>
+              </div>
+
+              <div class="numeric-grid noiselab-advanced-control" hidden>
+                <label class="number-field">
+                  <span>Fixed Physical Edge (mm)</span>
+                  <input id="noiselab-fixed-mm-size" type="number" min="0.1" step="0.1" value="10.0" />
+                </label>
+                <label class="number-field">
+                  <span>One-click Placement</span>
+                  <select id="noiselab-placement-mode">
+                    <option value="drag">Click-drag</option>
+                    <option value="one-click">One-click fixed size</option>
+                  </select>
+                </label>
+              </div>
+
+              <label class="checkbox-row noiselab-advanced-control" hidden>
+                <input id="noiselab-center-scale" type="checkbox" />
+                <span>Resize about center (or hold Alt during resize)</span>
+              </label>
+
+              <p class="hint" id="noiselab-square-mode-note">
+                Pixel-square keeps equal pixel counts in x and y. Physical-square keeps equal edge length in millimeters and can become non-square in pixel counts when spacing is anisotropic.
+              </p>
+            </div>
+          </section>
+
+          <section class="sidebar-section">
+            <div class="section-header">
+              <div>
+                <h2>NPS Rings</h2>
+                <p class="section-note" id="noiselab-nps-note">Choose NPS Rings, click the center once, move the mouse to size the circle, then double-click to place all square ROIs.</p>
+              </div>
+            </div>
+            <div class="section-body">
+              <div class="numeric-grid">
+                <label class="number-field">
+                  <span>ROI Edge (px)</span>
+                  <select id="noiselab-nps-edge-px">
+                    <option value="32">32 px</option>
+                    <option value="64" selected>64 px</option>
+                    <option value="128">128 px</option>
+                  </select>
+                </label>
+                <label class="number-field">
+                  <span>Ring Count</span>
+                  <input id="noiselab-nps-ring-count" type="number" min="0" max="6" step="1" value="2" />
+                </label>
+              </div>
+              <div class="numeric-grid">
+                <label class="number-field">
+                  <span>ROIs / Ring</span>
+                  <input id="noiselab-nps-rois-per-ring" type="number" min="1" max="24" step="1" value="8" />
+                </label>
+                <label class="number-field noiselab-advanced-control" hidden>
+                  <span>Ring Spacing (px)</span>
+                  <input id="noiselab-nps-ring-spacing-px" type="number" min="8" step="1" value="96" />
+                </label>
+              </div>
+              <div class="numeric-grid noiselab-advanced-control" hidden>
+                <label class="number-field">
+                  <span>Center X (img)</span>
+                  <input id="noiselab-nps-center-x" type="number" step="0.5" placeholder="click to set" />
+                </label>
+                <label class="number-field">
+                  <span>Center Y (img)</span>
+                  <input id="noiselab-nps-center-y" type="number" step="0.5" placeholder="click to set" />
+                </label>
+              </div>
+              <label class="checkbox-row">
+                <input id="noiselab-nps-include-center" type="checkbox" checked />
+                  <span>Include center ROI</span>
+                </label>
+              <div class="inline-actions noiselab-advanced-control" hidden>
+                <button id="noiselab-nps-generate-center" class="button tertiary" type="button">Use Image Center</button>
+                <button id="noiselab-nps-update-active" class="button tertiary" type="button">Regenerate Active Set</button>
+                <button id="noiselab-nps-clear" class="button tertiary" type="button">Clear NPS Set</button>
+              </div>
+              <div id="noiselab-nps-summary" class="analysis-summary nps-summary">
+                <p class="empty-copy">No NPS set generated.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="sidebar-section">
+            <div class="section-header">
+              <div>
+                <h2>ROIs</h2>
+                <p class="section-note" id="noiselab-roi-note">0 ROI on current slice</p>
+              </div>
+            </div>
+            <div class="section-body">
+              <div class="inline-actions">
+                <button id="noiselab-duplicate-roi" class="button tertiary" type="button">Duplicate</button>
+                <button id="noiselab-delete-roi" class="button tertiary" type="button">Delete</button>
+                <button id="noiselab-copy-rois-all-series" class="button tertiary" type="button">Copy To All Series</button>
+              </div>
+              <div id="noiselab-roi-list" class="roi-list">
+                <p class="empty-copy">No ROI on the current slice.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="sidebar-section">
+            <div class="section-header">
+              <div>
+                <h2>ROI Details</h2>
+                <p class="section-note" id="noiselab-roi-detail-note">Select an ROI</p>
+              </div>
+            </div>
+            <div class="section-body">
+              <div id="noiselab-roi-detail" class="detail-shell">
+                <p class="empty-copy">The selected ROI’s geometry, pixel counts, and noise statistics will appear here.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="sidebar-section">
+            <div class="section-header">
+              <div>
+                <h2>Export</h2>
+                <p class="section-note">Structured bundle plus analysis and characterization PNGs</p>
+              </div>
+            </div>
+            <div class="section-body">
+              <label class="number-field">
+                <span>Research Study</span>
+                <select id="noiselab-export-study-select">
+                  <option value="">No study selected</option>
+                </select>
+              </label>
+              <div class="inline-actions">
+                <input id="noiselab-export-study-create" type="text" placeholder="Create study name" />
+                <button id="noiselab-export-study-create-button" class="button tertiary" type="button">Create</button>
+              </div>
+              <label class="number-field">
+                <span>research_study_ID</span>
+                <input id="noiselab-research-study-id" type="text" placeholder="e.g. phantom_noise_2026" />
+              </label>
+              <label class="number-field">
+                <span>patient_study_ID</span>
+                <input id="noiselab-patient-study-id" type="text" placeholder="e.g. case_001" />
+              </label>
+              <p class="hint" id="noiselab-export-target-note">
+                Primary export downloads one ZIP file to your browser Downloads folder.
+              </p>
+              <label class="checkbox-row">
+                <input id="noiselab-export-mirror-outbox" type="checkbox" />
+                <span>Also mirror individual files to the HAGRad outbox</span>
+              </label>
+              <button id="noiselab-export-button" class="button primary" type="button">Download Noise Analysis ZIP</button>
+            </div>
+          </section>
+
+          <section class="sidebar-section">
+            <div class="section-header">
+              <div>
+                <h2>Metadata</h2>
+                <p class="section-note">Matrix, spacing, units, and slice identifiers</p>
+              </div>
+            </div>
+            <div class="section-body">
+              <dl id="noiselab-metadata" class="metadata-grid">
+                <div><dt>Series</dt><dd>-</dd></div>
+                <div><dt>Matrix</dt><dd>-</dd></div>
+                <div><dt>Spacing</dt><dd>-</dd></div>
+                <div><dt>Rescale</dt><dd>-</dd></div>
+                <div><dt>Units</dt><dd>-</dd></div>
+                <div><dt>Slice</dt><dd>-</dd></div>
+              </dl>
+            </div>
+          </section>
+        </aside>
+
+        <section class="viewport-shell shell-card">
+          <nav class="workspace-tabs" aria-label="NoiseLab workspace pages">
+            <button class="page-tab is-active" data-page="viewer" type="button">Viewer</button>
+            <button class="page-tab" data-page="figures" type="button">Figures</button>
+          </nav>
+
+          <div id="noiselab-viewer-panel" class="viewer-page">
+          <div class="viewport-toolbar">
+            <div class="toolbar-group">
+              <button id="noiselab-prev-slice" class="button tertiary" type="button">Prev</button>
+              <button id="noiselab-next-slice" class="button tertiary" type="button">Next</button>
+            </div>
+            <div class="toolbar-group toolbar-sliders">
+              <label class="slider-field">
+                <span>Slice</span>
+                <input id="noiselab-slice-slider" type="range" min="0" max="0" value="0" />
+              </label>
+              <label class="slider-field">
+                <span>WW</span>
+                <input id="noiselab-window-width" type="number" step="1" value="400" />
+              </label>
+              <label class="slider-field">
+                <span>WL</span>
+                <input id="noiselab-window-center" type="number" step="1" value="40" />
+              </label>
+            </div>
+            <div class="toolbar-readout" id="noiselab-readout">Slice 1 / 1</div>
+          </div>
+
+          <div id="noiselab-dropzone" class="viewport-stage">
+            <canvas id="noiselab-canvas" width="1200" height="900"></canvas>
+            <div class="viewport-mini-actions">
+              <button
+                id="noiselab-reset-wl-button"
+                class="viewport-mini-button"
+                type="button"
+                aria-label="Reset default windowing"
+                title="Reset default windowing"
+              >↺</button>
+              <button
+                id="noiselab-fit-button"
+                class="viewport-mini-button"
+                type="button"
+                aria-label="Reset zoom and center"
+                title="Reset zoom and center"
+              >⛶</button>
+            </div>
+            <div id="noiselab-overlay-note" class="overlay-note">
+              Drop DICOM files or folders here, or use the load buttons above.
+            </div>
+          </div>
+          </div>
+
+          <section id="noiselab-figures-panel" class="analysis-workspace is-hidden">
+            <div class="analysis-header">
+              <div>
+                <h2>Analysis Visuals</h2>
+                <p class="section-note" id="noiselab-analysis-note">
+                  Select an ROI to review line profiles, ROI distributions, and the exact sampled square matrix.
+                </p>
+              </div>
+              <div class="analysis-controls">
+                <label class="number-field analysis-select">
+                  <span>Profile View</span>
+                  <select id="noiselab-profile-type">
+                    <option value="horizontal-center">Horizontal center line</option>
+                    <option value="vertical-center">Vertical center line</option>
+                    <option value="horizontal-mean">Mean horizontal profile</option>
+                    <option value="vertical-mean">Mean vertical profile</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div class="analysis-grid">
+              <article class="analysis-card">
+                <div class="analysis-card-header">
+                  <h3>Profile And Distribution</h3>
+                  <p class="section-note">The plotted line and histogram are derived directly from the selected ROI pixel matrix.</p>
+                </div>
+                <canvas id="noiselab-profile-canvas" class="analysis-canvas" width="720" height="280"></canvas>
+                <div id="noiselab-profile-summary" class="analysis-summary">
+                  <p class="empty-copy">Profile statistics will appear here.</p>
+                </div>
+                <canvas id="noiselab-histogram-canvas" class="analysis-canvas analysis-canvas-small" width="720" height="220"></canvas>
+              </article>
+
+              <article class="analysis-card">
+                <div class="analysis-card-header">
+                  <h3>What Is Characterized</h3>
+                  <p class="section-note">Square-grid inclusion and the ordered signal actually extracted from that square.</p>
+                </div>
+                <div class="analysis-dual">
+                  <div class="analysis-figure">
+                    <canvas id="noiselab-characterization-source-canvas" class="analysis-canvas" width="320" height="320"></canvas>
+                  </div>
+                  <div class="analysis-figure">
+                    <canvas id="noiselab-characterization-derived-canvas" class="analysis-canvas" width="320" height="320"></canvas>
+                  </div>
+                </div>
+                <div id="noiselab-characterization-summary" class="analysis-summary">
+                  <p class="empty-copy">The square-to-profile mapping will appear here.</p>
+                </div>
+              </article>
+            </div>
+
+            <div class="analysis-card nps-analysis-card">
+              <div class="analysis-card-header">
+                <h3>Noise Power Spectrum</h3>
+                <p class="section-note">Absolute, normalized, cumulative, bandpower, and 2D FFT NPS from the active concentric square ROI set.</p>
+              </div>
+              <div class="analysis-dual">
+                <canvas id="noiselab-nps-curve-canvas" class="analysis-canvas" width="720" height="280"></canvas>
+                <canvas id="noiselab-nps-normalized-canvas" class="analysis-canvas" width="720" height="280"></canvas>
+                <canvas id="noiselab-nps-cumulative-canvas" class="analysis-canvas" width="720" height="280"></canvas>
+                <canvas id="noiselab-nps-bandpower-canvas" class="analysis-canvas" width="520" height="300"></canvas>
+                <canvas id="noiselab-nps-heatmap-canvas" class="analysis-canvas" width="420" height="420"></canvas>
+              </div>
+              <div id="noiselab-nps-analysis-summary" class="analysis-summary">
+                <p class="empty-copy">Generate an NPS set to compute the 2D and radial NPS.</p>
+              </div>
+            </div>
+
+            <div class="analysis-card comparison-analysis-card">
+              <div class="analysis-card-header">
+                <h3>Reconstruction Comparison</h3>
+                <p class="section-note">Copied ROI groups summarized across all loaded reconstructions.</p>
+              </div>
+              <canvas id="noiselab-comparison-canvas" class="analysis-canvas" width="920" height="360"></canvas>
+              <div id="noiselab-comparison-summary" class="analysis-summary">
+                <p class="empty-copy">Copy ROIs to all series to compare reconstruction-specific noise behavior.</p>
+              </div>
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <div id="noiselab-roi-context-menu" class="roi-context-menu" hidden role="menu" aria-label="ROI actions">
+      <button type="button" data-roi-menu-action="edit">Edit Size / Position</button>
+      <button type="button" data-roi-menu-action="duplicate">Duplicate ROI</button>
+      <button type="button" data-roi-menu-action="copy-selected">Copy ROI To All Series</button>
+      <button type="button" data-roi-menu-action="copy-slice">Copy Slice ROIs To All Series</button>
+      <button type="button" data-roi-menu-action="delete">Delete ROI</button>
+    </div>
+
+    <script src="/vendor/cornerstone.min.js"></script>
+    <script src="/vendor/dicomParser.min.js"></script>
+    <script src="/vendor/cornerstoneWADOImageLoaderNoWebWorkers.bundle.min.js"></script>
+    <script src="/src/shared/hagrad-core.js"></script>
+    <script src="/src/shared/hagrad-dicom.js"></script>
+    <script src="/src/shared/hagrad-export-studies.js"></script>
+    <script src="/src/noiselab/noiselab-core.js"></script>
+    <script src="/src/noiselab/noiselab-export.js"></script>
+    <script src="/src/noiselab/noiselab.js"></script>
+  </body>
+</html>

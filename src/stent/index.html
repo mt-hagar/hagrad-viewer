@@ -1,0 +1,1025 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HAGRad Stent Viewer</title>
+    <link rel="stylesheet" href="/src/stent/stent.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="shell-card hero">
+        <div class="hero-copy">
+          <p class="eyebrow">HAGRad Viewer</p>
+          <h1>HAGRad Stent Viewer</h1>
+          <p class="hero-text">
+            Separate research workstation based on HAGRad Viewer for cardiac CT stent assessment:
+            familiar axial review plus editable coronary centerlines, curved and straightened MPR,
+            orthogonal cross-sections, profile tools, multi-stent workflow, and per-reconstruction
+            export without destabilizing the current HAGRad Viewer.
+          </p>
+        </div>
+
+        <div class="hero-actions">
+          <div class="hero-load-row">
+            <label class="button primary" for="dicom-input">Load DICOM</label>
+            <label class="button secondary" for="dicom-folder-input">Load Folder</label>
+          </div>
+          <input id="dicom-input" type="file" multiple accept=".dcm,.dicom,application/dicom" />
+          <input
+            id="dicom-folder-input"
+            type="file"
+            multiple
+            webkitdirectory
+            directory
+            accept=".dcm,.dicom,application/dicom"
+          />
+          <label class="button secondary" for="dicom-add-input">Add Recon Files</label>
+          <input
+            id="dicom-add-input"
+            type="file"
+            multiple
+            accept=".dcm,.dicom,application/dicom"
+          />
+          <button id="clear-button" class="button secondary" type="button">Clear Study</button>
+          <a class="button secondary" href="/src/viewer.html">Open HAGRad Viewer</a>
+          <div class="status-pill" id="status-pill">Ready for a cardiac CT / CCTA stack</div>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="shell-card sidebar">
+          <details class="sidebar-group" open>
+            <summary class="sidebar-group-summary">
+              <span class="sidebar-group-copy">
+                <span class="sidebar-group-title">Basic Workflow</span>
+                <span class="sidebar-group-note">Load a study, segment one stented vessel, adjust it, then measure and save</span>
+              </span>
+            </summary>
+            <div class="sidebar-group-body">
+              <section class="sidebar-section workflow-map-section">
+                <div class="section-header">
+                  <h2>Workflow</h2>
+                  <span class="section-note" id="coronary-workflow-hint">Load a cardiac CT / CCTA series to begin</span>
+                </div>
+                <div class="workflow-step-grid" id="workflow-step-grid">
+                  <div class="workflow-step-card" data-workflow-step="load">
+                    <span class="workflow-step-index">1</span>
+                    <strong>Load Study</strong>
+                    <span>Open the CTA stack and any extra reconstructions</span>
+                  </div>
+                  <div class="workflow-step-card" data-workflow-step="segment">
+                    <span class="workflow-step-index">2</span>
+                    <strong>Segment Vessel</strong>
+                    <span>Left click anchors, then double left click to build the path</span>
+                  </div>
+                  <div class="workflow-step-card" data-workflow-step="select">
+                    <span class="workflow-step-index">3</span>
+                    <strong>Adjust Path</strong>
+                    <span>Drag anchors and stent limits directly in the MPR</span>
+                  </div>
+                  <div class="workflow-step-card" data-workflow-step="review">
+                    <span class="workflow-step-index">4</span>
+                    <strong>Measure</strong>
+                    <span>Place profiles and ROIs inside the adjusted vessel</span>
+                  </div>
+                  <div class="workflow-step-card" data-workflow-step="export">
+                    <span class="workflow-step-index">5</span>
+                    <strong>Finish Patient</strong>
+                    <span>Save one stent at a time, then export PNG and CSV</span>
+                  </div>
+                </div>
+              </section>
+
+              <section class="sidebar-section">
+                <div class="section-header">
+                  <h2>Segment Vessel</h2>
+                  <span class="section-note" id="coronary-workflow-status">No draft started</span>
+                </div>
+                <div class="inline-actions" hidden>
+                  <button id="coronary-auto-segment-button" class="button tertiary is-active" type="button">
+                    Auto Tree Assist
+                  </button>
+                  <button id="coronary-backend-refresh-button" class="button tertiary" type="button">
+                    Refresh Backend
+                  </button>
+                </div>
+                <dl class="meta-list" id="coronary-backend-metrics" hidden>
+                  <div class="meta-row">
+                    <dt>Backend</dt>
+                    <dd id="coronary-backend-status">Checking local backend...</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Mode</dt>
+                    <dd id="coronary-backend-mode">Manual anchor-guided MPR is the primary path. Backend extraction is optional assist only.</dd>
+                  </div>
+                </dl>
+                <div class="numeric-grid" hidden>
+                  <label class="number-field" for="coronary-threshold-input">
+                    <span>Lumen HU Assist</span>
+                    <input id="coronary-threshold-input" type="number" min="80" max="1200" step="5" value="180" />
+                  </label>
+                  <label class="number-field" for="coronary-search-radius-input">
+                    <span>Track Radius (mm)</span>
+                    <input id="coronary-search-radius-input" type="number" min="1.5" max="8" step="0.1" value="3.2" />
+                  </label>
+                </div>
+                <div class="inline-actions">
+                  <button id="coronary-start-button" class="button tertiary is-active" type="button">
+                    Start Vessel
+                  </button>
+                  <button id="coronary-clear-draft-button" class="button tertiary" type="button">
+                    Reset Draft
+                  </button>
+                </div>
+                <div class="inline-actions">
+                  <button id="selection-role-vessel-button" class="button tertiary is-active" data-selection-role="vessel" type="button">
+                    Vessel
+                  </button>
+                  <button id="selection-role-strut-button" class="button tertiary" data-selection-role="strut" type="button">
+                    Stent Strut
+                  </button>
+                  <button id="selection-role-background-button" class="button tertiary" data-selection-role="background" type="button">
+                    Background
+                  </button>
+                </div>
+                <p class="hint" id="selection-role-summary">When measuring, tag the current target as vessel, strut, or background first.</p>
+                <div class="inline-actions" hidden>
+                  <button id="coronary-quick-segment-button" class="button tertiary is-active" type="button">
+                    Short Segment Auto: On
+                  </button>
+                </div>
+                <div class="inline-actions" hidden>
+                  <button id="coronary-finish-button" class="button tertiary" type="button">
+                    Finish Centerline
+                  </button>
+                  <button id="coronary-resegment-button" class="button tertiary" type="button">
+                    Rebuild Active
+                  </button>
+                </div>
+                <p class="hint">
+                  Left click anchor points through the stented vessel on axial images, then use the
+                  last double left click to segment the path and open the vessel MPR.
+                </p>
+                <p class="hint">
+                  After segmentation, adjust directly in the MPR: drag anchors and stent limits
+                  with left click, add anchors with one right click, and remove anchors with double
+                  right click.
+                </p>
+              </section>
+
+              <section class="sidebar-section" hidden>
+                <div class="section-header">
+                  <h2>Segmentation Status</h2>
+                  <span class="section-note" id="coronary-progress-summary">Waiting for auto segmentation</span>
+                </div>
+                <div class="progress-steps" id="coronary-progress-steps"></div>
+                <div class="qc-banner" id="coronary-qc-banner">
+                  Auto coronary tree extraction has not run for this study yet.
+                </div>
+                <dl class="meta-list" id="coronary-qc-metrics">
+                  <div class="meta-row">
+                    <dt>QC</dt>
+                    <dd>Run auto segmentation to see branch counts, warnings, and manual review prompts.</dd>
+                  </div>
+                </dl>
+              </section>
+
+              <section class="sidebar-section">
+                <div class="section-header">
+                  <h2>Vessels</h2>
+                  <span class="section-note" id="coronary-vessel-summary">0 vessels</span>
+                </div>
+                <div class="vessel-list" id="coronary-vessel-list"></div>
+              </section>
+
+              <section class="sidebar-section">
+                <div class="section-header">
+                  <h2>Saved Stents</h2>
+                  <span class="section-note" id="stent-saved-summary">0 saved</span>
+                </div>
+                <div class="vessel-list" id="stent-saved-list">
+                  <p class="annotation-empty">Save a stent with `Next Stent` to build the patient list.</p>
+                </div>
+              </section>
+
+              <section class="sidebar-section">
+                <div class="section-header">
+                  <h2>Adjust + Measure</h2>
+                  <span class="section-note" id="coronary-active-status">No vessel selected</span>
+                </div>
+                <div class="numeric-grid">
+                  <label class="number-field" for="coronary-label-select">
+                    <span>Label</span>
+                    <select id="coronary-label-select">
+                      <option value="Auto">Auto</option>
+                      <option value="LM">LM</option>
+                      <option value="LAD">LAD</option>
+                      <option value="LCx">LCx</option>
+                      <option value="RCA">RCA</option>
+                      <option value="Diagonal">Diagonal</option>
+                      <option value="Septal">Septal</option>
+                      <option value="OM">OM</option>
+                      <option value="Ramus">Ramus</option>
+                      <option value="PDA">PDA</option>
+                      <option value="PLV">PLV</option>
+                      <option value="Branch">Branch</option>
+                    </select>
+                  </label>
+                  <label class="number-field" for="coronary-sample-input">
+                    <span>Sample</span>
+                    <input id="coronary-sample-input" type="number" min="1" step="1" value="1" disabled />
+                  </label>
+                </div>
+                <label class="number-field" for="stent-label-input">
+                  <span>Stent Label</span>
+                  <input id="stent-label-input" type="text" placeholder="Stent 1" autocomplete="off" />
+                </label>
+                <label class="slider-field" for="coronary-sample-slider">
+                  <span>Cross-section Position</span>
+                  <input id="coronary-sample-slider" type="range" min="0" max="0" step="1" value="0" disabled />
+                </label>
+                <div class="inline-actions" hidden>
+                  <button id="stent-set-start-button" class="button tertiary" type="button">Set Start At Sample</button>
+                  <button id="stent-set-end-button" class="button tertiary" type="button">Set End At Sample</button>
+                </div>
+                <div class="inline-actions" hidden>
+                  <button id="stent-add-anchor-button" class="button tertiary" type="button">Add Anchor At Sample</button>
+                  <button id="stent-rebuild-button" class="button tertiary" type="button">Rebuild From Anchors</button>
+                </div>
+                <div class="inline-actions" hidden>
+                  <button id="coronary-radius-minus-button" class="button tertiary" type="button">
+                    Contour -
+                  </button>
+                  <button id="coronary-radius-plus-button" class="button tertiary" type="button">
+                    Contour +
+                  </button>
+                </div>
+                <div class="inline-actions" hidden>
+                  <button id="coronary-threshold-minus-button" class="button tertiary" type="button">
+                    HU -
+                  </button>
+                  <button id="coronary-threshold-plus-button" class="button tertiary" type="button">
+                    HU +
+                  </button>
+                </div>
+                <div class="inline-actions">
+                  <button id="coronary-snap-center-button" class="button tertiary" type="button" hidden>
+                    Snap Center
+                  </button>
+                  <button id="coronary-delete-vessel-button" class="button tertiary" type="button">
+                    Delete Vessel
+                  </button>
+                </div>
+                <div class="inline-actions">
+                  <button id="next-stent-button" class="button secondary" type="button">Next Stent</button>
+                </div>
+                <p class="hint">
+                  Use the MPR as the main editor. The slider changes the orthogonal sample, the
+                  gold lines define the stent span, and the cross-section lets you adjust outer and
+                  inner diameters directly.
+                </p>
+                <dl class="meta-list" id="coronary-metrics">
+                  <div class="meta-row">
+                    <dt>Centerline</dt>
+                    <dd>Build a track to review stent span, anchor count, and editable sample metrics here.</dd>
+                  </div>
+                </dl>
+              </section>
+            </div>
+          </details>
+
+          <details class="sidebar-group" open>
+            <summary class="sidebar-group-summary">
+              <span class="sidebar-group-copy">
+                <span class="sidebar-group-title">Measure &amp; Finish</span>
+                <span class="sidebar-group-note">Only the core measurement tools and the final patient step</span>
+              </span>
+            </summary>
+            <div class="sidebar-group-body">
+              <section class="sidebar-section" hidden>
+                <div class="section-header">
+                  <h2>Track Summary</h2>
+                  <span class="section-note" id="coronary-results-summary">No results yet</span>
+                </div>
+                <div class="results-table-shell">
+                  <table class="results-table" aria-label="Stent tracking summary">
+                    <thead>
+                      <tr>
+                        <th scope="col">Segment</th>
+                        <th scope="col">Source</th>
+                        <th scope="col">Length</th>
+                        <th scope="col">Radius</th>
+                        <th scope="col">QC</th>
+                        <th scope="col">MPR</th>
+                      </tr>
+                    </thead>
+                    <tbody id="coronary-results-body">
+                      <tr>
+                        <td colspan="6">Build a vessel manually with axial anchors to populate the summary.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p class="hint" id="coronary-results-note">
+                  Saved and unsaved vessel tracks appear here so you can reopen a candidate segment,
+                  refine it, and then commit it as one stent.
+                </p>
+              </section>
+
+              <section class="sidebar-section" hidden>
+                <div class="section-header">
+                  <h2>Reconstructions</h2>
+                  <span class="section-note" id="reconstruction-summary">0 loaded</span>
+                </div>
+                <div class="recon-list" id="reconstruction-list"></div>
+              </section>
+
+              <section class="sidebar-section" hidden>
+                <div class="section-header">
+                  <h2>Layout</h2>
+                  <span class="section-note">Presentation or 4-up MPR</span>
+                </div>
+                <div class="pill-grid">
+                  <button class="pill-button is-active" data-layout="presentation" type="button">
+                    Presentation
+                  </button>
+                  <button class="pill-button" data-layout="mpr" type="button">4-up MPR</button>
+                </div>
+              </section>
+
+              <section class="sidebar-section">
+                <div class="section-header">
+                  <h2>Tools</h2>
+                  <span class="section-note">Only the essential manual tools</span>
+                </div>
+                <div class="tool-clusters">
+                  <div class="tool-cluster">
+                    <div class="tool-cluster-header">Viewer Tools</div>
+                    <div class="tool-grid">
+                      <button class="tool-button" data-tool="edit" type="button">Edit</button>
+                      <button class="tool-button is-active" data-tool="windowLevel" type="button">WW/WL</button>
+                      <button class="tool-button" data-tool="pan" type="button">Pan</button>
+                      <button class="tool-button" data-tool="zoom" type="button">Zoom</button>
+                      <button class="tool-button" data-tool="length" type="button">Length</button>
+                      <button class="tool-button" data-tool="probe" type="button">Probe</button>
+                      <button class="tool-button" data-tool="mprCursor" type="button">MPR Coord</button>
+                    </div>
+                  </div>
+                  <div class="tool-cluster">
+                    <div class="tool-cluster-header">ROI Tools</div>
+                    <div class="tool-grid">
+                      <div class="tool-group roi-tool-group">
+                        <button
+                          id="roi-tool-trigger"
+                          class="tool-button tool-group-trigger"
+                          data-tool-group-toggle="roi"
+                          type="button"
+                          aria-expanded="false"
+                          aria-haspopup="true"
+                        >
+                          <span>ROI</span>
+                          <small id="roi-tool-active-label">ROI Circle</small>
+                        </button>
+                        <div id="roi-tool-menu" class="tool-submenu is-hidden" role="menu">
+                          <button class="tool-submenu-button" data-tool="circularRoi" type="button" role="menuitem">ROI Circle</button>
+                          <button class="tool-submenu-button" data-tool="freehandRoi" type="button" role="menuitem">ROI Draw</button>
+                          <button class="tool-submenu-button" data-tool="segmentationRoi" type="button" role="menuitem">ROI Multiple Click</button>
+                          <button class="tool-submenu-button" data-tool="brushRoi" type="button" role="menuitem">ROI Brush</button>
+                          <button class="tool-submenu-button" data-tool="contourCorrect" type="button" role="menuitem">Adjust ROI</button>
+                          <button class="tool-submenu-button" data-tool="eraser" type="button" role="menuitem">Eraser</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="tool-cluster">
+                    <div class="tool-cluster-header">Stent Tools</div>
+                    <div class="tool-grid">
+                      <div class="tool-group">
+                        <button
+                          id="stent-tool-trigger"
+                          class="tool-button tool-group-trigger"
+                          data-tool-group-toggle="stent"
+                          type="button"
+                          aria-expanded="false"
+                          aria-haspopup="true"
+                        >
+                          <span>Interface</span>
+                          <small id="stent-tool-active-label">Stent Line Profile</small>
+                        </button>
+                        <div id="stent-tool-menu" class="tool-submenu is-hidden" role="menu">
+                          <div class="tool-submenu-label">Stent-lumen interface</div>
+                          <button class="tool-submenu-button" data-tool="lineProfile" type="button" role="menuitem">Line Profile</button>
+                          <button class="tool-submenu-button" data-tool="squareProfile" type="button" role="menuitem">Square Profile</button>
+                          <div class="tool-submenu-label">Plaque-lumen interface</div>
+                          <button class="tool-submenu-button" data-tool="plaqueLineProfile" type="button" role="menuitem">Calcified Line Profile</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="inline-actions">
+                  <button id="reset-button" class="button tertiary" type="button">Reset View</button>
+                  <button id="clear-measurements-button" class="button tertiary" type="button">Clear Annotations</button>
+                </div>
+                <div class="tool-scope-group" data-tool-scope="circularRoi">
+                  <p class="hint">
+                    `ROI Circle` starts from the initial click as the center. Drag outward to size it,
+                    release to create it, then move it or drag the single outer handle to resize it.
+                  </p>
+                </div>
+                <div class="tool-scope-group" data-tool-scope="brushRoi">
+                  <div class="numeric-grid">
+                    <label class="number-field" for="brush-min-input">
+                      <span>Brush Min HU</span>
+                      <input id="brush-min-input" type="number" min="-2048" max="4000" step="1" value="-190" />
+                    </label>
+                    <label class="number-field" for="brush-max-input">
+                      <span>Brush Max HU</span>
+                      <input id="brush-max-input" type="number" min="-2048" max="4000" step="1" value="-30" />
+                    </label>
+                  </div>
+                  <label class="number-field" for="brush-size-input">
+                    <span>Brush Size (mm)</span>
+                    <input id="brush-size-input" type="number" min="0.5" max="40" step="0.5" value="4" />
+                  </label>
+                  <div class="inline-actions">
+                    <button id="brush-shrink-button" class="button tertiary" type="button">Shrink -</button>
+                    <button id="brush-grow-button" class="button tertiary" type="button">Grow +</button>
+                  </div>
+                </div>
+                <div class="tool-scope-group" data-tool-scope="eraser">
+                  <label class="number-field" for="eraser-size-input">
+                    <span>Eraser Size (mm)</span>
+                    <input id="eraser-size-input" type="number" min="0.5" max="60" step="0.5" value="6" />
+                  </label>
+                </div>
+                <div class="tool-scope-group" data-tool-scope="freehandRoi segmentationRoi edit">
+                  <p class="hint">
+                    `ROI Draw` traces freehand while you hold the left mouse button. `ROI Multiple Click`
+                    places discrete points and finishes on double-click.
+                  </p>
+                </div>
+                <div class="tool-scope-group" data-tool-scope="contourCorrect">
+                  <p class="hint">
+                    `Adjust ROI` lets you redraw part of an existing ROI contour and blends the corrected segment in.
+                  </p>
+                </div>
+                <div class="inline-actions">
+                  <button id="copy-roi-button" class="button tertiary" type="button">Copy ROI</button>
+                  <button id="paste-roi-button" class="button tertiary" type="button">Paste ROI</button>
+                </div>
+                <div class="inline-actions">
+                  <button id="sync-measurements-button" class="button tertiary" type="button">
+                    Copy Measurements To All Reconstructions
+                  </button>
+                </div>
+                <p class="hint">
+                  `W` windows, `Z` zooms, `M` pans. Use `Edit` for existing objects, and use the
+                  profile tools only after the vessel path looks right.
+                </p>
+              </section>
+
+              <section class="sidebar-section" hidden>
+                <div class="section-header">
+                  <h2>Backend Artifacts</h2>
+                  <span class="section-note" id="coronary-artifacts-summary">No artifacts</span>
+                </div>
+                <div class="artifact-status" id="coronary-artifacts-status">
+                  The backend will list masks, centerlines, JSON summaries, and warnings here after an automatic run.
+                </div>
+                <div class="artifact-list" id="coronary-artifact-list"></div>
+              </section>
+
+              <section class="sidebar-section" hidden>
+                <div class="section-header">
+                  <h2>MPR Sync</h2>
+                  <span class="section-note">Shared across reconstructions</span>
+                </div>
+                <label class="slider-field" for="mpr-axial-rotation">
+                  <span>Axial Rotation</span>
+                  <input id="mpr-axial-rotation" type="range" min="-180" max="180" step="1" value="0" />
+                </label>
+                <label class="slider-field" for="mpr-coronal-rotation">
+                  <span>Coronal Rotation</span>
+                  <input id="mpr-coronal-rotation" type="range" min="-180" max="180" step="1" value="0" />
+                </label>
+                <label class="slider-field" for="mpr-sagittal-rotation">
+                  <span>Sagittal Rotation</span>
+                  <input id="mpr-sagittal-rotation" type="range" min="-180" max="180" step="1" value="0" />
+                </label>
+                <div class="numeric-grid">
+                  <label class="number-field" for="mpr-axial-input">
+                    <span>Axial</span>
+                    <input id="mpr-axial-input" type="number" min="-180" max="180" step="1" value="0" />
+                  </label>
+                  <label class="number-field" for="mpr-coronal-input">
+                    <span>Coronal</span>
+                    <input id="mpr-coronal-input" type="number" min="-180" max="180" step="1" value="0" />
+                  </label>
+                </div>
+                <label class="number-field" for="mpr-sagittal-input">
+                  <span>Sagittal</span>
+                  <input id="mpr-sagittal-input" type="number" min="-180" max="180" step="1" value="0" />
+                </label>
+                <div class="inline-actions">
+                  <button id="sync-mpr-button" class="button tertiary is-active" type="button">Sync Zoom/Pan: On</button>
+                  <button id="reset-mpr-button" class="button tertiary" type="button">Reset MPR</button>
+                </div>
+                <p class="hint">
+                  `MPR Coord` lets you drag the shared crosshair center. Rotation still comes from the
+                  three angle controls below it.
+                </p>
+                <p class="hint">
+                  You can also grab a colored MPR line directly in the viewport to rotate that plane
+                  with the mouse. The current viewport stays fixed while the other MPR projections
+                  rotate.
+                </p>
+                <p class="hint">
+                  `Stent Line` and `Stent Square` quantify the stent-lumen interface. `Calcified Line`
+                  quantifies plaque-lumen blooming from a line across contrast lumen and calcified plaque.
+                </p>
+                <p class="hint">
+                  `Stent Path` is manual. Build the centerline with left-click axial anchors, then use
+                  the cross-section panel below the viewer to adjust outer and inner diameters for the
+                  active sample.
+                </p>
+                <p class="hint">
+                  Use `Edit` to click an existing annotation, move it, drag its handles, double-click a
+                  text label to rename it, or press `Delete`.
+                </p>
+                <p class="hint">
+                  The profile panel switches between stent-lumen metrics and calcified plaque-lumen
+                  blooming metrics depending on the selected profile.
+                </p>
+              </section>
+
+              <section class="sidebar-section" hidden>
+                <div class="section-header">
+                  <h2>Presets</h2>
+                  <span class="section-note">Applies to all viewports</span>
+                </div>
+                <div class="pill-grid presets-grid">
+                  <button class="pill-button" data-preset="coronary" type="button">Coronary</button>
+                  <button class="pill-button" data-preset="softTissue" type="button">Soft Tissue</button>
+                  <button class="pill-button" data-preset="lung" type="button">Lung</button>
+                  <button class="pill-button" data-preset="bone" type="button">Bone</button>
+                </div>
+              </section>
+
+              <section class="sidebar-section" hidden>
+                <div class="section-header">
+                  <h2>Window / Level</h2>
+                  <span class="section-note" id="voi-readout">W 800 / L 250</span>
+                </div>
+
+                <div class="numeric-grid">
+                  <label class="number-field" for="window-width-input">
+                    <span>Width</span>
+                    <input id="window-width-input" type="number" min="1" max="4000" step="1" value="800" />
+                  </label>
+                  <label class="number-field" for="window-center-input">
+                    <span>Level</span>
+                    <input id="window-center-input" type="number" min="-1200" max="3000" step="1" value="250" />
+                  </label>
+                </div>
+
+                <label class="slider-field" for="window-width-slider">
+                  <span>Window width</span>
+                  <input id="window-width-slider" type="range" min="1" max="4000" step="1" value="800" />
+                </label>
+
+                <label class="slider-field" for="window-center-slider">
+                  <span>Window level</span>
+                  <input id="window-center-slider" type="range" min="-1200" max="3000" step="1" value="250" />
+                </label>
+              </section>
+
+              <section class="sidebar-section">
+                <div class="section-header">
+                  <h2>Profile Analysis</h2>
+                  <span class="section-note" id="profile-status">Draw one line or square profile</span>
+                </div>
+                <div class="profile-chart-shell">
+                  <canvas id="profile-chart" class="profile-chart" width="320" height="180"></canvas>
+                </div>
+                <div class="inline-actions">
+                  <button id="profile-reset-auto-button" class="button tertiary" type="button">
+                    Reset Profile Auto
+                  </button>
+                </div>
+                <dl class="profile-metrics" id="profile-metrics">
+                  <div class="meta-row">
+                    <dt>Selection</dt>
+                    <dd>Draw a line or square profile to see the curve and edge metrics here.</dd>
+                  </div>
+                </dl>
+                <p class="hint">
+                  The profile chart is only for the active profile. Draw a line or square profile in
+                  the vessel, then fine-tune the guide lines if needed.
+                </p>
+                <p class="hint">
+                  For `Square Profile`, use `Edit` and then right click on the band: drag to adjust
+                  thickness, or right click the rotation handle to rotate it.
+                </p>
+              </section>
+
+              <section class="sidebar-section">
+                <div class="section-header">
+                  <h2>Finish</h2>
+                  <span class="section-note">Save the current stent, then finish the patient</span>
+                </div>
+                <div class="export-grid" hidden>
+                  <button id="export-current-button" class="button tertiary" type="button">Export Current PNG</button>
+                  <button id="export-grid-button" class="button tertiary" type="button">Export 4-up PNG</button>
+                  <button id="export-cine-button" class="button tertiary" type="button">Export Cine Clip</button>
+                  <button id="export-measurements-button" class="button tertiary" type="button">
+                    Export Measurement Detail
+                  </button>
+                </div>
+                <div class="inline-actions">
+                  <button id="finish-close-button" class="button secondary" type="button">Finish Patient</button>
+                </div>
+                <p class="hint">
+                  `Finish Patient` opens the final questionnaire, requires a `Study ID`, and exports
+                  the saved stents per reconstruction as PNG and CSV.
+                </p>
+              </section>
+
+              <section class="sidebar-section" hidden>
+                <div class="section-header">
+                  <h2>Study</h2>
+                  <span class="section-note" id="measurement-count">0 annotations</span>
+                </div>
+
+                <dl class="meta-list">
+                  <div class="meta-row">
+                    <dt>Patient</dt>
+                    <dd id="meta-patient">No study loaded</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Patient ID</dt>
+                    <dd id="meta-patient-id">-</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Series</dt>
+                    <dd id="meta-series">-</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Modality</dt>
+                    <dd id="meta-modality">-</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Slices</dt>
+                    <dd id="meta-slices">-</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Matrix</dt>
+                    <dd id="meta-matrix">-</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Spacing</dt>
+                    <dd id="meta-spacing">-</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Thickness</dt>
+                    <dd id="meta-thickness">-</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Acquired</dt>
+                    <dd id="meta-time">-</dd>
+                  </div>
+                  <div class="meta-row">
+                    <dt>Position</dt>
+                    <dd id="meta-position">-</dd>
+                  </div>
+                </dl>
+              </section>
+
+              <section class="sidebar-section compact" hidden>
+                <div class="section-header">
+                  <h2>Controls</h2>
+                </div>
+                <p class="hint">
+                  Mouse wheel scrolls slices. Click a viewport to focus it. Arrow keys scroll the focused
+                  viewport. Space starts cine in the presentation stack.
+                </p>
+                <p class="hint">
+                  Hold right click in the axial presentation viewer and drag to scroll very quickly
+                  through the stack.
+                </p>
+                <p class="hint">
+                  In 4-up mode, the viewer shows real axial, coronal, and sagittal reformats. `Arrow`
+                  draws a pointer, `Text Label` lets you place a short note, and `ROI` closes on
+                  double-click.
+                </p>
+                <p class="hint">
+                  Shortcuts: `r` ROI, `c` picture export, `v` cine export, `m` pan, `z` zoom, `w`
+                  window, `1-4` presets.
+                </p>
+                <p class="hint">
+                  Extra shortcuts: `g` stent path, `q` line profile, `s` square profile, `x` MPR
+                  coordinate tool.
+                </p>
+                <p class="hint">
+                  `x` switches to `MPR Coord` so you can reposition the shared crosshair directly in any
+                  viewport.
+                </p>
+                <p class="hint">
+                  Loaded reconstructions share one MPR coordinate system, so switching reconstructions
+                  keeps the same position, rotation, and zoom.
+                </p>
+                <p class="hint">
+                  `Load DICOM Files` lets you select normal `.dcm` files. `Load Folder` is there if you
+                  want to pick one whole patient folder at once.
+                </p>
+              </section>
+            </div>
+          </details>
+        </aside>
+
+        <section class="viewer-column">
+          <div class="shell-card stage">
+            <div class="empty-state" id="empty-state">
+              <p class="empty-title">Drop a cardiac CT / CCTA series here</p>
+              <p class="empty-copy">
+                Load a gated CTA stack and this separate prototype will open the familiar HAGRad
+                review view plus dedicated coronary and stent MPR tools.
+              </p>
+              <p class="empty-copy subtle">
+                This is a research-only browser prototype for workflow development, not a validated
+                diagnostic stent analysis system.
+              </p>
+            </div>
+
+            <div class="viewport-grid layout-presentation" id="viewport-grid">
+              <article class="viewport-panel is-presentation is-active" data-viewport-id="presentation" tabindex="0">
+                <header class="viewport-header">
+                  <span>Presentation (Axial)</span>
+                  <span class="viewport-readout" id="presentation-readout">0 / 0</span>
+                </header>
+                <div class="viewport-element" id="viewport-presentation"></div>
+                <div class="viewport-mini-actions with-header-offset">
+                  <button
+                    id="presentation-reset-window-button"
+                    class="viewport-mini-button"
+                    type="button"
+                    aria-label="Reset default windowing"
+                    title="Reset default windowing"
+                  >↺</button>
+                  <button
+                    id="presentation-reset-fit-button"
+                    class="viewport-mini-button"
+                    type="button"
+                    aria-label="Reset zoom and center"
+                    title="Reset zoom and center"
+                  >⛶</button>
+                </div>
+                <div class="orientation-overlay">
+                  <span class="orientation-label top">A</span>
+                  <span class="orientation-label bottom">P</span>
+                  <span class="orientation-label left">R</span>
+                  <span class="orientation-label right">L</span>
+                </div>
+              </article>
+
+              <article class="viewport-panel" data-viewport-id="axial" tabindex="0">
+                <header class="viewport-header">
+                  <span>Coronal</span>
+                  <span class="viewport-readout" id="axial-readout">Coronal -</span>
+                </header>
+                <div class="viewport-element" id="viewport-axial"></div>
+                <div class="orientation-overlay">
+                  <span class="orientation-label top">A</span>
+                  <span class="orientation-label bottom">P</span>
+                  <span class="orientation-label left">R</span>
+                  <span class="orientation-label right">L</span>
+                </div>
+              </article>
+
+              <article class="viewport-panel" data-viewport-id="sagittal" tabindex="0">
+                <header class="viewport-header">
+                  <span>Axial</span>
+                  <span class="viewport-readout" id="sagittal-readout">Axial -</span>
+                </header>
+                <div class="viewport-element" id="viewport-sagittal"></div>
+                <div class="orientation-overlay">
+                  <span class="orientation-label top">A</span>
+                  <span class="orientation-label bottom">P</span>
+                  <span class="orientation-label left">R</span>
+                  <span class="orientation-label right">L</span>
+                </div>
+              </article>
+
+              <article class="viewport-panel" data-viewport-id="coronal" tabindex="0">
+                <header class="viewport-header">
+                  <span>Sagittal</span>
+                  <span class="viewport-readout" id="coronal-readout">Sagittal -</span>
+                </header>
+                <div class="viewport-element" id="viewport-coronal"></div>
+                <div class="orientation-overlay">
+                  <span class="orientation-label top">A</span>
+                  <span class="orientation-label bottom">P</span>
+                  <span class="orientation-label left">R</span>
+                  <span class="orientation-label right">L</span>
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <section class="shell-card coronary-panel">
+            <div class="section-header coronary-panel-header">
+              <h2>Vessel MPR</h2>
+              <span class="section-note" id="coronary-panel-status">No active vessel</span>
+            </div>
+            <section class="coronary-review-dashboard">
+              <article class="review-focus-card">
+                <div class="review-focus-copy">
+                  <p class="review-kicker" id="coronary-review-kicker">Segment -> Adjust -> Measure</p>
+                  <h3 id="coronary-review-title">Select or build a vessel to review</h3>
+                  <p class="review-summary" id="coronary-review-summary">
+                    Build the vessel on axial images, adjust the path here, then place the
+                    measurements you want inside the reviewed segment.
+                  </p>
+                </div>
+                <div class="review-focus-actions">
+                  <button id="coronary-jump-lesion-button" class="button tertiary" type="button" hidden>
+                    Jump Tightest
+                  </button>
+                  <button id="next-stent-button-panel" class="button tertiary" type="button">
+                    Next Stent
+                  </button>
+                  <button id="coronary-open-mpr-button" class="button tertiary" type="button" hidden>
+                    Open 4-up MPR
+                  </button>
+                </div>
+              </article>
+              <div class="review-kpi-grid" hidden>
+                <article class="review-kpi-card">
+                  <span class="review-kpi-label">Stent Length</span>
+                  <strong id="coronary-review-reference">-</strong>
+                </article>
+                <article class="review-kpi-card">
+                  <span class="review-kpi-label">Ext Diameter</span>
+                  <strong id="coronary-review-mld">-</strong>
+                </article>
+                <article class="review-kpi-card">
+                  <span class="review-kpi-label">Int Diameter</span>
+                  <strong id="coronary-review-mla">-</strong>
+                </article>
+                <article class="review-kpi-card is-accent">
+                  <span class="review-kpi-label">Attenuation</span>
+                  <strong id="coronary-review-ds">-</strong>
+                </article>
+                <article class="review-kpi-card">
+                  <span class="review-kpi-label">SNR</span>
+                  <strong id="coronary-review-as">-</strong>
+                </article>
+                <article class="review-kpi-card">
+                  <span class="review-kpi-label">CNR</span>
+                  <strong id="coronary-review-quality">-</strong>
+                </article>
+              </div>
+            </section>
+            <div class="coronary-grid">
+              <article class="coronary-card coronary-card-curved">
+                <header class="coronary-card-header">
+                  <span>Curved CPR</span>
+                  <span class="coronary-card-note" id="coronary-curved-readout">Waiting for vessel</span>
+                </header>
+                <canvas id="coronary-curved-canvas" class="coronary-canvas" width="420" height="220"></canvas>
+              </article>
+
+              <article class="coronary-card coronary-card-straightened">
+                <header class="coronary-card-header">
+                  <span>Straightened View</span>
+                  <span class="coronary-card-note" id="coronary-straightened-readout">Rotation-minimizing frame</span>
+                </header>
+                <canvas
+                  id="coronary-straightened-canvas"
+                  class="coronary-canvas"
+                  width="420"
+                  height="220"
+                ></canvas>
+              </article>
+
+              <article class="coronary-card coronary-card-cross-section">
+                <header class="coronary-card-header">
+                  <span>Orthogonal Cross-section</span>
+                  <span class="coronary-card-note" id="coronary-cross-section-readout">Editable contour</span>
+                </header>
+                <canvas
+                  id="coronary-cross-section-canvas"
+                  class="coronary-canvas coronary-canvas-square"
+                  width="320"
+                  height="320"
+                ></canvas>
+              </article>
+            </div>
+            <p class="hint">
+              The longitudinal views are for path and span adjustment. The cross-section is the
+              main edit surface for outer and inner diameter correction at the active sample.
+            </p>
+          </section>
+
+          <footer class="shell-card footer-bar">
+            <div class="footer-block">
+              <label class="footer-label" for="slice-slider">Presentation slice</label>
+              <input id="slice-slider" type="range" min="0" max="0" value="0" step="1" disabled />
+              <span class="footer-value" id="slice-summary">0 / 0</span>
+            </div>
+
+            <div class="footer-block compact">
+              <label class="footer-label" for="cine-speed-slider">Cine</label>
+              <input id="cine-speed-slider" type="range" min="1" max="24" value="8" step="1" />
+              <span class="footer-value" id="cine-speed-readout">8 fps</span>
+            </div>
+
+            <div class="footer-actions">
+              <button id="cine-button" class="button secondary" type="button">Play Cine</button>
+            </div>
+          </footer>
+        </section>
+      </section>
+    </main>
+
+    <div class="modal-shell" id="export-dialog" hidden>
+      <div class="modal-backdrop" data-export-dialog-close></div>
+      <section
+        class="modal-card shell-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="export-dialog-title"
+        aria-describedby="export-dialog-copy"
+      >
+        <header class="modal-header">
+          <div>
+            <p class="modal-kicker" id="export-dialog-kicker">Patient export</p>
+            <h2 id="export-dialog-title">Finish Patient</h2>
+          </div>
+          <button id="export-dialog-close-button" class="button tertiary modal-close-button" type="button">
+            Close
+          </button>
+        </header>
+        <p class="modal-copy" id="export-dialog-copy">
+          Enter the Study ID to place into the exported PNG and CSV files. Final patient export also
+          captures per-stent Likert questionnaire scores. For each question, select one of four
+          dots where `1` means poor and `4` means excellent.
+        </p>
+        <label class="number-field export-dialog-field" for="export-study-select">
+          <span>Research Study</span>
+          <select id="export-study-select">
+            <option value="">No study selected</option>
+          </select>
+        </label>
+        <div class="inline-actions">
+          <label class="number-field export-dialog-field" for="export-study-create-input">
+            <span>New Study</span>
+            <input id="export-study-create-input" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="stent_clari" />
+          </label>
+          <button id="export-study-create-button" class="button tertiary" type="button">Create Study</button>
+        </div>
+        <p class="hint" id="export-study-target-note">
+          Mirrored exports go into the general stent folder until a study is selected.
+        </p>
+        <label class="number-field export-dialog-field" for="export-study-id-input">
+          <span>Study ID</span>
+          <input
+            id="export-study-id-input"
+            type="text"
+            inputmode="text"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Type Study ID"
+          />
+        </label>
+        <div id="finish-patient-unsaved-note" class="artifact-status is-hidden">
+          The active stent has not been saved yet. Use `Next Stent` first if you want it included in
+          the final export.
+        </div>
+        <div class="sidebar-section finish-patient-section">
+          <div class="section-header">
+            <h2>Saved Stents</h2>
+            <span class="section-note" id="finish-patient-summary">0 saved</span>
+          </div>
+          <div id="finish-patient-stent-list" class="stent-score-list">
+            <p class="annotation-empty">Save at least one stent before finishing the patient.</p>
+          </div>
+        </div>
+        <p class="modal-error" id="export-dialog-error" hidden>Study ID, at least one saved stent, and all per-stent Likert scores are required before export.</p>
+        <div class="modal-actions">
+          <button id="export-dialog-cancel-button" class="button tertiary" type="button">Cancel</button>
+          <button id="export-dialog-confirm-button" class="button primary" type="button">Export Patient</button>
+        </div>
+      </section>
+    </div>
+
+    <script src="/vendor/cornerstone.min.js"></script>
+    <script src="/vendor/dicomParser.min.js"></script>
+    <script src="/vendor/cornerstoneWADOImageLoaderNoWebWorkers.bundle.min.js"></script>
+    <script src="/src/shared/hagrad-core.js"></script>
+    <script src="/src/shared/hagrad-profile-analysis.js"></script>
+    <script src="/src/shared/hagrad-export-studies.js"></script>
+    <script src="/src/stent/stent.js"></script>
+  </body>
+</html>

@@ -1,0 +1,555 @@
+ObjC.import("Foundation");
+
+function readText(path) {
+  return $.NSString.stringWithContentsOfFileEncodingError($(path), $.NSUTF8StringEncoding, null).js;
+}
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+const root = "/Users/mt_hagar/Documents/Playground/ppt-dicom-viewer";
+globalThis.window = globalThis;
+eval(readText(root + "/src/shared/hagrad-core.js"));
+eval(readText(root + "/src/noiselab/noiselab-core.js"));
+eval(readText(root + "/src/noiselab/noiselab-export.js"));
+
+const core = globalThis.HAGRadNoiseLabCore;
+const exportApi = globalThis.HAGRadNoiseLabExport;
+assert(core, "NoiseLab core did not load.");
+assert(exportApi, "NoiseLab export helpers did not load.");
+
+const volume = {
+  rows: 5,
+  columns: 5,
+  rowSpacing: 2,
+  columnSpacing: 1,
+  slices: [
+    {
+      slope: 1,
+      intercept: 0,
+      units: "HU",
+      pixels: Int16Array.from([
+        1, 2, 3, 4, 5,
+        6, 7, 8, 9, 10,
+        11, 12, 13, 14, 15,
+        16, 17, 18, 19, 20,
+        21, 22, 23, 24, 25,
+      ]),
+      record: {
+        studyInstanceUID: "1.2.3",
+        seriesInstanceUID: "4.5.6",
+        sopInstanceUID: "7.8.9",
+        modality: "CT",
+        pixelSpacing: [2, 1],
+      },
+    },
+  ],
+};
+
+const pixelRoi = core.createSquareRoi({
+  id: "roi_001",
+  label: "ROI 01",
+  datasetId: "series-a",
+  sliceIndex: 0,
+  squareMode: core.SQUARE_MODE_PIXEL,
+  centerXImg: 2,
+  centerYImg: 2,
+  edgePx: 3,
+});
+const pixelGeometry = core.resolveSquareGeometry(pixelRoi, volume);
+assert(pixelGeometry.edgePxX === 3 && pixelGeometry.edgePxY === 3, "Pixel-square geometry should preserve equal pixel edges.");
+assert(pixelGeometry.edgeMmX === 3 && pixelGeometry.edgeMmY === 6, "Pixel-square physical edge lengths should reflect anisotropic spacing.");
+
+const physicalRoi = core.createSquareRoi({
+  id: "roi_002",
+  label: "ROI 02",
+  datasetId: "series-a",
+  sliceIndex: 0,
+  squareMode: core.SQUARE_MODE_PHYSICAL,
+  centerXImg: 2,
+  centerYImg: 2,
+  edgeMm: 4,
+});
+const physicalGeometry = core.resolveSquareGeometry(physicalRoi, volume);
+assert(Math.abs(physicalGeometry.edgePxX - 4) < 1e-9, "Physical-square x edge should account for x spacing.");
+assert(Math.abs(physicalGeometry.edgePxY - 2) < 1e-9, "Physical-square y edge should account for y spacing.");
+
+const geometryRecord = {
+  imagePositionPatient: [10, 20, 30],
+  rowDirection: [1, 0, 0],
+  columnDirection: [0, 1, 0],
+  normalVector: [0, 0, 1],
+  pixelSpacing: [2, 1],
+};
+const imageCoord = core.patientPointToImageCoord(geometryRecord, [13, 28, 30]);
+assert(Math.abs(imageCoord.xImg - 3) < 1e-9, "Patient-to-image x mapping should use column spacing.");
+assert(Math.abs(imageCoord.yImg - 4) < 1e-9, "Patient-to-image y mapping should use row spacing.");
+const nearestSlice = core.findNearestSliceIndexForPatientPoint(
+  {
+    depth: 3,
+    normalDirection: [0, 0, 1],
+    slices: [
+      { record: { imagePositionPatient: [0, 0, 0], normalVector: [0, 0, 1] } },
+      { record: { imagePositionPatient: [0, 0, 2], normalVector: [0, 0, 1] } },
+      { record: { imagePositionPatient: [0, 0, 4], normalVector: [0, 0, 1] } },
+    ],
+  },
+  [0, 0, 3.1],
+  0
+);
+assert(nearestSlice.index === 2, "Nearest patient-position slice mapping should select closest z location.");
+
+const analysis = core.extractSquareRoiPixels(volume, 0, pixelRoi);
+assert(analysis.entries.length === 9, "3x3 pixel-square ROI should extract 9 pixels.");
+assert(analysis.storedMatrix[1][1] === 13, "Center pixel should be preserved in matrix export.");
+assert(Math.abs(analysis.statsRaw.mean - 13) < 1e-9, "Mean should match the synthetic matrix expectation.");
+assert(Math.abs(analysis.statsRaw.sd - Math.sqrt(156 / 9)) < 1e-9, "Population SD should be deterministic.");
+assert(analysis.statsRaw.median === 13, "Median should be exact.");
+assert(analysis.statsRaw.iqr === 8, "IQR should be exact with the chosen quantile definition.");
+
+const alignmentVolume = {
+  rows: 6,
+  columns: 6,
+  rowSpacing: 1,
+  columnSpacing: 1,
+  slices: [
+    {
+      slope: 1,
+      intercept: 0,
+      units: "HU",
+      pixels: Int16Array.from([
+        10, 10, 10, 10, 10, 10,
+        10, 10, 10, 10, 10, 10,
+        10, 10, 10, 10, 10, 10,
+        -1000, -1000, -1000, -1000, -1000, -1000,
+        -1000, -1000, -1000, -1000, -1000, -1000,
+        -1000, -1000, -1000, -1000, -1000, -1000,
+      ]),
+      record: {
+        studyInstanceUID: "align-study",
+        seriesInstanceUID: "align-series",
+        sopInstanceUID: "align-sop",
+        modality: "CT",
+        pixelSpacing: [1, 1],
+      },
+    },
+  ],
+};
+const waterOnlyRoi = core.createSquareRoi({
+  id: "roi_align_top",
+  label: "ROI Align Top",
+  datasetId: "align-series",
+  sliceIndex: 0,
+  squareMode: core.SQUARE_MODE_PIXEL,
+  centerXImg: 2,
+  centerYImg: 1,
+  edgePx: 2,
+});
+const airCrossingRoi = core.createSquareRoi({
+  id: "roi_align_bottom",
+  label: "ROI Align Bottom",
+  datasetId: "align-series",
+  sliceIndex: 0,
+  squareMode: core.SQUARE_MODE_PIXEL,
+  centerXImg: 2,
+  centerYImg: 2.5,
+  edgePx: 2,
+});
+const waterOnlyAnalysis = core.extractSquareRoiPixels(alignmentVolume, 0, waterOnlyRoi);
+const airCrossingAnalysis = core.extractSquareRoiPixels(alignmentVolume, 0, airCrossingRoi);
+assert(waterOnlyAnalysis.statsCalibrated.mean === 10, "Top ROI should sample the visible water-valued rows.");
+assert(airCrossingAnalysis.statsCalibrated.mean === -495, "Moved ROI should sample different source rows including air.");
+assert(
+  waterOnlyAnalysis.statsCalibrated.sd !== airCrossingAnalysis.statsCalibrated.sd,
+  "Moving a visible ROI across a water-air boundary must change the measured SD."
+);
+
+const histogram = core.buildHistogram([1, 2, 3, 4], 2);
+assert(histogram.length === 2, "Histogram should respect requested bin count.");
+assert(histogram[0].count + histogram[1].count === 4, "Histogram counts should sum to sample count.");
+
+const profileVisualization = core.buildRoiProfileAnalysis(analysis, { histogramBins: 6 });
+assert(profileVisualization, "Profile visualization model should be created.");
+assert(profileVisualization.profiles.length === 4, "Four baseline profile representations should be available.");
+assert(profileVisualization.histogram.length === 6, "Profile visualization histogram should respect requested bin count.");
+assert(
+  JSON.stringify(profileVisualization.profilesByType["horizontal-center"].values) === JSON.stringify([12, 13, 14]),
+  "Horizontal center profile should match the center row of the ROI."
+);
+assert(
+  JSON.stringify(profileVisualization.profilesByType["vertical-center"].values) === JSON.stringify([8, 13, 18]),
+  "Vertical center profile should match the center column of the ROI."
+);
+assert(
+  JSON.stringify(profileVisualization.profilesByType["horizontal-center"].deviations) === JSON.stringify([-1, 0, 1]),
+  "Profile deviations should be mean-centered and deterministic."
+);
+
+const npsLayout = core.createConcentricNpsRois({
+  setId: "nps_test",
+  datasetId: "series-a",
+  sliceIndex: 0,
+  centerXImg: 10,
+  centerYImg: 20,
+  edgePx: 4,
+  ringCount: 2,
+  roisPerRing: 4,
+  ringSpacingPx: 8,
+  includeCenter: true,
+  sequenceStart: 10,
+});
+assert(npsLayout.rois.length === 9, "Concentric NPS layout should include center plus ring ROIs.");
+assert(npsLayout.rois[0].type === core.NPS_ROI_TYPE, "Concentric layout should create NPS ROI records.");
+assert(npsLayout.rois[1].npsRadiusPx === 8, "First NPS ring should use the configured spacing.");
+
+const npsMatrix = [
+  [1, 0, -1, 0],
+  [1, 0, -1, 0],
+  [1, 0, -1, 0],
+  [1, 0, -1, 0],
+];
+const npsAnalysis = core.buildNpsAnalysisFromMatrices([npsMatrix], {
+  spacingX: 1,
+  spacingY: 1,
+  units: "HU",
+});
+assert(!npsAnalysis.error, "Synthetic NPS analysis should complete.");
+assert(npsAnalysis.edgePx === 4, "NPS edge size should be preserved.");
+assert(Math.abs(npsAnalysis.meanRoiVariance - 0.5) < 1e-9, "Synthetic ROI variance should be exact.");
+assert(Math.abs(npsAnalysis.integratedNps - 0.5) < 1e-9, "Integrated NPS should close to ROI variance.");
+assert(Math.abs(npsAnalysis.varianceClosureRatio - 1) < 1e-9, "NPS variance closure ratio should be 1 for the synthetic case.");
+assert(npsAnalysis.radialBins.length > 0, "NPS radial bins should be generated.");
+assert(npsAnalysis.normalizedNps2d.length === 4, "Normalized 2D NPS should be generated.");
+assert(npsAnalysis.radialBins.some((bin) => Number.isFinite(bin.normalizedNps)), "Normalized radial NPS values should be generated.");
+assert(npsAnalysis.radialBins.some((bin) => Number.isFinite(bin.cumulativeFraction)), "Cumulative NPS fractions should be generated.");
+assert(Number.isFinite(npsAnalysis.f10Frequency), "NPS f10 frequency should be generated.");
+assert(Number.isFinite(npsAnalysis.f50Frequency), "NPS f50 frequency should be generated.");
+assert(Number.isFinite(npsAnalysis.f90Frequency), "NPS f90 frequency should be generated.");
+assert(npsAnalysis.f10Frequency <= npsAnalysis.f50Frequency, "NPS f10 should not exceed f50.");
+assert(npsAnalysis.f50Frequency <= npsAnalysis.f90Frequency, "NPS f50 should not exceed f90.");
+const npsBandFractionSum = npsAnalysis.bandPowers.bands.reduce((sum, band) => sum + band.fraction, 0);
+assert(Math.abs(npsBandFractionSum - 1) < 1e-9, "NPS bandpower fractions should sum to 1.");
+
+const bundle = core.buildExportBundle(
+  {
+    id: "series-a",
+    meta: {
+      studyInstanceUID: "1.2.3",
+      seriesInstanceUID: "4.5.6",
+      frameOfReferenceUID: "9.9.9",
+      patientId: "patient-1",
+      modality: "CT",
+    },
+    volume,
+  },
+  [pixelRoi],
+  {
+    researchStudyId: "noise_research",
+    patientStudyId: "case_001",
+    timestamp: "2026-04-02T12:00:00Z",
+    npsSets: [],
+  }
+);
+
+assert(bundle.files.some((file) => file.name === "roi_summary.csv"), "Bundle should include roi_summary.csv.");
+assert(bundle.files.some((file) => file.name === "roi_pixels.csv"), "Bundle should include roi_pixels.csv.");
+assert(bundle.files.some((file) => file.name === "roi_pixels_matrix.json"), "Bundle should include roi_pixels_matrix.json.");
+assert(bundle.files.some((file) => file.name === "nps_summary.csv"), "Bundle should include nps_summary.csv.");
+assert(bundle.files.some((file) => file.name === "nps_radial.csv"), "Bundle should include nps_radial.csv.");
+assert(bundle.files.some((file) => file.name === "nps_normalized_radial.csv"), "Bundle should include nps_normalized_radial.csv.");
+assert(bundle.files.some((file) => file.name === "nps_cumulative.csv"), "Bundle should include nps_cumulative.csv.");
+assert(bundle.files.some((file) => file.name === "nps_bandpower.csv"), "Bundle should include nps_bandpower.csv.");
+assert(bundle.files.some((file) => file.name === "nps_matrix.json"), "Bundle should include nps_matrix.json.");
+assert(core.makeHistogramFilename(pixelRoi) === "roi_roi_001_histogram.png", "Histogram filename should be deterministic.");
+assert(
+  core.makeProfileFigureFilename(pixelRoi, "horizontal-center") === "roi_roi_001_profile_horizontal_center.png",
+  "Profile figure filename should be deterministic."
+);
+assert(
+  core.makeCharacterizationFigureFilename(pixelRoi, "horizontal-center") === "roi_roi_001_characterization_horizontal_center.png",
+  "Characterization figure filename should be deterministic."
+);
+assert(core.makeNpsCurveFilename({ id: "nps_set_001" }) === "nps_nps_set_001_curve.png", "NPS curve filename should be deterministic.");
+assert(
+  core.makeNpsNormalizedCurveFilename({ id: "nps_set_001" }) === "nps_nps_set_001_normalized_curve.png",
+  "NPS normalized curve filename should be deterministic."
+);
+assert(
+  core.makeNpsCumulativeCurveFilename({ id: "nps_set_001" }) === "nps_nps_set_001_cumulative_curve.png",
+  "NPS cumulative curve filename should be deterministic."
+);
+assert(
+  core.makeNpsBandPowerFilename({ id: "nps_set_001" }) === "nps_nps_set_001_bandpower.png",
+  "NPS bandpower filename should be deterministic."
+);
+
+const volumeB = {
+  ...volume,
+  slices: [
+    {
+      ...volume.slices[0],
+      pixels: Int16Array.from(Array.from(volume.slices[0].pixels).map((value) => value * 2)),
+      record: {
+        ...volume.slices[0].record,
+        seriesInstanceUID: "4.5.7",
+        sopInstanceUID: "7.8.10",
+      },
+    },
+  ],
+};
+const copiedRoi = core.createSquareRoi({
+  id: "roi_003",
+  label: "ROI 01",
+  datasetId: "series-b",
+  sliceIndex: 0,
+  squareMode: core.SQUARE_MODE_PIXEL,
+  centerXImg: 2,
+  centerYImg: 2,
+  edgePx: 3,
+});
+copiedRoi.copiedFromRoiId = pixelRoi.id;
+const comparisonBundle = core.buildReconstructionComparisonBundle(
+  [
+    {
+      id: "series-a",
+      label: "baseline_recon",
+      meta: {
+        studyInstanceUID: "1.2.3",
+        seriesInstanceUID: "4.5.6",
+        seriesDescription: "Baseline Recon",
+        seriesNumber: 1,
+      },
+      volume,
+    },
+    {
+      id: "series-b",
+      label: "sharp_recon",
+      meta: {
+        studyInstanceUID: "1.2.3",
+        seriesInstanceUID: "4.5.7",
+        seriesDescription: "Sharp Recon",
+        seriesNumber: 2,
+      },
+      volume: volumeB,
+    },
+  ],
+  [pixelRoi, copiedRoi],
+  {
+    researchStudyId: "noise_research",
+    patientStudyId: "case_001",
+    timestamp: "2026-04-02T12:00:00Z",
+    npsSets: [],
+  }
+);
+assert(
+  comparisonBundle.files.some((file) => file.name === "reconstruction_noise_comparison.csv"),
+  "Comparison bundle should include ROI reconstruction comparison CSV."
+);
+assert(comparisonBundle.roiComparison.rows.length === 2, "Comparison export should include one row per reconstruction.");
+const copiedComparisonRow = comparisonBundle.roiComparison.rows.find((row) => row.roi_id === "roi_003");
+assert(copiedComparisonRow, "Copied ROI comparison row should be present.");
+assert(
+  Math.abs(Number(copiedComparisonRow.noise_ratio_vs_baseline) - 2) < 1e-9,
+  "Copied reconstruction should report doubled SD ratio for doubled synthetic pixels."
+);
+assert(
+  comparisonBundle.roiComparison.summaryRows[0].highest_noise_reconstruction_label === "sharp_recon",
+  "Comparison summary should identify the higher-noise reconstruction."
+);
+
+const figureSpec = exportApi.buildOverlayFigureSpec(volume, pixelRoi, { windowCenter: 13, windowWidth: 12 }, {});
+assert(figureSpec && figureSpec.image && figureSpec.image.data.length === 5 * 5 * 4, "Overlay figure spec should include rasterized image data.");
+
+const ctxCalls = [];
+function createMockContext(callStore) {
+  return {
+  canvas: { width: 320, height: 240 },
+    beginPath() { callStore.push("beginPath"); },
+    moveTo(x, y) { callStore.push(["moveTo", x, y]); },
+    lineTo(x, y) { callStore.push(["lineTo", x, y]); },
+    stroke() { callStore.push("stroke"); },
+    save() { callStore.push("save"); },
+    restore() { callStore.push("restore"); },
+    fillRect(x, y, width, height) { callStore.push(["fillRect", x, y, width, height]); },
+    strokeRect(x, y, width, height) { callStore.push(["strokeRect", x, y, width, height]); },
+    putImageData(imageData, x, y) { callStore.push(["putImageData", imageData.width, imageData.height, x, y]); },
+    fillText(text) { callStore.push(["fillText", text]); },
+    setLineDash(value) { callStore.push(["setLineDash", value]); },
+    drawImage() { callStore.push("drawImage"); },
+    set fillStyle(value) { callStore.push(["fillStyle", value]); },
+    set strokeStyle(value) { callStore.push(["strokeStyle", value]); },
+    set lineWidth(value) { callStore.push(["lineWidth", value]); },
+    set font(value) { callStore.push(["font", value]); },
+    set textBaseline(value) { callStore.push(["textBaseline", value]); },
+    set textAlign(value) { callStore.push(["textAlign", value]); },
+  };
+}
+
+const mockContext = createMockContext(ctxCalls);
+assert(exportApi.drawOverlayFigure(mockContext, figureSpec) === true, "Overlay figure drawing should complete.");
+assert(ctxCalls.some((entry) => Array.isArray(entry) && entry[0] === "strokeRect"), "Overlay figure should draw an ROI rectangle.");
+assert(
+  exportApi.drawProfilePlotFigure(mockContext, {
+    width: 320,
+    height: 240,
+    title: "Profile plot",
+    series: [{ label: "Signal", values: profileVisualization.profilesByType["horizontal-center"].values, color: "#0b6cae" }],
+    referenceLines: [{ value: profileVisualization.profilesByType["horizontal-center"].stats.mean, color: "#c84c3c" }],
+  }) === true,
+  "Profile plot figure should render."
+);
+assert(
+  exportApi.drawHistogramFigure(mockContext, {
+    width: 320,
+    height: 220,
+    title: "Histogram",
+    bins: profileVisualization.histogram,
+    meanValue: analysis.statsCalibrated.mean,
+  }) === true,
+  "Histogram figure should render."
+);
+assert(
+  exportApi.drawMatrixHeatmap(mockContext, {
+    width: 320,
+    height: 320,
+    title: "ROI matrix",
+    matrix: profileVisualization.rawMatrix,
+    overlay: { type: "row", index: profileVisualization.centerRowIndex },
+  }) === true,
+  "Matrix heatmap should render."
+);
+assert(
+  exportApi.drawProfileCharacterizationFigure(mockContext, {
+    width: 320,
+    height: 260,
+    title: "Characterized signal",
+    values: profileVisualization.profilesByType["horizontal-center"].values,
+    deviations: profileVisualization.profilesByType["horizontal-center"].deviations,
+    meanValue: profileVisualization.profilesByType["horizontal-center"].stats.mean,
+    units: "HU",
+  }) === true,
+  "Profile characterization figure should render."
+);
+assert(
+  exportApi.drawNpsCurveFigure(mockContext, {
+    width: 320,
+    height: 240,
+    title: "NPS curve",
+    radialBins: npsAnalysis.radialBins,
+    peakFrequency: npsAnalysis.peakFrequency,
+    npsUnits: npsAnalysis.npsUnits,
+  }) === true,
+  "NPS curve figure should render."
+);
+assert(
+  exportApi.drawNpsCurveFigure(mockContext, {
+    width: 320,
+    height: 240,
+    title: "Normalized NPS curve",
+    radialBins: npsAnalysis.radialBins,
+    valueField: "normalizedNps",
+    peakFrequency: npsAnalysis.peakFrequency,
+    npsUnits: npsAnalysis.normalizedNpsUnits,
+  }) === true,
+  "Normalized NPS curve figure should render."
+);
+assert(
+  exportApi.drawNpsCurveFigure(mockContext, {
+    width: 320,
+    height: 240,
+    title: "Cumulative NPS curve",
+    radialBins: npsAnalysis.radialBins,
+    valueField: "cumulativeFraction",
+    referenceFrequencies: [
+      { label: "f10", frequency: npsAnalysis.f10Frequency },
+      { label: "f50", frequency: npsAnalysis.f50Frequency },
+      { label: "f90", frequency: npsAnalysis.f90Frequency },
+    ],
+  }) === true,
+  "Cumulative NPS curve figure should render."
+);
+assert(
+  exportApi.drawNpsBandPowerFigure(mockContext, {
+    width: 320,
+    height: 240,
+    title: "Bandpower",
+    bandPowers: npsAnalysis.bandPowers,
+  }) === true,
+  "NPS bandpower figure should render."
+);
+assert(
+  exportApi.drawNpsHeatmapFigure(mockContext, {
+    width: 320,
+    height: 320,
+    title: "NPS heatmap",
+    nps2d: npsAnalysis.nps2d,
+    peakFrequency: npsAnalysis.peakFrequency,
+  }) === true,
+  "NPS heatmap figure should render."
+);
+assert(
+  exportApi.drawReconstructionComparisonFigure(mockContext, {
+    width: 420,
+    height: 260,
+    title: "Comparison",
+    rows: comparisonBundle.roiComparison.rows,
+  }) === true,
+  "Reconstruction comparison figure should render."
+);
+globalThis.document = {
+  createElement(tagName) {
+    assert(tagName === "canvas", "Only canvas elements should be created in export helpers.");
+    const childCalls = [];
+    return {
+      width: 0,
+      height: 0,
+      getContext() {
+        return createMockContext(childCalls);
+      },
+    };
+  },
+};
+assert(
+  exportApi.drawCharacterizationCompositeFigure(mockContext, {
+    width: 640,
+    height: 300,
+    title: "Characterization composite",
+    profile: profileVisualization.profilesByType["horizontal-center"],
+    visualization: profileVisualization,
+  }) === true,
+  "Composite characterization figure should render."
+);
+
+console.log(
+  JSON.stringify(
+    {
+      ok: true,
+      roiCount: bundle.analyses.length,
+      extractedPixels: analysis.entries.length,
+      mean: analysis.statsRaw.mean,
+      pixelSquareEdgeMmY: pixelGeometry.edgeMmY,
+      profileTypes: profileVisualization.profiles.map((profile) => profile.type),
+      nps: {
+        roiCount: npsAnalysis.roiCount,
+        integratedNps: npsAnalysis.integratedNps,
+        varianceClosureRatio: npsAnalysis.varianceClosureRatio,
+        f50Frequency: npsAnalysis.f50Frequency,
+        bandFractionSum: npsBandFractionSum,
+      },
+      comparison: {
+        rows: comparisonBundle.roiComparison.rows.length,
+        noiseRatio: Number(copiedComparisonRow.noise_ratio_vs_baseline),
+      },
+      physicalSquareSelected: {
+        rows: physicalGeometry.selectedRowCount,
+        cols: physicalGeometry.selectedColumnCount,
+      },
+      figureSmoke: true,
+    },
+    null,
+    2
+  )
+);

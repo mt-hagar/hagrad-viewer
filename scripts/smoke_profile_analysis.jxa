@@ -1,0 +1,73 @@
+ObjC.import("Foundation");
+
+function readText(path) {
+  const value = $.NSString.stringWithContentsOfFileEncodingError(
+    $(path).stringByStandardizingPath,
+    $.NSUTF8StringEncoding,
+    null
+  );
+  if (!value) {
+    throw new Error("Could not read " + path);
+  }
+  return ObjC.unwrap(value);
+}
+
+function main() {
+  const repoRoot = ObjC.unwrap($.NSFileManager.defaultManager.currentDirectoryPath);
+  const corePath = repoRoot + "/src/shared/hagrad-core.js";
+  const profilePath = repoRoot + "/src/shared/hagrad-profile-analysis.js";
+  const viewerPath = repoRoot + "/src/viewer.js";
+  const coronaryPath = repoRoot + "/src/coronary/coronary.js";
+
+  globalThis.window = globalThis;
+  globalThis.globalThis = globalThis;
+  eval("var window = globalThis;\n" + readText(corePath));
+  eval("var window = globalThis;\n" + readText(profilePath));
+
+  const api = globalThis.HAGRadProfileAnalysis || globalThis.window.HAGRadProfileAnalysis;
+  if (!api) {
+    throw new Error("Profile analysis API was not attached to the global scope.");
+  }
+
+  new Function(readText(viewerPath));
+  new Function(readText(coronaryPath));
+
+  function assert(condition, message) {
+    if (!condition) {
+      throw new Error(message);
+    }
+  }
+
+  const base = {
+    mode: "line",
+    lengthMm: 5,
+    sampleCount: 11,
+    distancesMm: [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5],
+    valuesHu: [0, 1200, 3000, 1500, 500, 650, 500, 1700, 3200, 1300, 0],
+  };
+
+  const autoAnalysis = api.analyzeProfileSamples(base, null);
+  assert(autoAnalysis, "Auto profile analysis did not return a result.");
+  assert(autoAnalysis.sampleCount === base.sampleCount, "Sample count changed unexpectedly.");
+  assert(autoAnalysis.stent, "Stent model was not detected for the smoke-test profile.");
+  assert(Number.isFinite(autoAnalysis.stent.stentFwhmMeanMm), "Mean stent FWHM was not computed.");
+  assert(Number.isFinite(autoAnalysis.stent.lumenFwhmMm), "Lumen FWHM was not computed.");
+  assert(autoAnalysis.stent.adjustmentMode === "auto", "Auto analysis should stay in auto mode.");
+
+  const manualGuides = {
+    leftOutsideIndex: 0,
+    leftPeakIndex: 1,
+    lumenMinIndex: 5,
+    rightPeakIndex: 9,
+    rightOutsideIndex: 10,
+  };
+  const manualAnalysis = api.analyzeProfileSamples(base, manualGuides);
+  assert(manualAnalysis?.stent?.adjustmentMode === "manual", "Manual guide mode was not preserved.");
+
+  const sanitized = api.sanitizeStentGuideIndices(11, manualGuides, manualGuides);
+  assert(sanitized.leftOutsideIndex === 0 && sanitized.rightOutsideIndex === 10, "Guide sanitization drifted.");
+
+  console.log("Profile analysis smoke check passed.");
+}
+
+main();

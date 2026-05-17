@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HAGRad PlaqueQuant</title>
+    <link rel="stylesheet" href="/src/plaquequant/plaquequant.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">HAGRad Research Prototype</p>
+          <h1>HAGRad PlaqueQuant</h1>
+          <p class="subhead">
+            Coronary CTA plaque quantification workstation scaffold. Phase 1 uses transparent
+            threshold-based candidate plaque detection and manual vessel attribution; it is not a
+            clinically validated plaque-analysis product.
+          </p>
+        </div>
+        <div class="top-actions">
+          <label class="button primary" for="dicom-input">Load DICOM</label>
+          <label class="button secondary" for="dicom-folder-input">Load Folder</label>
+          <input id="dicom-input" type="file" multiple accept=".dcm,.dicom,application/dicom" />
+          <input id="dicom-folder-input" type="file" multiple webkitdirectory directory accept=".dcm,.dicom,application/dicom" />
+          <button id="clear-button" class="button secondary" type="button">Clear</button>
+          <a class="button secondary" href="/src/viewer.html">Viewer</a>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="sidebar">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Workflow</h2>
+              <span id="status-pill" class="status">Ready</span>
+            </div>
+            <div class="steps">
+              <button class="step is-active" type="button" data-step="load"><span>1</span>Load CCTA</button>
+              <button class="step" type="button" data-step="recon"><span>2</span>Reconstruction</button>
+              <button class="step" type="button" data-step="centerline"><span>3</span>Centerline</button>
+              <button class="step" type="button" data-step="wall"><span>4</span>Wall</button>
+              <button class="step" type="button" data-step="plaque"><span>5</span>Plaque</button>
+              <button class="step" type="button" data-step="export"><span>6</span>Export</button>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Reconstructions</h2>
+              <span id="series-count">0</span>
+            </div>
+            <div id="series-list" class="list empty">Load axial CCTA DICOM files or a folder.</div>
+            <button id="load-series-button" class="button full" type="button" disabled>Load Selected Reconstruction</button>
+          </section>
+
+          <section class="panel compact">
+            <div class="panel-head">
+              <h2>Viewer</h2>
+              <span id="slice-readout">No image</span>
+            </div>
+            <div class="button-row">
+              <button id="layout-presentation" class="tool is-active" type="button">Axial</button>
+              <button id="layout-mpr" class="tool" type="button">4-up MPR</button>
+            </div>
+            <div class="button-row">
+              <button class="tool is-active" type="button" data-tool="window">W</button>
+              <button class="tool" type="button" data-tool="zoom">Z</button>
+              <button class="tool" type="button" data-tool="pan">M</button>
+            </div>
+            <label class="field">
+              <span>Overlay opacity</span>
+              <input id="opacity-input" type="range" min="0" max="1" step="0.05" value="0.55" />
+            </label>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Analysis</h2>
+              <span id="analysis-method">Not run</span>
+            </div>
+            <div class="engine-card">
+              <strong>Open-source engine bridge</strong>
+              <span id="engine-status">Not checked</span>
+              <button id="check-engines-button" class="button secondary full" type="button">Check Local Engines</button>
+              <div id="engine-list" class="engine-list"></div>
+            </div>
+            <div class="pipeline-card">
+              <div class="pipeline-stage">
+                <strong>1. Coronary centerline</strong>
+                <span id="centerline-status" class="stage-status">Not started</span>
+                <div class="button-row">
+                  <button id="run-centerline-button" class="button secondary" type="button" disabled>Build From Seeds</button>
+                  <button id="validate-centerline-button" class="button secondary" type="button" disabled>Validate Centerline</button>
+                </div>
+              </div>
+              <div class="pipeline-stage">
+                <strong>2. Vessel wall</strong>
+                <span id="wall-status" class="stage-status">Waiting for centerline</span>
+                <div class="button-row">
+                  <button id="run-wall-button" class="button secondary" type="button" disabled>Estimate Wall ROI</button>
+                  <button id="validate-wall-button" class="button secondary" type="button" disabled>Validate Wall</button>
+                </div>
+              </div>
+              <div class="pipeline-stage">
+                <strong>3. Plaque quantification</strong>
+                <span id="plaque-status" class="stage-status">Waiting for wall validation</span>
+              </div>
+            </div>
+            <label class="field">
+              <span>Mode</span>
+              <select id="analysis-mode">
+                <option value="fastCalcified">Fast calcified candidate scan</option>
+                <option value="seedGuided">Seed-guided plaque neighborhood</option>
+                <option value="centralThreshold">Legacy broad threshold scaffold</option>
+                <option value="manualOnly">Manual review only</option>
+              </select>
+            </label>
+            <div class="grid-2">
+              <label class="field">
+                <span>Low HU max</span>
+                <input id="low-max" type="number" value="30" step="5" />
+              </label>
+              <label class="field">
+                <span>Noncalc max</span>
+                <input id="noncalc-max" type="number" value="130" step="5" />
+              </label>
+              <label class="field">
+                <span>Calc min</span>
+                <input id="calc-min" type="number" value="350" step="10" />
+              </label>
+              <label class="field">
+                <span>Min area mm2</span>
+                <input id="min-area" type="number" value="0.8" step="0.1" min="0" />
+              </label>
+            </div>
+            <button id="run-analysis-button" class="button primary full" type="button" disabled>Run Plaque Quantification</button>
+            <p class="hint">
+              Plaque quantification unlocks after centerline and wall review are validated.
+              The Phase 1 wall is a supervised ROI scaffold, not a validated outer-wall model.
+            </p>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Review</h2>
+              <span id="active-vessel-readout">LM</span>
+            </div>
+            <label class="field">
+              <span>Active vessel</span>
+              <select id="active-vessel">
+                <option>LM</option>
+                <option>LAD</option>
+                <option>LCx</option>
+                <option>RCA</option>
+                <option>Unknown</option>
+              </select>
+            </label>
+            <div class="button-row">
+              <button id="manual-add-button" class="tool" type="button">Add ROI</button>
+              <button id="seed-button" class="tool" type="button">Centerline Seed</button>
+              <button id="exclude-lesion-button" class="tool" type="button" disabled>Exclude</button>
+              <button id="assign-vessel-button" class="tool" type="button" disabled>Assign</button>
+            </div>
+            <div id="seed-summary" class="seed-summary empty">No vessel seeds placed.</div>
+            <div id="vessel-summary" class="summary-list"></div>
+            <div id="lesion-list" class="lesion-list empty">Run analysis or add an ROI.</div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Export</h2>
+              <span>CSV</span>
+            </div>
+            <button id="export-button" class="button primary full" type="button" disabled>Export Research CSVs</button>
+            <p id="export-note" class="hint">Exports require research_study_ID and patient_study_ID.</p>
+          </section>
+        </aside>
+
+        <section class="viewer-shell">
+          <div id="drop-zone" class="drop-zone">
+            <div id="viewport-grid" class="viewport-grid presentation">
+              <div class="viewport is-active" data-viewport="axial">
+                <canvas id="canvas-axial"></canvas>
+                <div class="viewport-label">Axial</div>
+              </div>
+              <div class="viewport" data-viewport="coronal">
+                <canvas id="canvas-coronal"></canvas>
+                <div class="viewport-label">Coronal</div>
+              </div>
+              <div class="viewport" data-viewport="sagittal">
+                <canvas id="canvas-sagittal"></canvas>
+                <div class="viewport-label">Sagittal</div>
+              </div>
+              <div class="viewport" data-viewport="review">
+                <canvas id="canvas-review"></canvas>
+                <div class="viewport-label">Plaque Review</div>
+              </div>
+            </div>
+            <div id="empty-state" class="empty-state">
+              <strong>Drop CCTA DICOM files or folders here</strong>
+              <span>Shortcuts: W window/level, Z zoom, M move, right-drag fast scroll.</span>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="/vendor/dicomParser.min.js"></script>
+    <script src="/vendor/cornerstone.min.js"></script>
+    <script src="/vendor/cornerstoneWADOImageLoaderNoWebWorkers.bundle.min.js"></script>
+    <script src="/src/shared/hagrad-core.js"></script>
+    <script src="/src/shared/hagrad-dicom.js"></script>
+    <script src="/src/shared/hagrad-export-studies.js"></script>
+    <script src="/src/plaquequant/plaquequant.js"></script>
+  </body>
+</html>

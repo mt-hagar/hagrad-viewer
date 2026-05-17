@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HAGRad CalcScorer</title>
+    <link rel="stylesheet" href="/src/calcscorer/calcscorer.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="shell-card hero">
+        <div class="hero-copy">
+          <p class="eyebrow">HAGRad Research Prototype</p>
+          <h1>HAGRad CalcScorer</h1>
+          <p class="hero-text">
+            Separate coronary artery calcium scoring prototype for cardiac CT. Load a study, choose
+            the most appropriate calcium-scoring series, run threshold-based detection, review and
+            edit lesions, and export research-only Agatston, volume, and equivalent-mass results
+            without modifying HAGRad Viewer.
+          </p>
+        </div>
+
+        <div class="hero-actions">
+          <div class="hero-load-row">
+            <label class="button primary" for="dicom-input">Load DICOM</label>
+            <label class="button secondary" for="dicom-folder-input">Load Folder</label>
+          </div>
+          <input id="dicom-input" type="file" multiple accept=".dcm,.dicom,application/dicom" />
+          <input
+            id="dicom-folder-input"
+            type="file"
+            multiple
+            webkitdirectory
+            directory
+            accept=".dcm,.dicom,application/dicom"
+          />
+          <label class="button secondary" for="dicom-add-input">Add DICOM Files</label>
+          <input id="dicom-add-input" type="file" multiple accept=".dcm,.dicom,application/dicom" />
+          <button id="clear-button" class="button secondary" type="button">Clear Study</button>
+          <button id="finish-close-button" class="button secondary" type="button" disabled>
+            Finish &amp; Close Patient
+          </button>
+          <a class="button secondary" href="/src/contrast-calcscorer/index.html">Open Contrast Research Mode</a>
+          <a class="button secondary" href="/src/viewer.html">Open HAGRad Viewer</a>
+          <div id="status-pill" class="status-pill">Ready for a calcium-scoring CT series</div>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="shell-card sidebar">
+          <details class="sidebar-section" open>
+            <summary class="section-header">
+              <div>
+                <h2>Workflow</h2>
+                <p class="section-note" id="workflow-note">Load a cardiac CT study to begin.</p>
+              </div>
+            </summary>
+            <div class="section-body">
+              <div class="workflow-steps">
+                <button class="workflow-step is-active" data-workflow-step="series" type="button">
+                  <span>1</span>
+                  <strong>Series</strong>
+                  <small>Load study and choose the correct series</small>
+                </button>
+                <button class="workflow-step" data-workflow-step="score" type="button">
+                  <span>2</span>
+                  <strong>Auto Score</strong>
+                  <small>Run or rerun automatic calcium scoring</small>
+                </button>
+                <button class="workflow-step" data-workflow-step="roi" type="button">
+                  <span>3</span>
+                  <strong>Heart ROI</strong>
+                  <small>Draw anchor contours when needed</small>
+                </button>
+                <button class="workflow-step" data-workflow-step="label" type="button">
+                  <span>4</span>
+                  <strong>Label &amp; VOI</strong>
+                  <small>Tap lesions or draw a slab VOI</small>
+                </button>
+                <button class="workflow-step" data-workflow-step="edit" type="button">
+                  <span>5</span>
+                  <strong>Edit Mask</strong>
+                  <small>Brush, exclude, grow, or shrink</small>
+                </button>
+                <button class="workflow-step" data-workflow-step="export" type="button">
+                  <span>6</span>
+                  <strong>Export</strong>
+                  <small>Per-label table plus totals</small>
+                </button>
+              </div>
+            </div>
+          </details>
+
+          <details class="sidebar-section" id="series-section" open>
+            <summary class="section-header">
+              <div>
+                <h2>Series</h2>
+                <p class="section-note" id="series-summary">0 candidate series loaded</p>
+              </div>
+            </summary>
+            <div class="section-body">
+              <div id="series-list" class="series-list">
+                <p class="empty-copy">Load DICOM files to rank candidate calcium-scoring series.</p>
+              </div>
+              <div class="single-action">
+                <button id="load-selected-series-button" class="button tertiary" type="button" disabled>
+                  Load Selected Series
+                </button>
+              </div>
+              <p class="hint">
+                The recommendation score is heuristic only. A dedicated non-contrast ECG-gated
+                cardiac CT series is preferred when available.
+              </p>
+            </div>
+          </details>
+
+          <details class="sidebar-section" id="detection-section" open>
+            <summary class="section-header">
+              <div>
+                <h2>Auto Score</h2>
+                <p class="section-note" id="detection-note">Load a series and automatic calcium scoring runs first.</p>
+              </div>
+            </summary>
+            <div class="section-body">
+              <div class="metric-card">
+                <span>Scoring Slice Range</span>
+                <strong id="score-range-readout">Slices 1 to 1</strong>
+              </div>
+              <div class="region-grid">
+                <label class="field compact">
+                  <span>Top Slice</span>
+                  <input id="score-top-slice-input" type="number" min="1" step="1" value="1" disabled />
+                </label>
+                <label class="field compact">
+                  <span>Bottom Slice</span>
+                  <input id="score-bottom-slice-input" type="number" min="1" step="1" value="1" disabled />
+                </label>
+              </div>
+              <div class="inline-actions">
+                <button id="set-score-top-button" class="button tertiary" type="button" disabled>
+                  Use Current As Top
+                </button>
+                <button id="set-score-bottom-button" class="button tertiary" type="button" disabled>
+                  Use Current As Bottom
+                </button>
+              </div>
+              <div class="single-action">
+                <button id="use-full-score-range-button" class="button tertiary" type="button" disabled>
+                  Use Full Stack
+                </button>
+              </div>
+              <label class="field">
+                <span>Calcium Threshold</span>
+                <div class="range-readout">
+                  <input id="threshold-slider" type="range" min="100" max="500" step="5" value="130" disabled />
+                  <strong id="threshold-readout">130 HU</strong>
+                </div>
+              </label>
+              <label class="field">
+                <span>Minimum Lesion Area</span>
+                <div class="range-readout">
+                  <input id="min-area-slider" type="range" min="0.5" max="4" step="0.1" value="1" disabled />
+                  <strong id="min-area-readout">1.0 mm2</strong>
+                </div>
+              </label>
+              <label class="field">
+                <span>Equivalent Mass Calibration</span>
+                <input id="mass-factor-input" type="number" min="0" max="5" step="0.01" value="0.81" disabled />
+              </label>
+              <div class="inline-actions">
+                <button id="run-detection-button" class="button tertiary" type="button" disabled>
+                  Let's Go Segment
+                </button>
+                <button id="restore-auto-button" class="button tertiary" type="button" disabled>
+                  Restore Auto Labels
+                </button>
+              </div>
+              <p class="hint">
+                The selected series auto-scores as soon as it loads. Only slices inside the chosen
+                top and bottom range contribute to scoring and totals.
+              </p>
+            </div>
+          </details>
+
+          <details class="sidebar-section" id="roi-section" open>
+            <summary class="section-header">
+              <div>
+                <h2>Heart ROI</h2>
+                <p class="section-note" id="editing-note">Optional refinement after the first automatic score.</p>
+              </div>
+            </summary>
+            <div class="section-body">
+              <div class="metric-card">
+                <span>Heart ROI Anchors</span>
+                <strong id="roi-anchor-readout">0 anchor slices</strong>
+              </div>
+              <div class="inline-actions">
+                <button id="segment-roi-button" class="button tertiary" type="button" disabled>
+                  Segment Between Anchors
+                </button>
+                <button id="clear-roi-slice-button" class="button tertiary" type="button" disabled>
+                  Clear ROI Slice
+                </button>
+              </div>
+              <p class="hint">
+                Use `ROI Adjust` to drag the fallback heart ellipse directly when it clips the chest
+                wall or misses part of the heart. Use `ROI Draw` on a few slices like the EAT
+                workflow when you want anchor contours instead. Then segment between anchors and
+                rerun the automatic calcium score.
+              </p>
+              <div class="tool-grid">
+                <button class="tool-button" data-tool="roiAdjust" type="button">ROI Adjust</button>
+                <button class="tool-button" data-tool="roiContour" type="button">ROI Draw</button>
+              </div>
+              <details class="subsection" id="fallback-roi-section">
+                <summary class="subsection-summary">
+                  <strong>Fallback Search Region</strong>
+                  <span>Advanced</span>
+                </summary>
+                <div class="subsection-body">
+                  <div class="region-grid">
+                    <label class="field compact">
+                      <span>ROI X</span>
+                      <input id="roi-x-slider" type="range" min="20" max="80" step="1" value="50" disabled />
+                    </label>
+                    <label class="field compact">
+                      <span>ROI Y</span>
+                      <input id="roi-y-slider" type="range" min="20" max="80" step="1" value="48" disabled />
+                    </label>
+                    <label class="field compact">
+                      <span>ROI Width</span>
+                      <input id="roi-width-slider" type="range" min="20" max="80" step="1" value="56" disabled />
+                    </label>
+                    <label class="field compact">
+                      <span>ROI Height</span>
+                      <input id="roi-height-slider" type="range" min="15" max="70" step="1" value="44" disabled />
+                    </label>
+                  </div>
+                  <p class="hint">
+                    This fallback region is only used on slices without ROI contours.
+                  </p>
+                </div>
+              </details>
+            </div>
+          </details>
+
+          <details class="sidebar-section" id="label-section" open>
+            <summary class="section-header">
+              <div>
+                <h2>Labels &amp; VOI</h2>
+                <p class="section-note" id="label-note">Assign lesions by vessel or custom label.</p>
+              </div>
+            </summary>
+            <div class="section-body">
+              <label class="field">
+                <span>Active Label</span>
+                <select id="active-label-select">
+                  <option value="1">LAD</option>
+                  <option value="2">LCx</option>
+                  <option value="3">RCA</option>
+                  <option value="4">LM</option>
+                  <option value="5">Aortic Valve</option>
+                  <option value="6">Mitral Valve</option>
+                  <option value="7">Aortic Root</option>
+                  <option value="8">Other</option>
+                </select>
+              </label>
+              <div id="label-legend" class="label-legend"></div>
+              <p class="hint">
+                Choose the vessel or structure you want to edit first. Then use the simplified edit
+                tools below: left click adds/selects, right click removes, and left-drag draws a
+                freehand inclusion region on the current slice.
+              </p>
+              <details class="subsection">
+                <summary class="subsection-summary">
+                  <strong>Advanced Multi-slice VOI</strong>
+                  <span>Optional</span>
+                </summary>
+                <div class="subsection-body">
+                  <div class="single-action">
+                    <button class="tool-button" data-tool="voiDraw" type="button">VOI Draw</button>
+                  </div>
+                  <label class="field">
+                    <span>VOI Action</span>
+                    <select id="voi-action-select">
+                      <option value="include">Include / Relabel Thresholded Calcium</option>
+                      <option value="erase">Erase Inside VOI</option>
+                    </select>
+                  </label>
+                  <div class="region-grid">
+                    <label class="field compact">
+                      <span>Slab Start</span>
+                      <input id="slab-start-input" type="number" min="1" step="1" value="1" disabled />
+                    </label>
+                    <label class="field compact">
+                      <span>Slab End</span>
+                      <input id="slab-end-input" type="number" min="1" step="1" value="1" disabled />
+                    </label>
+                  </div>
+                  <div class="inline-actions">
+                    <button id="set-slab-start-button" class="button tertiary" type="button" disabled>
+                      Use Current As Start
+                    </button>
+                    <button id="set-slab-end-button" class="button tertiary" type="button" disabled>
+                      Use Current As End
+                    </button>
+                  </div>
+                  <div class="inline-actions">
+                    <button id="apply-voi-button" class="button tertiary" type="button" disabled>
+                      Apply VOI To Slab
+                    </button>
+                    <button id="clear-voi-button" class="button tertiary" type="button" disabled>
+                      Clear VOI
+                    </button>
+                  </div>
+                </div>
+              </details>
+            </div>
+          </details>
+
+          <details class="sidebar-section" id="editing-section" open>
+            <summary class="section-header">
+              <div>
+                <h2>Lesion Editing</h2>
+                <p class="section-note" id="lesion-editing-note">Use these tools after automatic scoring.</p>
+              </div>
+            </summary>
+            <div class="section-body">
+              <div class="tool-grid">
+                <button class="tool-button is-active" data-tool="tapLabel" type="button">Assign / Draw</button>
+                <button class="tool-button" data-tool="erase" type="button">Erase (E)</button>
+              </div>
+              <div class="toggle-grid">
+                <button id="toggle-overlay-button" class="button tertiary is-active" type="button" disabled>
+                  Lesion Overlay
+                </button>
+                <button id="toggle-roi-button" class="button tertiary is-active" type="button" disabled>
+                  ROI Overlay
+                </button>
+              </div>
+              <div class="single-action">
+                <button id="clear-selection-button" class="button tertiary" type="button" disabled>
+                  Clear Lesion Selection
+                </button>
+              </div>
+              <p class="hint">
+                `Assign / Draw`: left click adds/selects, right click removes, left-drag includes
+                thresholded calcium within your drawn region on the current slice. `Erase (E)`:
+                left click removes, and left-drag erases everything within your drawn region.
+              </p>
+            </div>
+          </details>
+
+          <details class="sidebar-section" id="results-section" open>
+            <summary class="section-header">
+              <div>
+                <h2>Results</h2>
+                <p class="section-note" id="results-note">No calcium score yet.</p>
+              </div>
+            </summary>
+            <div class="section-body">
+              <div class="metrics-grid">
+                <div class="metric-card">
+                  <span>Coronary Volume</span>
+                  <strong id="metric-lesions">-</strong>
+                </div>
+                <div class="metric-card">
+                  <span>Total Volume</span>
+                  <strong id="metric-volume">-</strong>
+                </div>
+                <div class="metric-card">
+                  <span>Eq. Mass</span>
+                  <strong id="metric-mass">-</strong>
+                </div>
+                <div class="metric-card">
+                  <span>Agatston</span>
+                  <strong id="metric-agatston">-</strong>
+                </div>
+              </div>
+              <div class="table-shell">
+                <table class="results-table">
+                  <thead>
+                    <tr>
+                      <th>Vessel</th>
+                      <th>Volume (mm3)</th>
+                      <th>Eq. Mass (mg)</th>
+                      <th>Agatston</th>
+                    </tr>
+                  </thead>
+                  <tbody id="results-table-body">
+                    <tr>
+                      <td colspan="4" class="empty-cell">Run detection to generate results.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="inline-actions">
+                <button id="export-csv-button" class="button tertiary" type="button" disabled>
+                  Export CSV
+                </button>
+                <button id="export-png-button" class="button tertiary" type="button" disabled>
+                  Export Review PNG
+                </button>
+              </div>
+            </div>
+          </details>
+        </aside>
+
+        <section class="analysis-shell">
+          <article class="shell-card viewer-card">
+            <header class="viewer-header">
+              <div>
+                <p class="panel-kicker">Axial Review</p>
+                <h2 id="viewer-title">No series loaded</h2>
+                <p class="panel-note" id="viewer-subtitle">
+                  Automatic vessel-style calcium scoring with manual vessel and custom-label review.
+                </p>
+              </div>
+              <div class="viewer-controls">
+                <div class="viewer-badges">
+                  <span class="viewer-badge" id="slice-badge">Slice 0 / 0</span>
+                  <span class="viewer-badge" id="tool-badge">Tool: Inspect</span>
+                  <span class="viewer-badge" id="pointer-badge">HU: -</span>
+                </div>
+                <div class="preset-row">
+                  <button class="button tertiary preset-button is-active" data-preset="calcium" type="button">
+                    Calcium
+                  </button>
+                  <button class="button tertiary preset-button" data-preset="soft" type="button">Soft</button>
+                  <button class="button tertiary preset-button" data-preset="bone" type="button">Bone</button>
+                </div>
+              </div>
+            </header>
+
+            <div class="canvas-wrap" id="canvas-wrap">
+              <div class="viewport-mini-actions">
+                <button
+                  id="presentation-reset-window-button"
+                  class="viewport-mini-button"
+                  type="button"
+                  aria-label="Reset default windowing"
+                  title="Reset default windowing"
+                >↺</button>
+                <button
+                  id="presentation-reset-fit-button"
+                  class="viewport-mini-button"
+                  type="button"
+                  aria-label="Reset zoom and center"
+                  title="Reset zoom and center"
+                >⛶</button>
+              </div>
+              <canvas id="image-canvas" width="1024" height="1024"></canvas>
+              <canvas id="overlay-canvas" width="1024" height="1024"></canvas>
+              <div id="canvas-overlay-message" class="canvas-overlay-message">
+                Load a calcium-scoring CT series to begin axial review.
+              </div>
+            </div>
+
+            <footer class="viewer-footer">
+              <label class="field grow">
+                <span>Current Slice</span>
+                <input id="slice-slider" type="range" min="0" max="0" step="1" value="0" disabled />
+              </label>
+              <div class="footer-readouts">
+                <div class="footer-block">
+                  <span class="footer-label">Selected lesion</span>
+                  <strong id="selection-readout">None</strong>
+                </div>
+                <div class="footer-block">
+                  <span class="footer-label">Current action</span>
+                  <strong id="interaction-readout">Load a series to review.</strong>
+                </div>
+              </div>
+            </footer>
+          </article>
+
+          <div class="bottom-grid">
+            <article class="shell-card">
+              <header class="panel-header">
+                <div>
+                  <p class="panel-kicker">Summary</p>
+                  <h2>Vessel / Category Summary</h2>
+                </div>
+                <span class="panel-note" id="lesion-note">No active vessel or category summary.</span>
+              </header>
+              <div id="lesion-list" class="lesion-list">
+                <p class="empty-copy">Run detection to see vessel and category summaries.</p>
+              </div>
+            </article>
+
+            <article class="shell-card">
+              <header class="panel-header">
+                <div>
+                  <p class="panel-kicker">Study Details</p>
+                  <h2>Series Metadata</h2>
+                </div>
+                <span class="panel-note" id="metadata-note">Metadata will update when a series is loaded.</span>
+              </header>
+              <dl class="meta-list" id="metadata-list">
+                <div class="meta-row">
+                  <dt>Status</dt>
+                  <dd>Load DICOM files to inspect metadata.</dd>
+                </div>
+              </dl>
+            </article>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <div id="finish-modal" class="modal-shell" hidden>
+      <div class="modal-backdrop" data-modal-close="true"></div>
+      <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="finish-modal-title">
+        <header class="modal-header">
+          <div>
+            <p class="panel-kicker">Finish Patient</p>
+            <h2 id="finish-modal-title">Export And Close Current Patient</h2>
+          </div>
+        </header>
+        <div class="modal-body">
+          <p class="hint">
+            Enter the Study ID. It will be added to the exported CSV and PNG and used in the file names.
+          </p>
+          <label class="field">
+            <span>Research Study</span>
+            <select id="export-study-select">
+              <option value="">No study selected</option>
+            </select>
+          </label>
+          <div class="inline-actions">
+            <label class="field">
+              <span>New Study</span>
+              <input id="export-study-create-input" type="text" maxlength="120" autocomplete="off" />
+            </label>
+            <button id="export-study-create-button" class="button tertiary" type="button">Create Study</button>
+          </div>
+          <p class="hint" id="export-study-target-note">
+            Mirrored exports go into the general CalcScorer folder until a study is selected.
+          </p>
+          <label class="field">
+            <span>Study ID</span>
+            <input id="finish-study-id-input" type="text" maxlength="120" autocomplete="off" />
+          </label>
+          <p id="finish-modal-error" class="modal-error" hidden>Study ID is required.</p>
+        </div>
+        <footer class="modal-footer">
+          <button id="finish-cancel-button" class="button tertiary" type="button">Cancel</button>
+          <button id="finish-confirm-button" class="button primary" type="button">Export And Close</button>
+        </footer>
+      </section>
+    </div>
+
+    <script src="/vendor/cornerstone.min.js"></script>
+    <script src="/vendor/dicomParser.min.js"></script>
+    <script src="/vendor/cornerstoneWADOImageLoaderNoWebWorkers.bundle.min.js"></script>
+    <script src="/src/shared/hagrad-core.js"></script>
+    <script src="/src/shared/hagrad-export-studies.js"></script>
+    <script src="/src/calcscorer/calcscorer.js"></script>
+  </body>
+</html>

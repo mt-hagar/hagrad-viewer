@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HAGRad PointGuard – The Intelligent Radiology Report Assistant</title>
+    <link rel="stylesheet" href="/src/pointguard/pointguard.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="shell-card hero">
+        <div class="hero-copy">
+          <p class="eyebrow">HAGRad PointGuard</p>
+          <h1>The Intelligent Radiology Report Assistant</h1>
+          <p class="hero-text">
+            Coronary CTA and cardiac CT dictation workspace for colloquial speech capture, CAD-RADS
+            2.0-aware structuring, completeness prompts, editable reporting blocks, and a polished
+            final radiology report draft.
+          </p>
+          <div class="hero-strip">
+            <span class="hero-chip">Coronary CTA first</span>
+            <span class="hero-chip">CAD-RADS 2.0 aware</span>
+            <span class="hero-chip">Editable output</span>
+            <span class="hero-chip">Missing-info prompts</span>
+          </div>
+        </div>
+
+        <div class="hero-actions">
+          <button id="dictation-toggle-button" class="button primary" type="button">
+            Start Dictation
+          </button>
+          <button id="stop-dictation-button" class="button secondary" type="button" disabled>
+            Stop Dictation
+          </button>
+          <button id="analyze-button" class="button accent" type="button">Go Ahead!</button>
+          <button id="clear-transcript-button" class="button secondary" type="button">Clear</button>
+          <div class="sample-row">
+            <select id="sample-select" aria-label="Sample report dictation">
+              <option value="">Choose an example...</option>
+            </select>
+            <button id="load-sample-button" class="button tertiary" type="button">Load Example</button>
+          </div>
+          <a class="button secondary" href="/src/coronary/index.html">Open Coronary Workflow</a>
+          <div class="status-pill" id="status-pill">
+            Ready for coronary CTA or cardiac CT dictation.
+          </div>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="shell-card sidebar">
+          <section class="sidebar-section">
+            <div class="section-header">
+              <div>
+                <p class="section-kicker">Case framing</p>
+                <h2>Report Context</h2>
+              </div>
+              <span class="section-note">Manual overrides</span>
+            </div>
+            <label class="field" for="exam-type-select">
+              <span>Exam type</span>
+              <select id="exam-type-select">
+                <option value="auto">Auto detect</option>
+                <option value="coronary_cta">Coronary CTA</option>
+                <option value="cardiac_ct">Cardiac CT</option>
+                <option value="calcium_score">Calcium score CT</option>
+              </select>
+            </label>
+            <label class="field" for="manual-indication-input">
+              <span>Clinical indication</span>
+              <input
+                id="manual-indication-input"
+                type="text"
+                placeholder="Atypical chest pain, dyspnea, post-CABG review..."
+              />
+            </label>
+            <label class="field" for="manual-presentation-select">
+              <span>Clinical pathway</span>
+              <select id="manual-presentation-select">
+                <option value="auto">Auto detect</option>
+                <option value="stable_chest_pain">Stable chest pain</option>
+                <option value="acute_chest_pain">Acute chest pain / ACS</option>
+                <option value="general">General / non-ACS</option>
+              </select>
+            </label>
+            <div class="field-grid">
+              <label class="field" for="manual-calcium-score-input">
+                <span>Calcium score</span>
+                <input id="manual-calcium-score-input" type="number" min="0" step="1" placeholder="188" />
+              </label>
+              <label class="field" for="manual-heart-rate-input">
+                <span>Heart rate</span>
+                <input id="manual-heart-rate-input" type="number" min="20" step="1" placeholder="58" />
+              </label>
+            </div>
+          </section>
+
+          <section class="sidebar-section">
+            <div class="section-header">
+              <div>
+                <p class="section-kicker">Classification</p>
+                <h2>CAD-RADS 2.0</h2>
+              </div>
+              <span class="section-note" id="cad-rads-confidence">Awaiting analysis</span>
+            </div>
+            <div class="cad-rads-card">
+              <div class="cad-rads-badge tone-neutral" id="cad-rads-badge">Awaiting analysis</div>
+              <p class="cad-rads-summary" id="cad-rads-summary">
+                PointGuard will derive stenosis category, plaque burden, and modifiers when the
+                dictated text supports them.
+              </p>
+              <dl class="meta-list">
+                <div class="meta-row">
+                  <dt>Study</dt>
+                  <dd id="study-type-readout">Auto detect</dd>
+                </div>
+                <div class="meta-row">
+                  <dt>Pathway</dt>
+                  <dd id="presentation-readout">-</dd>
+                </div>
+                <div class="meta-row">
+                  <dt>Plaque burden</dt>
+                  <dd id="plaque-burden-readout">-</dd>
+                </div>
+                <div class="meta-row">
+                  <dt>Modifiers</dt>
+                  <dd id="modifier-readout">-</dd>
+                </div>
+                <div class="meta-row">
+                  <dt>Dominance</dt>
+                  <dd id="dominance-readout">-</dd>
+                </div>
+                <div class="meta-row">
+                  <dt>Quality</dt>
+                  <dd id="quality-readout">-</dd>
+                </div>
+                <div class="meta-row">
+                  <dt>Recommendation</dt>
+                  <dd id="recommendation-readout">-</dd>
+                </div>
+              </dl>
+            </div>
+          </section>
+
+          <section class="sidebar-section">
+            <div class="section-header">
+              <div>
+                <p class="section-kicker">Completeness</p>
+                <h2>Missing Information</h2>
+              </div>
+              <span class="section-note">High-yield prompts</span>
+            </div>
+            <div class="check-list" id="missing-info-list">
+              <p class="empty-note">Run Go Ahead! to surface missing reporting elements.</p>
+            </div>
+          </section>
+
+          <section class="sidebar-section">
+            <div class="section-header">
+              <div>
+                <p class="section-kicker">Scope</p>
+                <h2>Reference Frame</h2>
+              </div>
+              <span class="section-note">Focused v1</span>
+            </div>
+            <p class="hint">
+              This build is tuned for coronary CTA and related cardiac CT reporting. CAD-RADS 2.0
+              logic follows the 2022 consensus structure: stenosis, plaque burden, and modifiers.
+            </p>
+            <p class="hint">
+              Dictate naturally. PointGuard will structure the language, compute a CAD-RADS label
+              when the dictated evidence supports it, and flag what still needs to be addressed.
+            </p>
+          </section>
+        </aside>
+
+        <section class="main-grid">
+          <section class="shell-card transcript-panel">
+            <div class="panel-header">
+              <div>
+                <p class="panel-kicker">Input</p>
+                <h2>Live Dictation Transcript</h2>
+              </div>
+              <div class="panel-actions">
+                <span class="mini-pill" id="dictation-availability">Checking microphone support...</span>
+                <span class="mini-pill" id="dictation-engine">Checking dictation engine...</span>
+              </div>
+            </div>
+            <textarea
+              id="transcript-input"
+              spellcheck="false"
+              placeholder="Dictate the report naturally here. Example: Coronary CTA for atypical chest pain. Right dominant system. Segment 6 / proximal LAD has mixed plaque with moderate 50-69% stenosis..."
+            ></textarea>
+            <div class="transcript-footer">
+              <div class="transcript-meta">
+                <strong>Interim:</strong>
+                <span id="interim-transcript">Nothing streaming right now.</span>
+              </div>
+              <div class="transcript-meta">
+                <strong>Shortcuts:</strong>
+                <span>
+                  `Space` starts or stops dictation and `Enter` runs `Go Ahead!` when you are not
+                  typing in an editor field. While dictation is live, both shortcuts stay active as
+                  workflow controls.
+                </span>
+              </div>
+              <div class="transcript-meta">
+                <strong>Tip:</strong>
+                <span>
+                  Speak colloquially if you like. The structured editor and finished report below
+                  are designed for cleanup and final signing style. When `OPENAI_API_KEY` is set
+                  before the local server starts, PointGuard now prefers realtime WebRTC medical
+                  dictation and keeps upload transcription, browser speech, or macOS Dictation as
+                  fallback.
+                </span>
+              </div>
+            </div>
+          </section>
+
+          <section class="shell-card summary-panel">
+            <div class="panel-header">
+              <div>
+                <p class="panel-kicker">What PointGuard sees</p>
+                <h2>Study Summary</h2>
+              </div>
+            </div>
+            <div class="summary-cards">
+              <article class="summary-card">
+                <span class="summary-label">Exam</span>
+                <strong id="exam-readout">-</strong>
+                <p id="exam-note">Coronary CTA structure will appear here.</p>
+              </article>
+              <article class="summary-card">
+                <span class="summary-label">Quality</span>
+                <strong id="quality-card-readout">-</strong>
+                <p id="quality-card-note">Image quality cues will appear here.</p>
+              </article>
+              <article class="summary-card">
+                <span class="summary-label">Coronary pattern</span>
+                <strong id="pattern-readout">-</strong>
+                <p id="pattern-note">The dominant coronary take-away will appear here.</p>
+              </article>
+              <article class="summary-card">
+                <span class="summary-label">Extracardiac coverage</span>
+                <strong id="coverage-readout">-</strong>
+                <p id="coverage-note">Lungs, mediastinum, and upper abdomen coverage will appear here.</p>
+              </article>
+            </div>
+
+            <div class="detail-grid">
+              <article class="detail-card">
+                <h3>Technique & completeness</h3>
+                <table class="detail-table" aria-label="Technique summary">
+                  <tbody id="technique-table-body">
+                    <tr>
+                      <th scope="row">Acquisition</th>
+                      <td>Awaiting analysis</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </article>
+
+              <article class="detail-card">
+                <h3>Cardiac / extracardiac capture</h3>
+                <table class="detail-table" aria-label="Ancillary structures summary">
+                  <tbody id="ancillary-table-body">
+                    <tr>
+                      <th scope="row">Pericardium</th>
+                      <td>Awaiting analysis</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </article>
+            </div>
+          </section>
+
+          <section class="shell-card vessel-panel">
+            <div class="panel-header">
+              <div>
+                <p class="panel-kicker">Coronary arteries</p>
+                <h2>Vessel Table</h2>
+              </div>
+            </div>
+            <div class="table-shell">
+              <table class="results-table" aria-label="Coronary vessel findings">
+                <thead>
+                  <tr>
+                    <th scope="col">Vessel</th>
+                    <th scope="col">Plaque</th>
+                    <th scope="col">Stenosis</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Notes</th>
+                  </tr>
+                </thead>
+                <tbody id="vessel-table-body">
+                  <tr>
+                    <td colspan="5">Dictate or load a case to build the vessel summary.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="shell-card editor-panel">
+            <div class="panel-header">
+              <div>
+                <p class="panel-kicker">Structured draft</p>
+                <h2>Editable Report Blocks</h2>
+              </div>
+              <div class="panel-actions">
+                <button id="compose-report-button" class="button tertiary" type="button">
+                  Refresh Final Report
+                </button>
+                <button id="copy-report-button" class="button tertiary" type="button">Copy Final</button>
+              </div>
+            </div>
+
+            <div class="editor-grid">
+              <label class="editor-field" data-section-field="indication">
+                <span>Indication</span>
+                <textarea id="section-indication"></textarea>
+              </label>
+
+              <label class="editor-field" data-section-field="technique">
+                <span>Technique</span>
+                <textarea id="section-technique"></textarea>
+              </label>
+
+              <label class="editor-field" data-section-field="quality">
+                <span>Quality</span>
+                <textarea id="section-quality"></textarea>
+              </label>
+
+              <label class="editor-field" data-section-field="coronary">
+                <span>Coronary findings</span>
+                <textarea id="section-coronary"></textarea>
+              </label>
+
+              <label class="editor-field" data-section-field="cardiac">
+                <span>Noncoronary cardiac findings</span>
+                <textarea id="section-cardiac"></textarea>
+              </label>
+
+              <label class="editor-field" data-section-field="extracardiac">
+                <span>Extracardiac findings</span>
+                <textarea id="section-extracardiac"></textarea>
+              </label>
+
+              <label class="editor-field" data-section-field="impression">
+                <span>Impression</span>
+                <textarea id="section-impression"></textarea>
+              </label>
+
+              <label class="editor-field" data-section-field="recommendations">
+                <span>Recommendations</span>
+                <textarea id="section-recommendations"></textarea>
+              </label>
+            </div>
+          </section>
+
+          <section class="shell-card final-panel">
+            <div class="panel-header">
+              <div>
+                <p class="panel-kicker">Finished report</p>
+                <h2>Radiology Report Output</h2>
+              </div>
+            </div>
+            <textarea id="final-report-output" class="final-report-output"></textarea>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <script src="/src/pointguard/pointguard.js"></script>
+  </body>
+</html>

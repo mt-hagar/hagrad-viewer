@@ -1,0 +1,106 @@
+[
+  {
+    "id": "lad_moderate_hrp",
+    "label": "Moderate LAD stenosis with HRP modifiers",
+    "input": {
+      "examType": "coronary_cta",
+      "indication": "Atypical chest pain",
+      "calciumScore": 188,
+      "heartRate": 61,
+      "text": "Coronary CTA for atypical chest pain. Diagnostic image quality. Right dominant system. Left main is patent. Proximal LAD has mixed plaque causing moderate 50-69% stenosis with positive remodeling and low attenuation plaque. Mid LAD has mild calcified plaque. LCx has minimal plaque without significant stenosis. RCA has mild calcified plaque with 25-49% stenosis. Coronary calcium score 188. No pericardial effusion. Mild aortic valve calcification. Partially visualized lungs are clear."
+    },
+    "expect": [
+      {
+        "path": "cadRads",
+        "equals": "CAD-RADS 3/P2/HRP"
+      },
+      {
+        "path": "plaqueBurden",
+        "equals": "P2 (Moderate)"
+      },
+      {
+        "path": "sections.coronary",
+        "contains": "Proximal LAD demonstrates mixed calcified and noncalcified plaque causing moderate (50-69%) stenosis."
+      },
+      {
+        "path": "sections.recommendations",
+        "contains": "Consider CT-FFR, CT perfusion, or stress testing."
+      }
+    ]
+  },
+  {
+    "id": "multivessel_obstructive",
+    "label": "Multivessel obstructive disease with stent and HRP",
+    "input": {
+      "examType": "coronary_cta",
+      "indication": "Known coronary artery disease",
+      "calciumScore": 624,
+      "heartRate": 64,
+      "text": "Coronary CTA for known coronary artery disease. Image quality is limited by motion but remains diagnostic. Right dominant circulation. Left main has calcified plaque with 50-69% stenosis. Proximal LAD has mixed plaque with severe 70-99% stenosis. LCx has severe 70-99% stenosis in the proximal vessel. RCA has severe 70-99% stenosis proximally. Spotty calcification and napkin ring sign are present in the proximal LAD plaque. Prior LAD stent is patent. Ascending aorta is ectatic at 4.2 cm. No pericardial effusion. Small hiatal hernia and mild bibasal atelectatic change."
+    },
+    "expect": [
+      {
+        "path": "cadRads",
+        "equals": "CAD-RADS 4B/P3/HRP/S"
+      },
+      {
+        "path": "plaqueBurden",
+        "equals": "P3 (Severe)"
+      },
+      {
+        "path": "sections.impression",
+        "contains": "Left main and/or multivessel obstructive coronary disease is described."
+      },
+      {
+        "path": "sections.impression",
+        "contains": "Aorta: Ascending aorta is ectatic at 4.2 cm."
+      }
+    ]
+  },
+  {
+    "id": "noisy_extensive_agatston",
+    "label": "Noisy transcript with extensive plaque burden wording",
+    "input": {
+      "examType": "coronary_cta",
+      "text": "so this 53 year old patient came with symptoms of chronic chest pain and beautiful formed an ECG synchronized 1,127 furthermore SunTrust in Hunts can we see that we don't have any normal teeth regarding the origins of the coronary arteries but we see a high grade stenosis of approximately approximately of 90% diameters in the proximal LAD due to a mixed calcified plaque without high risk factors so this is the thermal diagnosis and there's a small pleural effusion of 1 cm thickness bilaterally although more in the right side than the left side in the abdomen that is partially appears to be a cystic lesion of return segment two. Agatston score is extensive. Diagnostic image quality for coronary interpretation."
+    },
+    "expect": [
+      {
+        "path": "cadRads",
+        "equals": "CAD-RADS 4A/P4"
+      },
+      {
+        "path": "plaqueBurden",
+        "equals": "P4 (Extensive)"
+      },
+      {
+        "path": "sections.indication",
+        "contains": "Chronic chest pain."
+      },
+      {
+        "path": "sections.extracardiac",
+        "contains": "Small pleural effusions bilaterally, greater on the right, measuring up to 1 cm in thickness."
+      },
+      {
+        "path": "sections.extracardiac",
+        "contains": "Partially imaged cystic lesion in hepatic segment II."
+      },
+      {
+        "path": "finalReport",
+        "notContains": "beautiful formed"
+      },
+      {
+        "path": "finalReport",
+        "notContains": "SunTrust"
+      },
+      {
+        "path": "finalReport",
+        "notContains": "normal teeth"
+      },
+      {
+        "path": "finalReport",
+        "notContains": "thermal diagnosis"
+      }
+    ]
+  }
+]
