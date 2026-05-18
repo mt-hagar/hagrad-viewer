@@ -70,6 +70,23 @@
         opacity: 0.08;
       }
 
+      .page-side-heart {
+        position: fixed;
+        z-index: 0;
+        top: 50%;
+        right: clamp(-340px, -18vw, -180px);
+        width: min(560px, 42vw);
+        aspect-ratio: 1196 / 1530;
+        pointer-events: none;
+        background: url("./assets/hagrad-cardiac-heart-render.png") center / contain no-repeat;
+        filter: saturate(0.82) contrast(1.04);
+        mix-blend-mode: screen;
+        opacity: 0.13;
+        transform: translateY(-50%) rotate(-4deg);
+        -webkit-mask-image: radial-gradient(circle at 50% 50%, black 0 58%, transparent 82%);
+        mask-image: radial-gradient(circle at 50% 50%, black 0 58%, transparent 82%);
+      }
+
       a {
         color: inherit;
       }
@@ -213,27 +230,6 @@
       .hero > * {
         position: relative;
         z-index: 1;
-      }
-
-      .hero-heart-accent {
-        position: absolute;
-        right: clamp(-280px, -14vw, -150px);
-        bottom: clamp(-210px, -16vw, -120px);
-        z-index: 0;
-        width: min(520px, 40vw);
-        pointer-events: none;
-        filter: saturate(0.85) contrast(1.08);
-        mix-blend-mode: screen;
-        opacity: 0.16;
-        transform: rotate(-4deg);
-        -webkit-mask-image: radial-gradient(circle at 52% 48%, black 0 56%, transparent 80%);
-        mask-image: radial-gradient(circle at 52% 48%, black 0 56%, transparent 80%);
-      }
-
-      .hero-heart-accent img {
-        display: block;
-        width: 100%;
-        height: auto;
       }
 
       .eyebrow {
@@ -589,11 +585,10 @@
           transform: none;
         }
 
-        .hero-heart-accent {
-          right: -220px;
-          bottom: -90px;
+        .page-side-heart {
+          right: -250px;
           width: 340px;
-          opacity: 0.1;
+          opacity: 0.09;
         }
 
         h1 {
@@ -609,6 +604,7 @@
     </style>
   </head>
   <body>
+    <div class="page-side-heart" aria-hidden="true"></div>
     <div class="page">
       <header class="topbar">
         <nav class="nav" aria-label="Main navigation">
@@ -647,9 +643,6 @@
               <a class="button support" href="https://buymeacoffee.com/hagrad" rel="noopener noreferrer" target="_blank">Support our work</a>
             </div>
             <p class="disclaimer">Research Use Only. HAGRad is not intended for clinical diagnosis, treatment decisions, or patient care.</p>
-          </div>
-          <div class="hero-heart-accent" aria-hidden="true">
-            <img src="./assets/hagrad-cardiac-heart-render.png" alt="" />
           </div>
           <aside class="hero-panel" aria-label="Project status">
             <h2>Research Preview</h2>
