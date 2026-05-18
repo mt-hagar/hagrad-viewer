@@ -3,8 +3,11 @@ set -e
 
 PACKAGE_ROOT="$(cd "$(dirname "$0")" && pwd)"
 HAGRAD_ROOT="$PACKAGE_ROOT"
+LAUNCHER_NAME="$(basename "$0")"
 
-if [[ -d "$PACKAGE_ROOT/HAGRad_Runtime" ]]; then
+if [[ -d "$PACKAGE_ROOT/HAGRad_support_files" ]]; then
+  HAGRAD_ROOT="$PACKAGE_ROOT/HAGRad_support_files"
+elif [[ -d "$PACKAGE_ROOT/HAGRad_Runtime" ]]; then
   HAGRAD_ROOT="$PACKAGE_ROOT/HAGRad_Runtime"
 fi
 
@@ -53,7 +56,7 @@ PLIST
 #!/bin/zsh
 set -e
 cd "$PACKAGE_ROOT"
-exec "./HAGRad Viewer.command"
+exec "./$LAUNCHER_NAME"
 SCRIPT
 
   chmod +x "$app_path/Contents/MacOS/hagrad-viewer"

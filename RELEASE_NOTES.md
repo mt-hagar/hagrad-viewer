@@ -37,17 +37,17 @@ On macOS:
 
 1. Download and unzip the release bundle.
 2. Open the folder.
-3. Double-click `HAGRad Viewer.command`.
-4. HAGRad creates or refreshes a `HAGRad Viewer.app` Desktop launcher with the palm icon.
+3. Double-click `open-viewer-mac.command`.
+4. HAGRad creates or refreshes a `HAGRad Viewer.app` Desktop launcher with the HAGRad icon.
 
 On Windows:
 
 1. Download and unzip the release bundle.
 2. Open the folder.
-3. Double-click `HAGRad Viewer.bat`.
-4. HAGRad creates or refreshes a `HAGRad Viewer` Desktop shortcut with the palm icon.
+3. Double-click `open-viewer-windows.bat`.
+4. HAGRad creates or refreshes a `HAGRad Viewer` Desktop shortcut with the HAGRad icon.
 
-The main HAGRad Viewer contains the workflow buttons for Image Quality, EAT, and QCA. The old per-workflow `open-*.command` and `open-*.bat` launchers are intentionally not included in platform ZIP packages to avoid parallel app entry points.
+The platform ZIP root contains only this opener plus the `HAGRad_support_files` folder. The main HAGRad Viewer contains the workflow buttons for Image Quality, EAT, and QCA. The old per-workflow launchers are intentionally not included in platform ZIP packages to avoid parallel app entry points.
 
 ## Important Notes
 

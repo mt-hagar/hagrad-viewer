@@ -31,9 +31,9 @@ Current status:
 
 - macOS launcher scripts are included.
 - Windows batch launchers are included in the Windows research-preview package.
-- Top-level `HAGRad Viewer.command` and `HAGRad Viewer.bat` launchers are provided so users do not need to navigate the source folders.
-- The first launch automatically creates a Desktop launcher with the HAGRad palm icon on macOS and Windows.
-- Platform ZIP packages keep technical runtime files under `HAGRad_Runtime`, leaving only user-facing launchers and documentation at the top level.
+- Platform ZIP packages expose one top-level opener only: `open-viewer-mac.command` on macOS or `open-viewer-windows.bat` on Windows.
+- The first launch automatically creates a Desktop launcher with the HAGRad icon on macOS and Windows.
+- Platform ZIP packages keep every support file under `HAGRad_support_files`, so users do not need to search through technical folders.
 - The viewer currently runs through a local Python HTTPS server and a browser.
 - GitHub Pages documentation is served from `/docs`.
 
@@ -46,14 +46,14 @@ Latest release:
 On macOS:
 
 1. Download and unzip the release package.
-2. Double-click `HAGRad Viewer.command`.
+2. Double-click `open-viewer-mac.command`.
 3. HAGRad automatically creates a `HAGRad Viewer.app` launcher on your Desktop.
 
 On Windows:
 
 1. Download and unzip `HAGRad-Viewer-Windows.zip`.
 2. Install Python 3 if it is not already installed.
-3. Double-click `HAGRad Viewer.bat`.
+3. Double-click `open-viewer-windows.bat`.
 4. HAGRad automatically creates a `HAGRad Viewer` desktop shortcut with the HAGRad palm icon.
 
 For Windows release builds, `packaging/windows/build-hagrad-viewer-exe.ps1` can create a `HAGRad Viewer.exe` launcher with the palm icon. This executable is a user-friendly launcher for the local HAGRad server and browser workflow.

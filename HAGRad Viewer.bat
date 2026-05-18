@@ -3,13 +3,16 @@ setlocal
 
 set "PACKAGE_ROOT=%~dp0"
 set "HAGRAD_ROOT=%PACKAGE_ROOT%"
+set "LAUNCHER_NAME=%~nx0"
 
-if exist "%PACKAGE_ROOT%HAGRad_Runtime\" (
+if exist "%PACKAGE_ROOT%HAGRad_support_files\" (
+  set "HAGRAD_ROOT=%PACKAGE_ROOT%HAGRad_support_files\"
+) else if exist "%PACKAGE_ROOT%HAGRad_Runtime\" (
   set "HAGRAD_ROOT=%PACKAGE_ROOT%HAGRad_Runtime\"
 )
 
 if exist "%HAGRAD_ROOT%scripts\create_desktop_shortcut.ps1" (
-  powershell -NoProfile -ExecutionPolicy Bypass -File "%HAGRAD_ROOT%scripts\create_desktop_shortcut.ps1" -LauncherRoot "%PACKAGE_ROOT%" >nul 2>nul
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%HAGRAD_ROOT%scripts\create_desktop_shortcut.ps1" -LauncherRoot "%PACKAGE_ROOT%" -LauncherName "%LAUNCHER_NAME%" >nul 2>nul
 )
 
 cd /d "%HAGRAD_ROOT%"

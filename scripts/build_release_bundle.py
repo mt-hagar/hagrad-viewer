@@ -16,6 +16,8 @@ PLATFORM_PACKAGES = {
     "macos": {
         "filename": "HAGRad-Viewer-macOS.zip",
         "package_suffix": "macOS",
+        "visible_launcher": "open-viewer-mac.command",
+        "launcher_source": "HAGRad Viewer.command",
         "exclude_suffixes": {".bat", ".ico", ".ps1"},
         "exclude_names": {"README_WINDOWS.md"},
         "exclude_prefixes": {("packaging", "windows")},
@@ -23,38 +25,15 @@ PLATFORM_PACKAGES = {
     "windows": {
         "filename": "HAGRad-Viewer-Windows.zip",
         "package_suffix": "Windows",
+        "visible_launcher": "open-viewer-windows.bat",
+        "launcher_source": "HAGRad Viewer.bat",
         "exclude_suffixes": {".command", ".icns"},
         "exclude_names": set(),
         "exclude_prefixes": set(),
     },
 }
 
-PLATFORM_TOP_LEVEL_FILES = {
-    "macos": {
-        "Create Desktop Shortcut.command",
-        "DISCLAIMER.md",
-        "HAGRad Viewer.command",
-        "LICENSE",
-        "LICENSE.md",
-        "README.md",
-        "RELEASE_NOTES.md",
-        "START_HERE.md",
-    },
-    "windows": {
-        "Create Desktop Shortcut.bat",
-        "DISCLAIMER.md",
-        "HAGRad Viewer.bat",
-        "HAGRad Viewer.exe",
-        "LICENSE",
-        "LICENSE.md",
-        "README.md",
-        "README_WINDOWS.md",
-        "RELEASE_NOTES.md",
-        "START_HERE.md",
-    },
-}
-
-RUNTIME_DIR_NAME = "HAGRad_Runtime"
+SUPPORT_DIR_NAME = "HAGRad_support_files"
 
 EXCLUDED_DIR_NAMES = {
     ".cert",
@@ -134,11 +113,21 @@ def write_zip(version: str, output: pathlib.Path, platform: str | None = None) -
     files = iter_release_files(platform=platform)
 
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        if platform:
+            package = PLATFORM_PACKAGES[platform]
+            launcher_source = ROOT / str(package["launcher_source"])
+            launcher_name = str(package["visible_launcher"])
+            arcname = pathlib.PurePosixPath(package_root, launcher_name).as_posix()
+            info = zipfile.ZipInfo.from_file(launcher_source, arcname)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = (launcher_source.stat().st_mode & 0xFFFF) << 16
+            with launcher_source.open("rb") as file_handle:
+                archive.writestr(info, file_handle.read(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+
         for path in files:
             relative = path.relative_to(ROOT)
-            keep_at_top = platform and len(relative.parts) == 1 and path.name in PLATFORM_TOP_LEVEL_FILES[platform]
-            if platform and not keep_at_top:
-                relative = pathlib.PurePosixPath(RUNTIME_DIR_NAME, relative.as_posix())
+            if platform:
+                relative = pathlib.PurePosixPath(SUPPORT_DIR_NAME, relative.as_posix())
             arcname = pathlib.PurePosixPath(package_root, relative.as_posix()).as_posix()
             info = zipfile.ZipInfo.from_file(path, arcname)
             info.compress_type = zipfile.ZIP_DEFLATED
@@ -187,12 +176,13 @@ def main() -> int:
 
         release_path = write_zip(version, output, platform=platform)
         files = iter_release_files(platform=platform)
+        included_count = len(files) + (1 if platform else 0)
         size_mb = release_path.stat().st_size / (1024 * 1024)
         label = platform or "source"
 
         print(f"Created {release_path}")
         print(f"Bundle type {label}")
-        print(f"Included {len(files)} files")
+        print(f"Included {included_count} files")
         print(f"Bundle size {size_mb:.1f} MB")
 
     print("Excluded local exports, project lists, certificates, caches, tooling, and secrets.")
