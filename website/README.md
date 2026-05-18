@@ -38,11 +38,11 @@ Current behavior:
 - `Download for Windows` downloads the latest `HAGRad-Viewer-Windows.zip` release asset.
 - `View GitHub releases` opens the release archive.
 
-The platform-specific download URLs use GitHub's latest-release asset route:
+The platform-specific download URLs use the current research-preview release asset route:
 
 ```text
-https://github.com/mt-hagar/hagrad-viewer/releases/latest/download/HAGRad-Viewer-macOS.zip
-https://github.com/mt-hagar/hagrad-viewer/releases/latest/download/HAGRad-Viewer-Windows.zip
+https://github.com/mt-hagar/hagrad-viewer/releases/download/v0.9.0-research-preview/HAGRad-Viewer-macOS.zip
+https://github.com/mt-hagar/hagrad-viewer/releases/download/v0.9.0-research-preview/HAGRad-Viewer-Windows.zip
 ```
 
 ## Custom domain
