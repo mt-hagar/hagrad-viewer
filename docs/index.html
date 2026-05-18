@@ -466,6 +466,10 @@
         object-fit: cover;
       }
 
+      .screenshot-box.contain-image img {
+        object-fit: contain;
+      }
+
       .video-card {
         padding: clamp(22px, 4vw, 34px);
         background:
@@ -774,6 +778,16 @@
               </div>
               <h3>QCA</h3>
               <p>Still-frame invasive angiography analysis with vessel overlay, stenosis measurements, and diameter profile output.</p>
+            </article>
+            <article class="placeholder">
+              <div class="screenshot-box has-image contain-image">
+                <img
+                  src="./assets/hagrad-noncalcified-plaque-profile.jpg"
+                  alt="HAGRad viewer comparison of non-calcified plaque-lumen line profile analysis across Bv60 and Qr40 reconstruction kernels."
+                />
+              </div>
+              <h3>Non-Calcified Plaque Profile</h3>
+              <p>Line-profile analysis of the plaque-lumen interface to compare non-calcified plaque appearance across reconstruction kernels.</p>
             </article>
           </div>
         </section>
