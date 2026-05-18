@@ -47,6 +47,7 @@
 
       body::before {
         position: fixed;
+        z-index: 0;
         inset: 0;
         pointer-events: none;
         content: "";
@@ -57,12 +58,25 @@
         mask-image: linear-gradient(to bottom, black, transparent 82%);
       }
 
+      body::after {
+        position: fixed;
+        z-index: 0;
+        inset: 0;
+        pointer-events: none;
+        content: "";
+        background: url("./assets/hagrad-brand-watermark.png") center 12vh / min(1080px, 88vw) auto no-repeat;
+        filter: saturate(0.9);
+        mix-blend-mode: screen;
+        opacity: 0.08;
+      }
+
       a {
         color: inherit;
       }
 
       .page {
         position: relative;
+        z-index: 1;
         width: min(1180px, calc(100% - 32px));
         margin: 0 auto;
       }
