@@ -2,7 +2,7 @@
 
 ## Current Workflow
 
-1. Open NoiseLab with `open-noiselab.command`.
+1. Open HAGRad with `HAGRad Viewer.command`, then choose the NoiseLab workflow when it is available.
 2. Load one DICOM series or drop a study folder onto the viewport.
 3. Confirm the correct series is active in the `Study` panel. Click a series card, or use `Cmd/Ctrl + ↑/↓`, to switch between loaded reconstructions.
 4. Navigate slices with the slider, arrow keys, mouse wheel, or right-mouse drag scrub.

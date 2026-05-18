@@ -23,5 +23,5 @@ openssl req -x509 -nodes -newkey rsa:2048 ^
 
 echo.
 echo Local certificate created.
-echo Next, double-click start-server.bat or open-viewer.bat.
+echo Next, double-click HAGRad Viewer.bat.
 pause
