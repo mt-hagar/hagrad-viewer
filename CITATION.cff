@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use HAGRad in academic work, please cite the software."
+title: "HAGRad: Open-Source Framework for Advanced Cardiac CT Research"
+version: "0.9.0-research-preview"
+doi: ""
+date-released: "2026-05-18"
+authors:
+  - family-names: "Hagar"
+    given-names: "Taha"
+repository-code: "https://github.com/mt-hagar/hagrad-viewer"
+url: "https://hagrad.org"
+license: "MIT"
+keywords:
+  - "cardiac CT"
+  - "coronary CTA"
+  - "DICOM"
+  - "image quality"
+  - "medical imaging research"
+  - "quantitative imaging"
+abstract: "HAGRad is an open-source local framework for advanced cardiac CT research, including DICOM review, multi-planar reformation, quantitative measurements, image-quality assessment, and workflow prototyping."
