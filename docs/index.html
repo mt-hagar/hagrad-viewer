@@ -215,6 +215,27 @@
         z-index: 1;
       }
 
+      .hero-heart-accent {
+        position: absolute;
+        right: clamp(-280px, -14vw, -150px);
+        bottom: clamp(-210px, -16vw, -120px);
+        z-index: 0;
+        width: min(520px, 40vw);
+        pointer-events: none;
+        filter: saturate(0.85) contrast(1.08);
+        mix-blend-mode: screen;
+        opacity: 0.16;
+        transform: rotate(-4deg);
+        -webkit-mask-image: radial-gradient(circle at 52% 48%, black 0 56%, transparent 80%);
+        mask-image: radial-gradient(circle at 52% 48%, black 0 56%, transparent 80%);
+      }
+
+      .hero-heart-accent img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
       .eyebrow {
         margin: 0 0 13px;
         color: var(--gold);
@@ -568,6 +589,13 @@
           transform: none;
         }
 
+        .hero-heart-accent {
+          right: -220px;
+          bottom: -90px;
+          width: 340px;
+          opacity: 0.1;
+        }
+
         h1 {
           font-size: clamp(3.4rem, 20vw, 5rem);
         }
@@ -619,6 +647,9 @@
               <a class="button support" href="https://buymeacoffee.com/hagrad" rel="noopener noreferrer" target="_blank">Support our work</a>
             </div>
             <p class="disclaimer">Research Use Only. HAGRad is not intended for clinical diagnosis, treatment decisions, or patient care.</p>
+          </div>
+          <div class="hero-heart-accent" aria-hidden="true">
+            <img src="./assets/hagrad-cardiac-heart-render.png" alt="" />
           </div>
           <aside class="hero-panel" aria-label="Project status">
             <h2>Research Preview</h2>
