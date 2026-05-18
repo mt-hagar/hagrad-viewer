@@ -16,16 +16,45 @@ PLATFORM_PACKAGES = {
     "macos": {
         "filename": "HAGRad-Viewer-macOS.zip",
         "package_suffix": "macOS",
-        "exclude_suffixes": {".bat"},
+        "exclude_suffixes": {".bat", ".ico", ".ps1"},
         "exclude_names": {"README_WINDOWS.md"},
+        "exclude_prefixes": {("packaging", "windows")},
     },
     "windows": {
         "filename": "HAGRad-Viewer-Windows.zip",
         "package_suffix": "Windows",
-        "exclude_suffixes": {".command"},
+        "exclude_suffixes": {".command", ".icns"},
         "exclude_names": set(),
+        "exclude_prefixes": set(),
     },
 }
+
+PLATFORM_TOP_LEVEL_FILES = {
+    "macos": {
+        "Create Desktop Shortcut.command",
+        "DISCLAIMER.md",
+        "HAGRad Viewer.command",
+        "LICENSE",
+        "LICENSE.md",
+        "README.md",
+        "RELEASE_NOTES.md",
+        "START_HERE.md",
+    },
+    "windows": {
+        "Create Desktop Shortcut.bat",
+        "DISCLAIMER.md",
+        "HAGRad Viewer.bat",
+        "HAGRad Viewer.exe",
+        "LICENSE",
+        "LICENSE.md",
+        "README.md",
+        "README_WINDOWS.md",
+        "RELEASE_NOTES.md",
+        "START_HERE.md",
+    },
+}
+
+RUNTIME_DIR_NAME = "HAGRad_Runtime"
 
 EXCLUDED_DIR_NAMES = {
     ".cert",
@@ -71,6 +100,8 @@ def should_include(path: pathlib.Path, platform: str | None = None) -> bool:
 
     if platform:
         package = PLATFORM_PACKAGES[platform]
+        if any(parts[: len(prefix)] == prefix for prefix in package["exclude_prefixes"]):
+            return False
         if path.name in package["exclude_names"]:
             return False
         if path.suffix in package["exclude_suffixes"]:
@@ -98,6 +129,9 @@ def write_zip(version: str, output: pathlib.Path, platform: str | None = None) -
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in files:
             relative = path.relative_to(ROOT)
+            keep_at_top = platform and len(relative.parts) == 1 and path.name in PLATFORM_TOP_LEVEL_FILES[platform]
+            if platform and not keep_at_top:
+                relative = pathlib.PurePosixPath(RUNTIME_DIR_NAME, relative.as_posix())
             arcname = pathlib.PurePosixPath(package_root, relative.as_posix()).as_posix()
             info = zipfile.ZipInfo.from_file(path, arcname)
             info.compress_type = zipfile.ZIP_DEFLATED

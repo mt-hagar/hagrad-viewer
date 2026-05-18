@@ -31,6 +31,9 @@ Current status:
 
 - macOS launcher scripts are included.
 - Windows batch launchers are included in the Windows research-preview package.
+- Top-level `HAGRad Viewer.command` and `HAGRad Viewer.bat` launchers are provided so users do not need to navigate the source folders.
+- Optional desktop shortcut creators are included for macOS and Windows.
+- Platform ZIP packages keep technical runtime files under `HAGRad_Runtime`, leaving only user-facing launchers and documentation at the top level.
 - The viewer currently runs through a local Python HTTPS server and a browser.
 - GitHub Pages documentation is served from `/docs`.
 
@@ -43,16 +46,17 @@ Latest release:
 On macOS:
 
 1. Download and unzip the release package.
-2. Run `make-local-cert.command` once if local HTTPS certificates are missing.
-3. Run `start-server.command`.
-4. Open `open-viewer.command`, or one of the workflow launchers such as `open-ccta-iq.command`, `open-eat.command`, or `open-qca.command`.
+2. Double-click `HAGRad Viewer.command`.
+3. Optional: double-click `Create Desktop Shortcut.command` to create a `HAGRad Viewer.app` launcher on your Desktop.
 
 On Windows:
 
 1. Download and unzip `HAGRad-Viewer-Windows.zip`.
 2. Install Python 3 if it is not already installed.
-3. Run `make-local-cert.bat` once if local HTTPS certificates are missing.
-4. Run `open-viewer.bat`.
+3. Double-click `HAGRad Viewer.bat`.
+4. Optional: double-click `Create Desktop Shortcut.bat` to create a `HAGRad Viewer` desktop shortcut with the HAGRad palm icon.
+
+For Windows release builds, `packaging/windows/build-hagrad-viewer-exe.ps1` can create a `HAGRad Viewer.exe` launcher with the palm icon. This executable is a user-friendly launcher for the local HAGRad server and browser workflow.
 
 ## Research Use Only
 

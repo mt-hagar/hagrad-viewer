@@ -6,8 +6,12 @@ HAGRad for Windows runs as a local browser-based research application.
 
 1. Unzip `HAGRad-Viewer-Windows.zip`.
 2. Install Python 3 if it is not already installed.
-3. Run `make-local-cert.bat` once.
-4. Run `open-viewer.bat`.
+3. Double-click `HAGRad Viewer.bat`.
+
+Optional:
+
+- Double-click `Create Desktop Shortcut.bat` to create a `HAGRad Viewer` desktop shortcut with the HAGRad palm icon.
+- If a future release includes `HAGRad Viewer.exe`, double-click that instead of the batch file.
 
 The local viewer opens at:
 
