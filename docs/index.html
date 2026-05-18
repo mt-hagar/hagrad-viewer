@@ -371,6 +371,21 @@
         border-radius: 18px;
       }
 
+      .screenshot-box.has-image {
+        min-height: 250px;
+        padding: 0;
+        overflow: hidden;
+        background: rgba(0, 0, 0, 0.22);
+        border-style: solid;
+      }
+
+      .screenshot-box img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
       .info-card a,
       .contact-card a {
         color: var(--teal);
@@ -527,10 +542,20 @@
         <section id="screenshots" aria-labelledby="screenshots-title">
           <div class="section-head">
             <p class="eyebrow">Screenshots</p>
-            <h2 id="screenshots-title">Visual documentation placeholders</h2>
-            <p>Representative screenshots and workflow animations will be added as public figures mature.</p>
+            <h2 id="screenshots-title">Visual workflow examples</h2>
+            <p>Representative screenshots show how HAGRad converts image review into structured research outputs.</p>
           </div>
           <div class="placeholder-grid">
+            <article class="placeholder">
+              <div class="screenshot-box has-image">
+                <img
+                  src="./assets/hagrad-eat-report-screenshot.png"
+                  alt="HAGRad EAT report showing epicardial adipose tissue volume, density, review coverage, and example segmented cardiac CT slices."
+                />
+              </div>
+              <h3>HAGRad EAT</h3>
+              <p>Epicardial adipose tissue summary report with volume, density, review coverage, and segmented representative slices.</p>
+            </article>
             <article class="placeholder">
               <div class="screenshot-box">Viewer screenshot placeholder</div>
               <h3>Core Viewer</h3>
