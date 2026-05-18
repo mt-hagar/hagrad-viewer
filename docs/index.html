@@ -106,9 +106,18 @@
         width: 28px;
         height: 28px;
         place-items: center;
-        color: #06111b;
-        background: linear-gradient(135deg, var(--gold), var(--teal));
+        overflow: hidden;
+        background: rgba(5, 13, 20, 0.58);
+        border: 1px solid rgba(103, 216, 205, 0.28);
         border-radius: 9px;
+      }
+
+      .brand-mark img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        opacity: 0.9;
+        transform: scale(1.42);
       }
 
       .links {
@@ -160,6 +169,7 @@
 
       .hero::after {
         position: absolute;
+        z-index: 0;
         right: -120px;
         bottom: -160px;
         width: 430px;
@@ -168,6 +178,27 @@
         border: 1px solid rgba(103, 216, 205, 0.18);
         border-radius: 44% 56% 52% 48%;
         background: radial-gradient(circle, rgba(103, 216, 205, 0.15), transparent 62%);
+      }
+
+      .hero::before {
+        position: absolute;
+        z-index: 0;
+        top: 50%;
+        right: clamp(18px, 8vw, 112px);
+        width: min(460px, 42vw);
+        aspect-ratio: 1298 / 1212;
+        content: "";
+        pointer-events: none;
+        background: url("./assets/hagrad-brand-watermark.png") center / contain no-repeat;
+        filter: saturate(0.95);
+        mix-blend-mode: screen;
+        opacity: 0.14;
+        transform: translateY(-50%);
+      }
+
+      .hero > * {
+        position: relative;
+        z-index: 1;
       }
 
       .eyebrow {
@@ -448,6 +479,14 @@
           padding: 34px 20px;
         }
 
+        .hero::before {
+          top: 34px;
+          right: -26px;
+          width: 280px;
+          opacity: 0.09;
+          transform: none;
+        }
+
         h1 {
           font-size: clamp(3.4rem, 20vw, 5rem);
         }
@@ -465,7 +504,7 @@
       <header class="topbar">
         <nav class="nav" aria-label="Main navigation">
           <a class="brand" href="#top" aria-label="HAGRad home">
-            <span class="brand-mark">H</span>
+            <span class="brand-mark"><img src="./assets/hagrad-brand-watermark.png" alt="" aria-hidden="true" /></span>
             <span>HAGRad</span>
           </a>
           <div class="links">
@@ -475,6 +514,7 @@
             <a href="#documentation">Docs</a>
             <a href="#citation">Citation</a>
             <a href="#support">Support</a>
+            <a href="#book">Book</a>
             <a href="#contact">Contact</a>
           </div>
         </nav>
@@ -676,6 +716,17 @@ Repository: https://github.com/mt-hagar/hagrad-viewer</code></pre>
               </p>
             </div>
             <a class="button primary" href="https://buymeacoffee.com/hagrad" rel="noopener noreferrer" target="_blank">Support HAGRad</a>
+          </div>
+        </section>
+
+        <section id="book" aria-labelledby="book-title">
+          <div class="contact-card">
+            <div>
+              <p class="eyebrow">Book</p>
+              <h2 id="book-title">Download book</h2>
+              <p>Download the English PDF book for offline reading.</p>
+            </div>
+            <a class="button primary" href="./assets/the-quran-english.pdf" download>Download Book</a>
           </div>
         </section>
 
