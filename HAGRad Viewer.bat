@@ -8,6 +8,10 @@ if exist "%PACKAGE_ROOT%HAGRad_Runtime\" (
   set "HAGRAD_ROOT=%PACKAGE_ROOT%HAGRad_Runtime\"
 )
 
+if exist "%HAGRAD_ROOT%scripts\create_desktop_shortcut.ps1" (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%HAGRAD_ROOT%scripts\create_desktop_shortcut.ps1" -LauncherRoot "%PACKAGE_ROOT%" >nul 2>nul
+)
+
 cd /d "%HAGRAD_ROOT%"
 
 if not exist ".cert\localhost.pem" (

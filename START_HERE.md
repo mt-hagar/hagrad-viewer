@@ -12,7 +12,7 @@ Double-click:
 HAGRad Viewer.command
 ```
 
-Optional: double-click `Create Desktop Shortcut.command` to place a `HAGRad Viewer.app` launcher on your Desktop with the HAGRad palm icon.
+On first launch, HAGRad automatically creates a `HAGRad Viewer.app` launcher on your Desktop with the HAGRad palm icon.
 
 ## Windows
 
@@ -22,7 +22,7 @@ Double-click:
 HAGRad Viewer.bat
 ```
 
-Optional: double-click `Create Desktop Shortcut.bat` to place a `HAGRad Viewer` shortcut on your Desktop with the HAGRad palm icon.
+On first launch, HAGRad automatically creates a `HAGRad Viewer` shortcut on your Desktop with the HAGRad palm icon.
 
 ## First run
 
