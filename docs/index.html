@@ -527,8 +527,9 @@
         align-items: center;
       }
 
-      .support-card {
+      .mission-card {
         overflow: hidden;
+        display: block;
         border-color: rgba(240, 197, 106, 0.34);
         background:
           radial-gradient(circle at 88% 12%, rgba(240, 197, 106, 0.18), transparent 20rem),
@@ -536,16 +537,31 @@
           var(--card);
       }
 
-      .support-card .eyebrow {
+      .mission-card .eyebrow {
         color: #f8d98b;
       }
 
-      .support-card h2 {
+      .mission-card h2 {
         margin-bottom: 10px;
       }
 
-      .support-card a.button {
+      .mission-card p {
+        max-width: 1000px;
+      }
+
+      .mission-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 28px;
+      }
+
+      .mission-card a.button {
         color: #08121a;
+      }
+
+      .mission-card a.button.primary {
+        color: var(--text);
       }
 
       footer {
@@ -630,7 +646,7 @@
             <a href="#downloads">Downloads</a>
             <a href="#documentation">Docs</a>
             <a href="#citation">Citation</a>
-            <a href="#support">Support</a>
+            <a href="#mission">Mission</a>
             <a href="#contact">Contact</a>
           </div>
         </nav>
@@ -852,31 +868,40 @@ Version 0.9.0 research preview. 2026.
 Repository: https://github.com/mt-hagar/hagrad-viewer</code></pre>
         </section>
 
-        <section id="support" aria-labelledby="support-title">
-          <div class="contact-card support-card">
-            <div>
-              <p class="eyebrow">Support</p>
-              <h2 id="support-title">Help keep HAGRad moving</h2>
-              <p>
-                HAGRad is independent research software. Contributions help support development,
-                testing, documentation, and public releases for cardiovascular imaging research.
-              </p>
+        <section id="mission" aria-labelledby="mission-title">
+          <div class="contact-card mission-card">
+            <p class="eyebrow">Our mission</p>
+            <h2 id="mission-title">Heart Analysis Gateway for Radiologic Research and Development</h2>
+            <p>
+              Heart Analysis Gateway for Radiologic Research and Development (HAGRad) was developed
+              as an open-source platform founded on the belief that advanced cardiovascular CT
+              research and education can become more accessible, reproducible, collaborative, and
+              engaging. Built through more than 1,000 hours of development, refinement, debugging,
+              testing, and real-world research use, HAGRad was designed to inspire and empower the
+              next generation of researchers, physicians, engineers, and students by transforming
+              complex cardiac CT analysis into structured, supervised, and educationally meaningful
+              research experiences.
+            </p>
+            <p>
+              Through synchronized reconstruction comparison, quantitative quality-control workflows,
+              exportable structured outputs, and transparent analytical pipelines, the platform aims
+              to modernize mentoring, facilitate scientific onboarding, and foster reproducible
+              research practices within cardiovascular imaging. By combining open-source accessibility
+              with educational and research-oriented workflow design, HAGRad seeks to accelerate
+              innovation in cardiac imaging science while strengthening mentorship, collaboration, and
+              long-term engagement in academic radiology and imaging research.
+            </p>
+            <p>
+              Please feel free to contact us with any questions, ideas, feedback, or interest in
+              collaboration. If you would like to support our mission and the continued development of
+              open-source cardiovascular imaging research tools, please consider using the Support
+              button to buy us a coffee. Thank you for supporting independent scientific innovation
+              and education.
+            </p>
+            <div class="mission-actions" id="contact">
+              <a class="button primary" href="mailto:hagarmu@musc.edu">Contact us</a>
+              <a class="button support" href="https://buymeacoffee.com/hagrad" rel="noopener noreferrer" target="_blank">Support HAGRad</a>
             </div>
-            <a class="button support" href="https://buymeacoffee.com/hagrad" rel="noopener noreferrer" target="_blank">Support HAGRad</a>
-          </div>
-        </section>
-
-        <section id="contact" aria-labelledby="contact-title">
-          <div class="contact-card">
-            <div>
-              <p class="eyebrow">Contact</p>
-              <h2 id="contact-title">Research collaboration</h2>
-              <p>
-                For collaboration, technical questions, or academic inquiries, please email
-                hagarmu@musc.edu.
-              </p>
-            </div>
-            <a class="button primary" href="mailto:hagarmu@musc.edu">Email HAGRad</a>
           </div>
         </section>
       </main>
