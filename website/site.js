@@ -3,12 +3,12 @@
 
   const DOWNLOADS = {
     macos: {
-      url: "https://github.com/mt-hagar/hagrad-viewer/releases/latest",
+      url: "https://github.com/mt-hagar/hagrad-viewer/releases/latest/download/HAGRad-Viewer-macOS.zip",
       directAsset: "HAGRad-Viewer-macOS.zip",
       label: "Download for macOS",
     },
     windows: {
-      url: "https://github.com/mt-hagar/hagrad-viewer/releases/latest",
+      url: "https://github.com/mt-hagar/hagrad-viewer/releases/latest/download/HAGRad-Viewer-Windows.zip",
       directAsset: "HAGRad-Viewer-Windows.zip",
       label: "Download for Windows",
     },
@@ -28,10 +28,7 @@
       link.href = target.url;
       link.textContent = target.label;
       if (target.directAsset) {
-        link.setAttribute(
-          "title",
-          `${target.directAsset} will be attached to the public GitHub release. Until then, this button opens the latest release page.`
-        );
+        link.setAttribute("title", `Download ${target.directAsset} from the latest GitHub release.`);
       }
       link.setAttribute("rel", "noopener noreferrer");
     });

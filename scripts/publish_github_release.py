@@ -13,6 +13,10 @@ import zipfile
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEFAULT_VERSION = "v0.9.0-research-preview"
 PACKAGE_PREFIX = "hagrad-viewer"
+PLATFORM_ASSETS = (
+    "HAGRad-Viewer-macOS.zip",
+    "HAGRad-Viewer-Windows.zip",
+)
 
 
 def run(command: list[str], cwd: pathlib.Path | None = None, capture: bool = False) -> subprocess.CompletedProcess[str]:
@@ -47,13 +51,22 @@ def validate_repo_name(repo: str) -> str:
     return normalized
 
 
-def ensure_release_bundle(version: str) -> pathlib.Path:
+def ensure_release_bundles(version: str) -> list[pathlib.Path]:
     build_script = ROOT / "scripts" / "build_release_bundle.py"
-    run([sys.executable, str(build_script), "--version", version], cwd=ROOT)
+    run([sys.executable, str(build_script), "--version", version, "--platform", "all"], cwd=ROOT)
+
     bundle = ROOT / "dist" / f"{PACKAGE_PREFIX}-{version}.zip"
     if not bundle.exists():
         raise SystemExit(f"Expected release bundle was not created: {bundle}")
-    return bundle
+
+    assets = [bundle]
+    for asset_name in PLATFORM_ASSETS:
+        asset = ROOT / "dist" / asset_name
+        if not asset.exists():
+            raise SystemExit(f"Expected release asset was not created: {asset}")
+        assets.append(asset)
+
+    return assets
 
 
 def extract_clean_source(bundle: pathlib.Path, version: str) -> pathlib.Path:
@@ -138,7 +151,7 @@ def push_source(package_dir: pathlib.Path, repo: str) -> None:
     run(["git", "push", "origin", "--tags"], cwd=package_dir)
 
 
-def create_release(repo: str, version: str, bundle: pathlib.Path, package_dir: pathlib.Path) -> None:
+def create_release(repo: str, version: str, assets: list[pathlib.Path], package_dir: pathlib.Path) -> None:
     try:
         run(["gh", "release", "view", version, "--repo", repo], capture=True)
         raise SystemExit(f"Release {version} already exists in {repo}. Please delete it manually or choose a new version.")
@@ -152,7 +165,7 @@ def create_release(repo: str, version: str, bundle: pathlib.Path, package_dir: p
             "release",
             "create",
             version,
-            str(bundle),
+            *(str(asset) for asset in assets),
             "--repo",
             repo,
             "--title",
@@ -176,7 +189,8 @@ def main() -> int:
     version = str(args.version).strip() or DEFAULT_VERSION
 
     ensure_github_ready()
-    bundle = ensure_release_bundle(version)
+    assets = ensure_release_bundles(version)
+    bundle = assets[0]
     package_dir = extract_clean_source(bundle, version)
 
     create_repo_if_needed(repo, args.visibility)
@@ -188,7 +202,7 @@ def main() -> int:
 
     prepare_git_source(package_dir, version)
     push_source(package_dir, repo)
-    create_release(repo, version, bundle, package_dir)
+    create_release(repo, version, assets, package_dir)
 
     print("")
     print("GitHub release created successfully.")

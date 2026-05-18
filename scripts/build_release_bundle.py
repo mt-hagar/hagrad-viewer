@@ -10,6 +10,22 @@ import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEFAULT_VERSION = "v0.9.0-research-preview"
+PACKAGE_PREFIX = "hagrad-viewer"
+
+PLATFORM_PACKAGES = {
+    "macos": {
+        "filename": "HAGRad-Viewer-macOS.zip",
+        "package_suffix": "macOS",
+        "exclude_suffixes": {".bat"},
+        "exclude_names": {"README_WINDOWS.md"},
+    },
+    "windows": {
+        "filename": "HAGRad-Viewer-Windows.zip",
+        "package_suffix": "Windows",
+        "exclude_suffixes": {".command"},
+        "exclude_names": set(),
+    },
+}
 
 EXCLUDED_DIR_NAMES = {
     ".cert",
@@ -37,7 +53,7 @@ EXCLUDED_SUFFIXES = {
 }
 
 
-def should_include(path: pathlib.Path) -> bool:
+def should_include(path: pathlib.Path, platform: str | None = None) -> bool:
     relative = path.relative_to(ROOT)
     parts = relative.parts
 
@@ -53,23 +69,31 @@ def should_include(path: pathlib.Path) -> bool:
     if path.suffix in EXCLUDED_SUFFIXES:
         return False
 
+    if platform:
+        package = PLATFORM_PACKAGES[platform]
+        if path.name in package["exclude_names"]:
+            return False
+        if path.suffix in package["exclude_suffixes"]:
+            return False
+
     return True
 
 
-def iter_release_files() -> list[pathlib.Path]:
+def iter_release_files(platform: str | None = None) -> list[pathlib.Path]:
     files: list[pathlib.Path] = []
     for path in ROOT.rglob("*"):
         if path.is_dir():
             continue
-        if should_include(path):
+        if should_include(path, platform=platform):
             files.append(path)
     return sorted(files, key=lambda item: item.relative_to(ROOT).as_posix())
 
 
-def write_zip(version: str, output: pathlib.Path) -> pathlib.Path:
+def write_zip(version: str, output: pathlib.Path, platform: str | None = None) -> pathlib.Path:
     output.parent.mkdir(parents=True, exist_ok=True)
-    package_root = f"hagrad-viewer-{version.lstrip('v')}"
-    files = iter_release_files()
+    suffix = f"-{PLATFORM_PACKAGES[platform]['package_suffix']}" if platform else ""
+    package_root = f"{PACKAGE_PREFIX}-{version.lstrip('v')}{suffix}"
+    files = iter_release_files(platform=platform)
 
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in files:
@@ -84,24 +108,52 @@ def write_zip(version: str, output: pathlib.Path) -> pathlib.Path:
     return output
 
 
+def default_output(version: str, platform: str | None = None) -> pathlib.Path:
+    if platform:
+        return ROOT / "dist" / PLATFORM_PACKAGES[platform]["filename"]
+    return ROOT / "dist" / f"{PACKAGE_PREFIX}-{version}.zip"
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build a clean HAGRad GitHub release zip bundle.")
+    parser = argparse.ArgumentParser(description="Build clean HAGRad GitHub release zip bundles.")
     parser.add_argument("--version", default=DEFAULT_VERSION, help="Release version or tag.")
     parser.add_argument("--output", default=None, help="Optional output zip path.")
+    parser.add_argument(
+        "--platform",
+        choices=["source", *PLATFORM_PACKAGES.keys(), "all"],
+        default="source",
+        help="Bundle type to build.",
+    )
     args = parser.parse_args()
 
     version = str(args.version).strip() or DEFAULT_VERSION
-    output = pathlib.Path(args.output).expanduser() if args.output else ROOT / "dist" / f"hagrad-viewer-{version}.zip"
-    if not output.is_absolute():
-        output = ROOT / output
 
-    release_path = write_zip(version, output)
-    files = iter_release_files()
-    size_mb = release_path.stat().st_size / (1024 * 1024)
+    if args.output and args.platform == "all":
+        raise SystemExit("--output can only be used when building one bundle.")
 
-    print(f"Created {release_path}")
-    print(f"Included {len(files)} files")
-    print(f"Bundle size {size_mb:.1f} MB")
+    platforms: list[str | None]
+    if args.platform == "all":
+        platforms = [None, "macos", "windows"]
+    elif args.platform == "source":
+        platforms = [None]
+    else:
+        platforms = [args.platform]
+
+    for platform in platforms:
+        output = pathlib.Path(args.output).expanduser() if args.output else default_output(version, platform=platform)
+        if not output.is_absolute():
+            output = ROOT / output
+
+        release_path = write_zip(version, output, platform=platform)
+        files = iter_release_files(platform=platform)
+        size_mb = release_path.stat().st_size / (1024 * 1024)
+        label = platform or "source"
+
+        print(f"Created {release_path}")
+        print(f"Bundle type {label}")
+        print(f"Included {len(files)} files")
+        print(f"Bundle size {size_mb:.1f} MB")
+
     print("Excluded local exports, project lists, certificates, caches, tooling, and secrets.")
     return 0
 

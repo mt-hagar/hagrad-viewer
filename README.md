@@ -30,7 +30,7 @@ HAGRad is currently distributed as a **research-preview local web application**.
 Current status:
 
 - macOS launcher scripts are included.
-- Windows packaging is planned but not yet a polished installer.
+- Windows batch launchers are included in the Windows research-preview package.
 - The viewer currently runs through a local Python HTTPS server and a browser.
 - GitHub Pages documentation is served from `/docs`.
 
@@ -46,6 +46,13 @@ On macOS:
 2. Run `make-local-cert.command` once if local HTTPS certificates are missing.
 3. Run `start-server.command`.
 4. Open `open-viewer.command`, or one of the workflow launchers such as `open-ccta-iq.command`, `open-eat.command`, or `open-qca.command`.
+
+On Windows:
+
+1. Download and unzip `HAGRad-Viewer-Windows.zip`.
+2. Install Python 3 if it is not already installed.
+3. Run `make-local-cert.bat` once if local HTTPS certificates are missing.
+4. Run `open-viewer.bat`.
 
 ## Research Use Only
 

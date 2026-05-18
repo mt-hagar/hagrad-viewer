@@ -34,12 +34,11 @@ The macOS and Windows buttons are controlled in `site.js`.
 
 Current behavior:
 
-- `Download for macOS` opens the latest GitHub release page.
-- `Download for Windows` opens the latest GitHub release page.
-- The expected future release asset names are documented in the button tooltips:
-  `HAGRad-Viewer-macOS.zip` and `HAGRad-Viewer-Windows.zip`.
+- `Download for macOS` downloads the latest `HAGRad-Viewer-macOS.zip` release asset.
+- `Download for Windows` downloads the latest `HAGRad-Viewer-Windows.zip` release asset.
+- `View GitHub releases` opens the release archive.
 
-When platform-specific packages are ready, replace the URLs in `site.js` with direct release-asset URLs, for example:
+The platform-specific download URLs use GitHub's latest-release asset route:
 
 ```text
 https://github.com/mt-hagar/hagrad-viewer/releases/latest/download/HAGRad-Viewer-macOS.zip

@@ -414,6 +414,11 @@
         border-top: 1px solid var(--line);
       }
 
+      footer a {
+        color: var(--teal);
+        font-weight: 800;
+      }
+
       @media (max-width: 960px) {
         .hero,
         .contact-card {
@@ -469,6 +474,7 @@
             <a href="#downloads">Downloads</a>
             <a href="#documentation">Docs</a>
             <a href="#citation">Citation</a>
+            <a href="#support">Support</a>
             <a href="#contact">Contact</a>
           </div>
         </nav>
@@ -486,7 +492,7 @@
               quantification, and workflow prototyping.
             </p>
             <div class="hero-buttons">
-              <a class="button primary" href="#downloads">Download placeholders</a>
+              <a class="button primary" href="#downloads">Download HAGRad</a>
               <a class="button secondary" href="https://github.com/mt-hagar/hagrad-viewer">GitHub repository</a>
             </div>
             <p class="disclaimer">Research Use Only. HAGRad is not intended for clinical diagnosis, treatment decisions, or patient care.</p>
@@ -495,7 +501,7 @@
             <h2>Research Preview</h2>
             <p>
               HAGRad currently runs as a local browser-based application served from the user's
-              computer. Public downloads and platform-specific installers will be refined over time.
+              computer. Platform-specific research-preview packages are available for macOS and Windows.
             </p>
             <div class="status-list">
               <span>Local DICOM workflow</span>
@@ -602,19 +608,22 @@
         <section id="downloads" aria-labelledby="downloads-title">
           <div class="section-head">
             <p class="eyebrow">Downloads</p>
-            <h2 id="downloads-title">Download placeholders</h2>
+            <h2 id="downloads-title">Download HAGRad</h2>
             <p>
-              Platform-specific packages will be linked here. For now, use the GitHub release archive.
+              Choose the package for your research workstation. Both downloads run locally and keep
+              DICOM files on your computer.
             </p>
           </div>
           <div class="doc-grid">
             <article class="info-card">
               <h3>macOS package</h3>
-              <p>Placeholder for a future signed or packaged macOS release.</p>
+              <p>Includes macOS launcher scripts for the local HAGRad HTTPS server and workflow modules.</p>
+              <p><a href="https://github.com/mt-hagar/hagrad-viewer/releases/latest/download/HAGRad-Viewer-macOS.zip">Download macOS package</a></p>
             </article>
             <article class="info-card">
               <h3>Windows package</h3>
-              <p>Placeholder for a future Windows launcher or installer package.</p>
+              <p>Includes Windows batch launchers for certificate setup, local server start, and viewer opening.</p>
+              <p><a href="https://github.com/mt-hagar/hagrad-viewer/releases/latest/download/HAGRad-Viewer-Windows.zip">Download Windows package</a></p>
             </article>
             <article class="info-card">
               <h3>Current release</h3>
@@ -656,6 +665,20 @@ Version 0.9.0 research preview. 2026.
 Repository: https://github.com/mt-hagar/hagrad-viewer</code></pre>
         </section>
 
+        <section id="support" aria-labelledby="support-title">
+          <div class="contact-card">
+            <div>
+              <p class="eyebrow">Support</p>
+              <h2 id="support-title">Help keep HAGRad moving</h2>
+              <p>
+                HAGRad is independent research software. Contributions help support development,
+                testing, documentation, and public releases for cardiovascular imaging research.
+              </p>
+            </div>
+            <a class="button primary" href="https://buymeacoffee.com/hagrad" rel="noopener noreferrer" target="_blank">Support HAGRad</a>
+          </div>
+        </section>
+
         <section id="contact" aria-labelledby="contact-title">
           <div class="contact-card">
             <div>
@@ -672,7 +695,10 @@ Repository: https://github.com/mt-hagar/hagrad-viewer</code></pre>
       </main>
 
       <footer>
-        <p>HAGRad is research-use-only software and is not a clinical medical device.</p>
+        <p>
+          HAGRad is research-use-only software and is not a clinical medical device.
+          <a href="https://buymeacoffee.com/hagrad" rel="noopener noreferrer" target="_blank">Support HAGRad</a>
+        </p>
       </footer>
     </div>
   </body>

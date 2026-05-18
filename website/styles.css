@@ -304,6 +304,7 @@ h3 {
 .statement-card,
 .workflow-card,
 .download-card,
+.support-card,
 .feature-list article,
 .citation-card {
   background:
@@ -396,6 +397,35 @@ h3 {
 .download-note {
   margin-top: 18px;
   color: var(--muted);
+}
+
+.support-section {
+  padding-top: 0;
+}
+
+.support-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 28px;
+  align-items: center;
+  padding: clamp(26px, 5vw, 46px);
+  border-color: rgba(243, 201, 111, 0.28);
+  border-radius: var(--radius-xl);
+}
+
+.support-card p {
+  max-width: 760px;
+  margin-bottom: 0;
+  color: var(--muted-strong);
+  font-size: clamp(1.04rem, 1.45vw, 1.2rem);
+  line-height: 1.62;
+}
+
+.button-support {
+  min-width: 230px;
+  color: #0f1720;
+  background: linear-gradient(135deg, #f7d989, #ec9f4b);
+  border-color: rgba(243, 201, 111, 0.72);
 }
 
 .split-section {
@@ -512,6 +542,14 @@ pre code {
   .workflow-grid,
   .download-grid {
     grid-template-columns: 1fr;
+  }
+
+  .support-card {
+    grid-template-columns: 1fr;
+  }
+
+  .button-support {
+    width: 100%;
   }
 
   .download-card-wide {
