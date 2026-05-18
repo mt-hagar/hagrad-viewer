@@ -434,6 +434,10 @@
         box-shadow: 0 22px 64px rgba(0, 0, 0, 0.22);
       }
 
+      .video-card + .video-card {
+        margin-top: 18px;
+      }
+
       .video-card h3 {
         margin-bottom: 10px;
       }
@@ -713,18 +717,28 @@
         <section id="demo" aria-labelledby="demo-title">
           <div class="section-head">
             <p class="eyebrow">Demo video</p>
-            <h2 id="demo-title">Stent Analyzer via HAGRad</h2>
+            <h2 id="demo-title">HAGRad demo videos</h2>
             <p>
-              A case demonstration showing the HAGRad stent analysis workflow in action.
+              Case demonstrations showing HAGRad analysis workflows in action.
             </p>
           </div>
           <article class="video-card">
-            <h3>Stent analyzer case demo</h3>
+            <h3>Stent Analyzer via HAGRad</h3>
             <p>Review the workflow directly on the page or open the video file for full-screen playback.</p>
             <div class="video-frame">
               <video controls preload="metadata" playsinline>
                 <source src="./assets/hagrad-stent-analyzer-demo.mp4" type="video/mp4" />
                 <a href="./assets/hagrad-stent-analyzer-demo.mp4">Download the stent analyzer demo video</a>
+              </video>
+            </div>
+          </article>
+          <article class="video-card">
+            <h3>Analyze QCA via HAGRad</h3>
+            <p>Review the quantitative coronary angiography workflow directly on the page or open the video file for full-screen playback.</p>
+            <div class="video-frame">
+              <video controls preload="metadata" playsinline>
+                <source src="https://github.com/mt-hagar/hagrad-viewer/releases/download/v0.9.0-research-preview/HAGRad-QCA-demo-MUSC.mp4" type="video/mp4" />
+                <a href="https://github.com/mt-hagar/hagrad-viewer/releases/download/v0.9.0-research-preview/HAGRad-QCA-demo-MUSC.mp4">Download the QCA demo video</a>
               </video>
             </div>
           </article>
