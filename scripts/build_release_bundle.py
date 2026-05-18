@@ -76,6 +76,10 @@ EXCLUDED_FILE_NAMES = {
     ".Rhistory",
 }
 
+LEGACY_PLATFORM_LAUNCHER_PREFIXES = (
+    "open-",
+)
+
 EXCLUDED_SUFFIXES = {
     ".pyc",
     ".pyo",
@@ -93,6 +97,9 @@ def should_include(path: pathlib.Path, platform: str | None = None) -> bool:
         return path.name not in EXCLUDED_DIR_NAMES
 
     if path.name in EXCLUDED_FILE_NAMES:
+        return False
+
+    if platform and path.name.startswith(LEGACY_PLATFORM_LAUNCHER_PREFIXES):
         return False
 
     if path.suffix in EXCLUDED_SUFFIXES:

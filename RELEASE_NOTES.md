@@ -37,15 +37,17 @@ On macOS:
 
 1. Download and unzip the release bundle.
 2. Open the folder.
-3. Run `make-local-cert.command` once if local HTTPS certificates are missing.
-4. Run `start-server.command` to start the local HAGRad backend.
-5. Run `open-viewer.command` to open the main HAGRad Viewer.
+3. Double-click `HAGRad Viewer.command`.
+4. HAGRad creates or refreshes a `HAGRad Viewer.app` Desktop launcher with the palm icon.
 
-Dedicated workflow launchers are also included:
+On Windows:
 
-- `open-ccta-iq.command`
-- `open-eat.command`
-- `open-qca.command`
+1. Download and unzip the release bundle.
+2. Open the folder.
+3. Double-click `HAGRad Viewer.bat`.
+4. HAGRad creates or refreshes a `HAGRad Viewer` Desktop shortcut with the palm icon.
+
+The main HAGRad Viewer contains the workflow buttons for Image Quality, EAT, and QCA. The old per-workflow `open-*.command` and `open-*.bat` launchers are intentionally not included in platform ZIP packages to avoid parallel app entry points.
 
 ## Important Notes
 
