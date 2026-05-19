@@ -1,0 +1,77 @@
+name: Package HAGRad Viewer
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  macos:
+    name: macOS app and DMG
+    runs-on: macos-14
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build unsigned macOS app and DMG
+        run: packaging/macos/build-hagrad-viewer-app.sh
+
+      - name: Build macOS app zip
+        run: python3 scripts/build_release_bundle.py --platform macos --package-mode app
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: HAGRad-Viewer-macOS
+          path: |
+            dist/HAGRad-Viewer-macOS.dmg
+            dist/HAGRad-Viewer-macOS.zip
+
+  windows:
+    name: Windows executable
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build Windows executable zip
+        shell: pwsh
+        run: packaging/windows/build-hagrad-viewer-exe.ps1
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HAGRad-Viewer-Windows
+          path: dist/HAGRad-Viewer-Windows.zip
+
+  source:
+    name: Source release zip
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build clean source bundle
+        run: python3 scripts/build_release_bundle.py --platform source
+
+      - name: Upload source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HAGRad-Viewer-Source
+          path: dist/hagrad-viewer-v0.9.0-research-preview.zip

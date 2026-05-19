@@ -13,9 +13,9 @@ import zipfile
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEFAULT_VERSION = "v0.9.0-research-preview"
 PACKAGE_PREFIX = "hagrad-viewer"
-PLATFORM_ASSETS = (
-    "HAGRad-Viewer-macOS.zip",
-    "HAGRad-Viewer-Windows.zip",
+PLATFORM_ASSET_GROUPS = (
+    ("HAGRad-Viewer-macOS.dmg", "HAGRad-Viewer-macOS.zip"),
+    ("HAGRad-Viewer-Windows.zip",),
 )
 
 
@@ -60,10 +60,11 @@ def ensure_release_bundles(version: str) -> list[pathlib.Path]:
         raise SystemExit(f"Expected release bundle was not created: {bundle}")
 
     assets = [bundle]
-    for asset_name in PLATFORM_ASSETS:
-        asset = ROOT / "dist" / asset_name
-        if not asset.exists():
-            raise SystemExit(f"Expected release asset was not created: {asset}")
+    for asset_names in PLATFORM_ASSET_GROUPS:
+        asset = next((ROOT / "dist" / asset_name for asset_name in asset_names if (ROOT / "dist" / asset_name).exists()), None)
+        if asset is None:
+            expected = ", ".join(str(ROOT / "dist" / asset_name) for asset_name in asset_names)
+            raise SystemExit(f"Expected one release asset from this group, but none existed: {expected}")
         assets.append(asset)
 
     return assets

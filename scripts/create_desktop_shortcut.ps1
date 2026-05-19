@@ -24,11 +24,13 @@ $HelperPath = Join-Path $HelperRoot "Open HAGRad Viewer.cmd"
 $ShortcutPath = Join-Path $Desktop "HAGRad Viewer.lnk"
 $LauncherPath = Join-Path $LauncherRoot $LauncherName
 $IconPath = Join-Path $RuntimeRoot "assets\hagrad-palm-icon.ico"
+$ShortcutIconPath = Join-Path $HelperRoot "hagrad-palm-icon.ico"
 
 if (-not (Test-Path $LauncherPath)) {
     $FallbackLauncherPath = Join-Path $LauncherRoot "HAGRad Viewer.bat"
     if (Test-Path $FallbackLauncherPath) {
         $LauncherPath = $FallbackLauncherPath
+        $LauncherName = Split-Path -Leaf $LauncherPath
     } else {
         throw "Could not find launcher: $LauncherPath"
     }
@@ -39,9 +41,15 @@ if (-not (Test-Path $IconPath)) {
 }
 
 New-Item -ItemType Directory -Force -Path $HelperRoot | Out-Null
+Copy-Item -Path $IconPath -Destination $ShortcutIconPath -Force
 
-$BatchLauncherRoot = $LauncherRoot -replace "%", "%%"
-$BatchLauncherName = $LauncherName -replace "%", "%%"
+function ConvertTo-BatchLiteral {
+    param([string]$Value)
+    return ($Value -replace "\^", "^^") -replace "%", "%%"
+}
+
+$BatchLauncherRoot = ConvertTo-BatchLiteral $LauncherRoot
+$BatchLauncherName = ConvertTo-BatchLiteral $LauncherName
 
 $HelperContent = @"
 @echo off
@@ -68,7 +76,7 @@ if exist "%LAUNCHER_ROOT%\HAGRad Viewer.bat" (
 if exist "%LAUNCHER_ROOT%" (
   start "" explorer "%LAUNCHER_ROOT%"
   echo HAGRad could not find the saved launcher file.
-  echo I opened the HAGRad folder. Please double-click open-viewer-windows.bat there.
+  echo I opened the HAGRad folder. Please double-click %LAUNCHER_NAME% there.
   pause
   exit /b 1
 )
@@ -86,7 +94,7 @@ $Shell = New-Object -ComObject WScript.Shell
 $Shortcut = $Shell.CreateShortcut($ShortcutPath)
 $Shortcut.TargetPath = $HelperPath
 $Shortcut.WorkingDirectory = $LauncherRoot
-$Shortcut.IconLocation = $IconPath
+$Shortcut.IconLocation = $ShortcutIconPath
 $Shortcut.Description = "Open HAGRad Viewer"
 $Shortcut.Save()
 

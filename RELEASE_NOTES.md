@@ -27,27 +27,26 @@ Older prototype launchers are not advertised as public entry points. They are re
 
 On macOS:
 
-1. Download and unzip the release bundle.
-2. Open the folder.
-3. Double-click `open-viewer-mac.command`.
-4. HAGRad creates or refreshes a `HAGRad Viewer.app` Desktop launcher with the HAGRad icon.
+1. Download `HAGRad-Viewer-macOS.dmg`.
+2. Open the DMG.
+3. Double-click `HAGRad Viewer.app`.
+4. HAGRad starts the bundled local server and opens the main viewer in your browser.
 
 On Windows:
 
-1. Download and unzip the release bundle.
-2. Open the folder.
-3. Double-click `open-viewer-windows.bat`.
-4. HAGRad creates or refreshes a `HAGRad Viewer` Desktop shortcut with the HAGRad icon.
-5. If Python 3 is missing, the launcher opens the Python download page. If no local HTTPS
-   certificate is available, the viewer falls back to `http://localhost:3020` automatically.
+1. Download and unzip `HAGRad-Viewer-Windows.zip`.
+2. Double-click `HAGRad Viewer.exe`.
+3. HAGRad starts the bundled local server and opens the main viewer in your browser.
 
-The platform ZIP root contains only this opener plus the `HAGRad_support_files` folder. The main HAGRad Viewer contains the workflow buttons for Image Quality, EAT, and QCA. The old per-workflow launchers are intentionally not included in platform ZIP packages to avoid parallel app entry points.
+The main HAGRad Viewer contains the workflow buttons for Image Quality / CCTA IQ, EAT, and QCA. The old per-workflow launchers are intentionally not included as public app entry points.
 
 ## Important Notes
 
 - HAGRad runs locally.
 - DICOM files are loaded from the user's computer.
-- Exports are written into the local `exports_outbox/` folder after use.
+- Packaged builds use `http://localhost:3020` when no local HTTPS certificate is available, so normal users do not need OpenSSL.
+- Packaged builds do not require users to install Python.
+- Exports are written into local user storage after use.
 - The release bundle intentionally does not include local patient exports, project lists, certificates, caches, Python virtual environments, or AI model/tooling folders.
 
 ## Research-Use Notice
@@ -63,6 +62,6 @@ HAGRad Viewer, version 0.9.0-research-preview. HAGRad contributors, 2026. Resear
 ## Known Limitations
 
 - Research preview, not clinically validated.
-- Desktop/local browser workflow, not yet packaged as a signed standalone macOS app.
+- macOS developer builds can be unsigned. Public macOS distribution should use Developer ID signing and notarization.
 - Some companion workflows are prototypes and may change between releases.
 - Users remain responsible for anonymization, local data governance, and institutional approval.

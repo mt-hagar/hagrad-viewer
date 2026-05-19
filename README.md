@@ -24,20 +24,18 @@ The CCTA IQ module is intended for structured coronary CTA image-quality researc
 
 ## Installation Status
 
-HAGRad is currently distributed as a **research-preview local web application**. The GitHub release contains the full source tree and a downloadable ZIP package.
+HAGRad is moving from a script-based research preview to app-style desktop packages.
 
-Current status:
+Current packaging targets:
 
-- macOS launcher scripts are included.
-- Windows batch launchers are included in the Windows research-preview package.
-- Platform ZIP packages expose one top-level opener only: `open-viewer-mac.command` on macOS or `open-viewer-windows.bat` on Windows.
-- The first launch automatically creates a Desktop launcher with the HAGRad icon on macOS and Windows.
-- The Desktop launcher now falls back to opening the HAGRad folder if it cannot find the saved opener path.
-- Platform ZIP packages keep every support file under `HAGRad_support_files`, so users do not need to search through technical folders.
-- Retired prototype launchers are kept only under `legacy_launchers/retired_prototypes` for developer reference.
-- The viewer currently runs through a local Python server and a browser. It uses HTTPS when
-  local certificate files are available and falls back to `http://localhost:3020` on Windows
-  when they are not.
+- macOS: `HAGRad Viewer.dmg` containing one `HAGRad Viewer.app`.
+- Windows: `HAGRad-Viewer-Windows.zip` containing one obvious `HAGRad Viewer.exe`, built on Windows.
+- The app/exe launcher embeds the Python runtime with PyInstaller, starts the local HAGRad server internally, and opens the viewer in the default browser.
+- No normal user should need to run `python3`, install Apple Command Line Developer Tools, install OpenSSL, or choose between workflow-specific launchers.
+- The public launcher opens the main HAGRad Viewer. Image Quality / CCTA IQ, EAT, and QCA remain available from inside the HAGRad Viewer interface.
+- Local HTTP fallback is used at `http://localhost:3020` when no local HTTPS certificate is available. DICOM files still remain on the user's computer.
+- macOS Developer ID signing and notarization are documented in `packaging/macos/README.md`. Unsigned developer builds are possible but can still trigger Gatekeeper warnings.
+- Legacy `.command` and `.bat` launchers remain for source/developer workflows while app packaging matures.
 - GitHub Pages documentation is served from `/docs`.
 
 Latest release:
@@ -46,22 +44,32 @@ Latest release:
 
 ## Running Locally
 
-On macOS:
+For packaged macOS builds:
 
-1. Download and unzip the release package.
-2. Double-click `open-viewer-mac.command`.
-3. HAGRad automatically creates a `HAGRad Viewer.app` launcher on your Desktop.
+1. Open `HAGRad-Viewer-macOS.dmg`.
+2. Double-click `HAGRad Viewer.app`.
+3. The app starts the bundled local server and opens HAGRad Viewer in the browser.
 
-On Windows:
+For packaged Windows builds:
 
-1. Download and unzip `HAGRad-Viewer-Windows.zip`.
-2. Install Python 3 if it is not already installed.
-3. Double-click `open-viewer-windows.bat`.
-4. HAGRad automatically creates a `HAGRad Viewer` desktop shortcut with the HAGRad heart icon.
-5. If Python is missing, the launcher opens the Python download page. OpenSSL is not required
-   for normal Windows use.
+1. Unzip `HAGRad-Viewer-Windows.zip`.
+2. Double-click `HAGRad Viewer.exe`.
+3. The executable starts the bundled local server and opens HAGRad Viewer in the browser.
 
-For Windows release builds, `packaging/windows/build-hagrad-viewer-exe.ps1` can create a `HAGRad Viewer.exe` launcher with the HAGRad heart icon. This executable is a user-friendly launcher for the local HAGRad server and browser workflow.
+For source/developer workflows:
+
+```bash
+python3 scripts/serve_https.py
+```
+
+or use the legacy platform launchers in the repository root.
+
+Build package artifacts:
+
+```bash
+packaging/macos/build-hagrad-viewer-app.sh
+powershell -ExecutionPolicy Bypass -File packaging/windows/build-hagrad-viewer-exe.ps1
+```
 
 ## Research Use Only
 

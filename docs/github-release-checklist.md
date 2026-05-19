@@ -6,18 +6,45 @@
 - Release title: `HAGRad Viewer v0.9.0 Research Preview`
 - Release type: pre-release / research preview
 
-## Required Release Asset
+## Required Release Assets
 
-Create the clean downloadable bundle:
+Create the clean source bundle:
 
 ```bash
-python3 scripts/build_release_bundle.py
+python3 scripts/build_release_bundle.py --platform source
 ```
 
 Expected output:
 
 ```text
 dist/hagrad-viewer-v0.9.0-research-preview.zip
+```
+
+Create the macOS app and DMG on macOS:
+
+```bash
+packaging/macos/build-hagrad-viewer-app.sh
+python3 scripts/build_release_bundle.py --platform macos --package-mode app
+```
+
+Expected outputs:
+
+```text
+dist/macos/HAGRad Viewer.app
+dist/HAGRad-Viewer-macOS.dmg
+dist/HAGRad-Viewer-macOS.zip
+```
+
+Create the Windows executable package on Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging\windows\build-hagrad-viewer-exe.ps1
+```
+
+Expected output:
+
+```text
+dist\HAGRad-Viewer-Windows.zip
 ```
 
 ## One-Command GitHub Publish Helper
@@ -34,7 +61,7 @@ For example:
 python3 scripts/publish_github_release.py --repo YOUR_GITHUB_NAME/hagrad-viewer --visibility public
 ```
 
-The helper creates the GitHub repository if it does not exist, refuses to overwrite a non-empty repository, pushes the clean release source, tags `v0.9.0-research-preview`, and creates a GitHub pre-release with the zip bundle attached.
+The helper creates the GitHub repository if it does not exist, refuses to overwrite a non-empty repository, pushes the clean release source, tags `v0.9.0-research-preview`, and creates a GitHub pre-release with available release assets attached. If `dist/HAGRad-Viewer-macOS.dmg` exists, it is preferred over the macOS zip.
 
 ## What The Bundle Includes
 
@@ -43,7 +70,8 @@ The helper creates the GitHub repository if it does not exist, refuses to overwr
 - HAGRad EAT Workflow.
 - HAGRad QCA.
 - Companion research workflows currently present in the codebase.
-- Shared assets, local vendor libraries, launcher commands, documentation, and backend scripts required for local operation.
+- Shared assets, local vendor libraries, documentation, and backend scripts required for local operation.
+- App-style packages expose one obvious public launcher: `HAGRad Viewer.app` on macOS or `HAGRad Viewer.exe` on Windows.
 
 ## What The Bundle Excludes
 
@@ -53,6 +81,7 @@ The helper creates the GitHub repository if it does not exist, refuses to overwr
 - AI tooling, local Python environments, and model caches: `.tooling/`.
 - Python caches and OS metadata.
 - Local secrets such as `.env`, `.env.local`, and `.env.pointguard`.
+- Packaging virtual environments and generated artifacts under `dist/`.
 
 ## Suggested GitHub Release Body
 
@@ -62,8 +91,12 @@ Use the contents of `RELEASE_NOTES.md` as the release text.
 
 - Confirm there is no identifiable patient data in the repository.
 - Confirm local output folders are not committed.
-- Confirm the zip bundle opens and contains `README.md`, `DISCLAIMER.md`, `LICENSE.md`, `start-server.command`, and the workflow launchers.
+- Confirm the macOS DMG opens and contains `HAGRad Viewer.app`.
+- Confirm the Windows zip contains one visible `HAGRad Viewer.exe`.
+- Confirm Image Quality / CCTA IQ, EAT, and QCA remain reachable from the main viewer UI.
 - Confirm `python3 scripts/serve_https.py` starts without syntax errors.
+- Confirm the packaged macOS app starts without invoking system `python3`.
+- For public macOS distribution, complete Developer ID signing and notarization from `packaging/macos/README.md`.
 - Confirm GitHub CLI is installed: `gh --version`.
 - Confirm GitHub CLI is logged in: `gh auth status`.
 - Mark the release as a pre-release unless you decide it is ready for a stable public release.
