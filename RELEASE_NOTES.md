@@ -6,6 +6,15 @@ Research preview for local, non-commercial scientific use.
 
 This release is intended to make HAGRad citable, downloadable, and testable by collaborators while keeping the research-use-only status explicit.
 
+## Current Build Update
+
+This build refreshes the HAGRad Viewer workflow shell:
+
+- Adds a shared HAGRad workflow switcher across the main Viewer, Image Quality / CCTA IQ, EAT, and QCA pages.
+- Adds guard behavior before moving between workflows when a study appears to be open.
+- Tightens immersive focus-shell spacing across the viewer and companion workflows.
+- Updates public download guidance for macOS Gatekeeper and Windows SmartScreen prompts while the research-preview builds remain unsigned.
+
 ## Public Website Draft
 
 This release bundle includes a static `website/` folder for a future HAGRad public landing page. The
