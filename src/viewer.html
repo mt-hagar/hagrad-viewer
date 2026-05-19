@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>HAGRad Viewer</title>
     <link rel="stylesheet" href="/src/viewer.css" />
+    <link rel="stylesheet" href="/src/shared/hagrad-shell.css?v=20260519-workflow-shell" />
   </head>
   <body>
     <main class="app">
@@ -14,6 +15,14 @@
           <h1>HAGRad Viewer</h1>
           <nav class="hero-workflow-switcher" aria-label="HAGRad workflow apps">
             <span class="workflow-switcher-label">Workflows</span>
+            <a
+              class="workflow-switcher-link is-active"
+              href="/src/viewer.html"
+              aria-current="page"
+              data-help="Main DICOM research viewer with presentation, MPR, annotation, and export tools."
+            >
+              Viewer
+            </a>
             <a
               class="workflow-switcher-link"
               href="/src/ccta-iq/index.html"
@@ -1083,6 +1092,7 @@
     <script src="/src/shared/hagrad-export-studies.js"></script>
     <script src="/src/shared/hagrad-zip.js"></script>
     <script src="/src/shared/hagrad-overlay-style.js"></script>
+    <script src="/src/shared/hagrad-workflow-switcher.js?v=20260519-workflow-shell"></script>
     <script src="/src/viewer.js"></script>
   </body>
 </html>

@@ -307,6 +307,12 @@
     pendingLesionRightClick: null,
   };
 
+  window.HAGRadWorkflowGuardState = {
+    hasOpenStudy() {
+      return state.series.length > 0 || Boolean(state.analysis);
+    },
+  };
+
   const els = {};
   const exportStudyApi = window.HAGRadExportStudies || null;
   let localizationPromptResolver = null;

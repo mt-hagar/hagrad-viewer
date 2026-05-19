@@ -332,6 +332,12 @@
     },
   };
 
+  window.HAGRadWorkflowGuardState = {
+    hasOpenStudy() {
+      return state.reconstructions.length > 0;
+    },
+  };
+
   const els = {};
   const sharedCore = window.HAGRadCore;
   if (!sharedCore) {

@@ -143,6 +143,12 @@
     },
   };
 
+  window.HAGRadWorkflowGuardState = {
+    hasOpenStudy() {
+      return state.reconstructions.length > 0;
+    },
+  };
+
   const els = {};
   const exportStudyApi = window.HAGRadExportStudies || null;
   let guideTargetHighlightTimer = null;

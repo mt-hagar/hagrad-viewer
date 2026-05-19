@@ -979,7 +979,8 @@ a {
 
 .canvas-shell {
   position: relative;
-  min-height: 0;
+  height: 100%;
+  min-height: clamp(520px, 64vh, 760px);
   border-radius: 22px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background:
@@ -1153,10 +1154,16 @@ a {
   accent-color: var(--accent);
 }
 
-#eat-canvas {
+#eat-canvas,
+#compare-canvas {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   display: block;
+}
+
+#eat-canvas {
   cursor: crosshair;
 }
 

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>HAGRad Viewer – EAT Workflow</title>
     <link rel="stylesheet" href="/src/eat.css" />
+    <link rel="stylesheet" href="/src/shared/hagrad-shell.css?v=20260519-workflow-shell" />
   </head>
   <body>
     <main class="app">
@@ -31,6 +32,7 @@
             <a
               class="workflow-switcher-link is-active"
               href="/src/eat.html"
+              aria-current="page"
               data-help="Epicardial adipose tissue workflow for CT-based EAT analysis."
             >
               EAT
@@ -631,6 +633,7 @@
     <script src="/vendor/cornerstoneWADOImageLoaderNoWebWorkers.bundle.min.js"></script>
     <script src="/src/shared/hagrad-export-studies.js"></script>
     <script src="/src/shared/hagrad-zip.js"></script>
+    <script src="/src/shared/hagrad-workflow-switcher.js?v=20260519-workflow-shell"></script>
     <script src="/src/eat-shared.js"></script>
     <script src="/src/eat.js"></script>
   </body>
