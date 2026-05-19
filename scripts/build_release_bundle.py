@@ -44,6 +44,7 @@ EXCLUDED_DIR_NAMES = {
     "__pycache__",
     "dist",
     "exports_outbox",
+    "logs",
     "project_lists",
 }
 

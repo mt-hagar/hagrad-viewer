@@ -2727,10 +2727,25 @@ class HagradHandler(http.server.SimpleHTTPRequestHandler):
 
 
 def main() -> None:
-    if not CERT_FILE.exists() or not KEY_FILE.exists():
+    allow_http_fallback = str(os.environ.get("HAGRAD_ALLOW_HTTP") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    force_http = str(os.environ.get("HAGRAD_FORCE_HTTP") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    use_https = CERT_FILE.exists() and KEY_FILE.exists() and not force_http
+
+    if not use_https and not (allow_http_fallback or force_http):
         raise SystemExit(
             "Missing certificate files.\n"
-            "Run ./make-local-cert.command first."
+            "Run ./make-local-cert.command first, or set HAGRAD_ALLOW_HTTP=1 "
+            "to run the local research viewer over http://localhost."
         )
 
     try:
@@ -2747,12 +2762,16 @@ def main() -> None:
 
     server = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), HagradHandler)
 
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(certfile=str(CERT_FILE), keyfile=str(KEY_FILE))
-    server.socket = context.wrap_socket(server.socket, server_side=True)
+    if use_https:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(certfile=str(CERT_FILE), keyfile=str(KEY_FILE))
+        server.socket = context.wrap_socket(server.socket, server_side=True)
 
-    print(f"Serving {ROOT} at https://localhost:{PORT}")
-    print("Viewer + EAT AI backend available on the same local HTTPS server.")
+    scheme = "https" if use_https else "http"
+    print(f"Serving {ROOT} at {scheme}://localhost:{PORT}")
+    if not use_https:
+        print("Local HTTP fallback active because no HTTPS certificate files were found.")
+    print(f"Viewer + EAT AI backend available on the same local {scheme.upper()} server.")
     server.serve_forever()
 
 

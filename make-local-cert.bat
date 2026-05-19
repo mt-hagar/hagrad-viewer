@@ -8,8 +8,12 @@ where openssl >nul 2>nul
 if errorlevel 1 (
   echo OpenSSL was not found on this Windows computer.
   echo.
-  echo Install OpenSSL, then run this file again. OpenSSL is commonly available
-  echo through Git for Windows, Win32 OpenSSL, or your institution's package manager.
+  echo This certificate step is optional. The normal Windows launcher can run
+  echo HAGRad locally over http://localhost:3020 without OpenSSL.
+  echo.
+  echo If you specifically want local HTTPS, install OpenSSL, then run this file
+  echo again. OpenSSL is commonly available through Git for Windows, Win32
+  echo OpenSSL, or your institution's package manager.
   echo.
   pause
   exit /b 1

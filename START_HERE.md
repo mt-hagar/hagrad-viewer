@@ -26,12 +26,22 @@ open-viewer-windows.bat
 On first launch, HAGRad automatically creates or refreshes a `HAGRad Viewer` shortcut on your Desktop with the HAGRad icon.
 If the original HAGRad folder is moved or the launcher cannot be found later, the Desktop shortcut opens the HAGRad folder so you can double-click `open-viewer-windows.bat` manually.
 
+Windows note: if Python 3 is missing, the launcher opens the Python download page. If no local
+HTTPS certificate is available, HAGRad automatically uses `http://localhost:3020` instead, so
+OpenSSL is not required for normal use.
+
 ## First run
 
 On the first run, HAGRad may create a local HTTPS certificate and then open the viewer in your browser at:
 
 ```text
 https://localhost:3020/src/viewer.html
+```
+
+On Windows without a local certificate, it may instead open:
+
+```text
+http://localhost:3020/src/viewer.html
 ```
 
 ## Research use only

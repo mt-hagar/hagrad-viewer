@@ -35,7 +35,9 @@ Current status:
 - The Desktop launcher now falls back to opening the HAGRad folder if it cannot find the saved opener path.
 - Platform ZIP packages keep every support file under `HAGRad_support_files`, so users do not need to search through technical folders.
 - Retired prototype launchers are kept only under `legacy_launchers/retired_prototypes` for developer reference.
-- The viewer currently runs through a local Python HTTPS server and a browser.
+- The viewer currently runs through a local Python server and a browser. It uses HTTPS when
+  local certificate files are available and falls back to `http://localhost:3020` on Windows
+  when they are not.
 - GitHub Pages documentation is served from `/docs`.
 
 Latest release:
@@ -56,6 +58,8 @@ On Windows:
 2. Install Python 3 if it is not already installed.
 3. Double-click `open-viewer-windows.bat`.
 4. HAGRad automatically creates a `HAGRad Viewer` desktop shortcut with the HAGRad heart icon.
+5. If Python is missing, the launcher opens the Python download page. OpenSSL is not required
+   for normal Windows use.
 
 For Windows release builds, `packaging/windows/build-hagrad-viewer-exe.ps1` can create a `HAGRad Viewer.exe` launcher with the HAGRad heart icon. This executable is a user-friendly launcher for the local HAGRad server and browser workflow.
 

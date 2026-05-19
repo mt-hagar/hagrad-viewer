@@ -13,9 +13,19 @@ from tkinter import messagebox
 
 
 PORT = 3020
-SERVER_URL = f"https://localhost:{PORT}"
-HEALTH_URL = f"{SERVER_URL}/api/export-studies"
-VIEWER_URL = f"{SERVER_URL}/src/viewer.html"
+
+
+def server_url(root: Path) -> str:
+    scheme = "https" if has_https_cert(root) else "http"
+    return f"{scheme}://localhost:{PORT}"
+
+
+def health_url(root: Path) -> str:
+    return f"{server_url(root)}/api/export-studies"
+
+
+def viewer_url(root: Path) -> str:
+    return f"{server_url(root)}/src/viewer.html"
 
 
 def app_root() -> Path:
@@ -24,10 +34,17 @@ def app_root() -> Path:
     else:
         base = Path(__file__).resolve().parents[2]
 
-    runtime = base / "HAGRad_Runtime"
-    if runtime.exists():
-        return runtime
+    for runtime_name in ("HAGRad_support_files", "HAGRad_Runtime"):
+        runtime = base / runtime_name
+        if runtime.exists():
+            return runtime
     return base
+
+
+def has_https_cert(root: Path) -> bool:
+    cert = root / ".cert" / "localhost.pem"
+    cert_key = root / ".cert" / "localhost-key.pem"
+    return cert.exists() and cert_key.exists()
 
 
 def is_port_open() -> bool:
@@ -38,10 +55,10 @@ def is_port_open() -> bool:
         return False
 
 
-def server_ready() -> bool:
+def server_ready(root: Path) -> bool:
     context = ssl._create_unverified_context()
     try:
-        with urllib.request.urlopen(HEALTH_URL, timeout=2, context=context):
+        with urllib.request.urlopen(health_url(root), timeout=2, context=context):
             return True
     except Exception:
         return False
@@ -56,9 +73,10 @@ def run_batch(path: Path) -> subprocess.Popen[bytes]:
 
 
 def wait_for_server(seconds: int = 40) -> bool:
+    root = app_root()
     deadline = time.time() + seconds
     while time.time() < deadline:
-        if server_ready():
+        if server_ready(root):
             return True
         time.sleep(1)
     return False
@@ -68,16 +86,10 @@ def main() -> int:
     root = app_root()
     os.chdir(root)
 
-    cert = root / ".cert" / "localhost.pem"
-    cert_key = root / ".cert" / "localhost-key.pem"
-    if not cert.exists() or not cert_key.exists():
-        make_cert = root / "make-local-cert.bat"
-        if not make_cert.exists():
-            messagebox.showerror("HAGRad Viewer", f"Could not find {make_cert}")
-            return 1
-        subprocess.call([str(make_cert)], cwd=str(root))
+    if not has_https_cert(root):
+        os.environ["HAGRAD_ALLOW_HTTP"] = "1"
 
-    if not is_port_open() or not server_ready():
+    if not is_port_open() or not server_ready(root):
         start_server = root / "start-server.bat"
         if not start_server.exists():
             messagebox.showerror("HAGRad Viewer", f"Could not find {start_server}")
@@ -85,7 +97,7 @@ def main() -> int:
         run_batch(start_server)
 
     if wait_for_server():
-        webbrowser.open(VIEWER_URL)
+        webbrowser.open(viewer_url(root))
         return 0
 
     messagebox.showerror(
