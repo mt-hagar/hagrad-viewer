@@ -12,11 +12,15 @@ if ([string]::IsNullOrWhiteSpace($LauncherRoot)) {
 }
 
 $RuntimeRoot = $LauncherRoot
-if (Test-Path (Join-Path $LauncherRoot "HAGRad_Runtime")) {
+if (Test-Path (Join-Path $LauncherRoot "HAGRad_support_files")) {
+    $RuntimeRoot = Join-Path $LauncherRoot "HAGRad_support_files"
+} elseif (Test-Path (Join-Path $LauncherRoot "HAGRad_Runtime")) {
     $RuntimeRoot = Join-Path $LauncherRoot "HAGRad_Runtime"
 }
 
 $Desktop = [Environment]::GetFolderPath("Desktop")
+$HelperRoot = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "HAGRad"
+$HelperPath = Join-Path $HelperRoot "Open HAGRad Viewer.cmd"
 $ShortcutPath = Join-Path $Desktop "HAGRad Viewer.lnk"
 $LauncherPath = Join-Path $LauncherRoot $LauncherName
 $IconPath = Join-Path $RuntimeRoot "assets\hagrad-palm-icon.ico"
@@ -34,9 +38,53 @@ if (-not (Test-Path $IconPath)) {
     throw "Could not find icon: $IconPath"
 }
 
+New-Item -ItemType Directory -Force -Path $HelperRoot | Out-Null
+
+$BatchLauncherRoot = $LauncherRoot -replace "%", "%%"
+$BatchLauncherName = $LauncherName -replace "%", "%%"
+
+$HelperContent = @"
+@echo off
+setlocal
+set "LAUNCHER_ROOT=$BatchLauncherRoot"
+set "LAUNCHER_NAME=$BatchLauncherName"
+set "LAUNCHER_PATH=%LAUNCHER_ROOT%\%LAUNCHER_NAME%"
+
+if exist "%LAUNCHER_PATH%" (
+  start "" "%LAUNCHER_PATH%"
+  exit /b 0
+)
+
+if exist "%LAUNCHER_ROOT%\open-viewer-windows.bat" (
+  start "" "%LAUNCHER_ROOT%\open-viewer-windows.bat"
+  exit /b 0
+)
+
+if exist "%LAUNCHER_ROOT%\HAGRad Viewer.bat" (
+  start "" "%LAUNCHER_ROOT%\HAGRad Viewer.bat"
+  exit /b 0
+)
+
+if exist "%LAUNCHER_ROOT%" (
+  start "" explorer "%LAUNCHER_ROOT%"
+  echo HAGRad could not find the saved launcher file.
+  echo I opened the HAGRad folder. Please double-click open-viewer-windows.bat there.
+  pause
+  exit /b 1
+)
+
+start "" explorer "%USERPROFILE%\Desktop"
+echo HAGRad could not find the saved launcher folder.
+echo Please unzip the HAGRad download again and double-click open-viewer-windows.bat.
+pause
+exit /b 1
+"@
+
+Set-Content -Path $HelperPath -Value $HelperContent -Encoding ASCII
+
 $Shell = New-Object -ComObject WScript.Shell
 $Shortcut = $Shell.CreateShortcut($ShortcutPath)
-$Shortcut.TargetPath = $LauncherPath
+$Shortcut.TargetPath = $HelperPath
 $Shortcut.WorkingDirectory = $LauncherRoot
 $Shortcut.IconLocation = $IconPath
 $Shortcut.Description = "Open HAGRad Viewer"

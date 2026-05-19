@@ -10,7 +10,6 @@ HAGRad is designed for retrospective scientific analysis and technical developme
 - **CCTA IQ**: Coronary CT angiography image-quality workflow for objective ROI measurements and subjective reader scoring.
 - **EAT**: Epicardial adipose tissue workflow for contouring, threshold-based quantification, multi-reconstruction review, and structured export.
 - **QCA**: Quantitative coronary angiography prototype for invasive angiography frame selection, vessel segmentation workflow, stenosis measurements, and export bundles.
-- **Additional research prototypes**: CalcScorer, Contrast CalcScorer, Stent Viewer, NoiseLab, PlaqueQuant, PointGuard, and exploratory coronary workflow modules.
 
 ## CCTA IQ Functionality
 
@@ -33,7 +32,9 @@ Current status:
 - Windows batch launchers are included in the Windows research-preview package.
 - Platform ZIP packages expose one top-level opener only: `open-viewer-mac.command` on macOS or `open-viewer-windows.bat` on Windows.
 - The first launch automatically creates a Desktop launcher with the HAGRad icon on macOS and Windows.
+- The Desktop launcher now falls back to opening the HAGRad folder if it cannot find the saved opener path.
 - Platform ZIP packages keep every support file under `HAGRad_support_files`, so users do not need to search through technical folders.
+- Retired prototype launchers are kept only under `legacy_launchers/retired_prototypes` for developer reference.
 - The viewer currently runs through a local Python HTTPS server and a browser.
 - GitHub Pages documentation is served from `/docs`.
 
@@ -54,9 +55,9 @@ On Windows:
 1. Download and unzip `HAGRad-Viewer-Windows.zip`.
 2. Install Python 3 if it is not already installed.
 3. Double-click `open-viewer-windows.bat`.
-4. HAGRad automatically creates a `HAGRad Viewer` desktop shortcut with the HAGRad palm icon.
+4. HAGRad automatically creates a `HAGRad Viewer` desktop shortcut with the HAGRad heart icon.
 
-For Windows release builds, `packaging/windows/build-hagrad-viewer-exe.ps1` can create a `HAGRad Viewer.exe` launcher with the palm icon. This executable is a user-friendly launcher for the local HAGRad server and browser workflow.
+For Windows release builds, `packaging/windows/build-hagrad-viewer-exe.ps1` can create a `HAGRad Viewer.exe` launcher with the HAGRad heart icon. This executable is a user-friendly launcher for the local HAGRad server and browser workflow.
 
 ## Research Use Only
 

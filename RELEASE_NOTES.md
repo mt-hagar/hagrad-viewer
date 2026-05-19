@@ -21,15 +21,7 @@ The downloadable release bundle includes the HAGRad local research suite, with t
 - HAGRad EAT Workflow
 - HAGRad QCA
 
-The package also carries the current companion research workflows that are part of the same codebase:
-
-- CalcScorer
-- Contrast CalcScorer
-- Coronary workflow prototype
-- Stent Viewer prototype
-- NoiseLab prototype
-- PointGuard prototype
-- PlaqueQuant prototype
+Older prototype launchers are not advertised as public entry points. They are retained only as developer legacy references under `legacy_launchers/retired_prototypes`.
 
 ## How To Run
 

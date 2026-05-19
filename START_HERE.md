@@ -13,6 +13,7 @@ open-viewer-mac.command
 ```
 
 On first launch, HAGRad automatically creates or refreshes a `HAGRad Viewer.app` launcher on your Desktop with the HAGRad icon.
+If the original HAGRad folder is moved or the launcher cannot be found later, the Desktop app opens the HAGRad folder so you can double-click `open-viewer-mac.command` manually.
 
 ## Windows
 
@@ -23,6 +24,7 @@ open-viewer-windows.bat
 ```
 
 On first launch, HAGRad automatically creates or refreshes a `HAGRad Viewer` shortcut on your Desktop with the HAGRad icon.
+If the original HAGRad folder is moved or the launcher cannot be found later, the Desktop shortcut opens the HAGRad folder so you can double-click `open-viewer-windows.bat` manually.
 
 ## First run
 

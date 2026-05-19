@@ -20,7 +20,7 @@ PLATFORM_PACKAGES = {
         "launcher_source": "HAGRad Viewer.command",
         "exclude_suffixes": {".bat", ".ico", ".ps1"},
         "exclude_names": {"README_WINDOWS.md"},
-        "exclude_prefixes": {("packaging", "windows")},
+        "exclude_prefixes": {("legacy_launchers",), ("packaging", "windows")},
     },
     "windows": {
         "filename": "HAGRad-Viewer-Windows.zip",
@@ -29,7 +29,7 @@ PLATFORM_PACKAGES = {
         "launcher_source": "HAGRad Viewer.bat",
         "exclude_suffixes": {".command", ".icns"},
         "exclude_names": set(),
-        "exclude_prefixes": set(),
+        "exclude_prefixes": {("legacy_launchers",)},
     },
 }
 

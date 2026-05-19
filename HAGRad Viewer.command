@@ -15,6 +15,10 @@ create_desktop_app() {
   local app_path="$HOME/Desktop/HAGRad Viewer.app"
   local icon_path="$HAGRAD_ROOT/assets/hagrad-palm-icon.icns"
   local marker_path="$app_path/Contents/Resources/HAGRadPackageRoot.txt"
+  local support_marker_path="$app_path/Contents/Resources/HAGRadSupportRoot.txt"
+  local launcher_marker_path="$app_path/Contents/Resources/HAGRadLauncherName.txt"
+  local template_marker_path="$app_path/Contents/Resources/HAGRadLauncherTemplateVersion.txt"
+  local template_version="3"
 
   if [[ ! -f "$icon_path" ]]; then
     return 0
@@ -22,7 +26,8 @@ create_desktop_app() {
 
   if [[ -x "$app_path/Contents/MacOS/hagrad-viewer" ]] &&
     [[ -f "$marker_path" ]] &&
-    [[ "$(cat "$marker_path" 2>/dev/null)" == "$PACKAGE_ROOT" ]]; then
+    [[ "$(cat "$marker_path" 2>/dev/null)" == "$PACKAGE_ROOT" ]] &&
+    [[ "$(cat "$template_marker_path" 2>/dev/null)" == "$template_version" ]]; then
     return 0
   fi
 
@@ -52,15 +57,51 @@ create_desktop_app() {
 </plist>
 PLIST
 
-  cat > "$app_path/Contents/MacOS/hagrad-viewer" <<SCRIPT
+  cat > "$app_path/Contents/MacOS/hagrad-viewer" <<'SCRIPT'
 #!/bin/zsh
-set -e
-cd "$PACKAGE_ROOT"
-exec "./$LAUNCHER_NAME"
+set +e
+
+RESOURCE_DIR="$(cd "$(dirname "$0")/../Resources" && pwd)"
+PACKAGE_ROOT="$(cat "$RESOURCE_DIR/HAGRadPackageRoot.txt" 2>/dev/null)"
+HAGRAD_ROOT="$(cat "$RESOURCE_DIR/HAGRadSupportRoot.txt" 2>/dev/null)"
+LAUNCHER_NAME="$(cat "$RESOURCE_DIR/HAGRadLauncherName.txt" 2>/dev/null)"
+
+open_hagrad_folder() {
+  if [[ -n "$PACKAGE_ROOT" && -d "$PACKAGE_ROOT" ]]; then
+    open "$PACKAGE_ROOT"
+  elif [[ -n "$HAGRAD_ROOT" && -d "$HAGRAD_ROOT" ]]; then
+    open "$HAGRAD_ROOT"
+  else
+    open "$HOME/Desktop"
+  fi
+
+  osascript -e 'display dialog "HAGRad could not find the saved launcher file. I opened the HAGRad folder instead. Please double-click open-viewer-mac.command there." buttons {"OK"} default button "OK" with title "HAGRad Viewer"' >/dev/null 2>&1
+}
+
+open_launcher() {
+  local launcher_path="$1"
+  if [[ -n "$launcher_path" && -f "$launcher_path" ]]; then
+    chmod +x "$launcher_path" >/dev/null 2>&1
+    open "$launcher_path"
+    exit 0
+  fi
+}
+
+open_launcher "$PACKAGE_ROOT/$LAUNCHER_NAME"
+open_launcher "$PACKAGE_ROOT/open-viewer-mac.command"
+open_launcher "$PACKAGE_ROOT/HAGRad Viewer.command"
+open_launcher "$HAGRAD_ROOT/HAGRad Viewer.command"
+open_launcher "$HAGRAD_ROOT/open-viewer-mac.command"
+
+open_hagrad_folder
+exit 1
 SCRIPT
 
   chmod +x "$app_path/Contents/MacOS/hagrad-viewer"
   printf "%s" "$PACKAGE_ROOT" > "$marker_path"
+  printf "%s" "$HAGRAD_ROOT" > "$support_marker_path"
+  printf "%s" "$LAUNCHER_NAME" > "$launcher_marker_path"
+  printf "%s" "$template_version" > "$template_marker_path"
   echo "Created HAGRad Viewer.app on your Desktop."
 }
 
