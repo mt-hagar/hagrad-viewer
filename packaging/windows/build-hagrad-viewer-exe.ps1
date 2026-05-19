@@ -10,6 +10,7 @@ $WorkPath = Join-Path $Root "dist\pyinstaller-work\windows"
 $SpecPath = Join-Path $Root "dist\pyinstaller-spec\windows"
 $ExePath = Join-Path $DistPath "HAGRad Viewer.exe"
 $ZipPath = Join-Path $Root "dist\HAGRad-Viewer-Windows.zip"
+$IconPath = Join-Path $Root "assets\hagrad-palm-icon.ico"
 
 if (-not (Test-Path $Python)) {
   python -m venv $Venv
@@ -43,12 +44,16 @@ $DataArgs = @(
   --onefile `
   --windowed `
   --name "HAGRad Viewer" `
-  --icon "assets\hagrad-palm-icon.ico" `
+  --icon $IconPath `
   --distpath $DistPath `
   --workpath $WorkPath `
   --specpath $SpecPath `
   @DataArgs `
   "packaging\launcher\hagrad_viewer_app.py"
+
+if ($LASTEXITCODE -ne 0) {
+  throw "PyInstaller failed with exit code $LASTEXITCODE"
+}
 
 if (-not (Test-Path $ExePath)) {
   throw "Expected executable was not created: $ExePath"
