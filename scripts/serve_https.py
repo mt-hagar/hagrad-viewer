@@ -22,21 +22,48 @@ from urllib import request as urllib_request
 from urllib.parse import urlparse
 
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
-CERT_DIR = ROOT / ".cert"
+def resolve_runtime_root() -> pathlib.Path:
+    configured = (
+        os.environ.get("HAGRAD_RUNTIME_ROOT")
+        or os.environ.get("HAGRAD_APP_ROOT")
+        or os.environ.get("HAGRAD_ROOT")
+    )
+    if configured:
+        return pathlib.Path(configured).expanduser().resolve()
+    return pathlib.Path(__file__).resolve().parent.parent
+
+
+def resolve_path_env(name: str, default: pathlib.Path, *, create: bool = False) -> pathlib.Path:
+    configured = os.environ.get(name)
+    path = pathlib.Path(configured).expanduser() if configured else default
+    if not path.is_absolute():
+        path = ROOT / path
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+ROOT = resolve_runtime_root()
+STATE_ROOT_CONFIGURED = bool(os.environ.get("HAGRAD_STATE_ROOT"))
+STATE_ROOT = resolve_path_env("HAGRAD_STATE_ROOT", ROOT)
+CERT_DIR = resolve_path_env("HAGRAD_CERT_DIR", ROOT / ".cert")
 CERT_FILE = CERT_DIR / "localhost.pem"
 KEY_FILE = CERT_DIR / "localhost-key.pem"
 PORT = 3020
 
-BACKEND_ROOT = pathlib.Path(tempfile.gettempdir()) / "hagrad_eat_backend"
+BACKEND_ROOT = resolve_path_env(
+    "HAGRAD_BACKEND_ROOT",
+    pathlib.Path(tempfile.gettempdir()) / "hagrad_eat_backend",
+    create=True,
+)
 BACKEND_ROOT.mkdir(parents=True, exist_ok=True)
 EAT_STUDY_CACHE_ROOT = BACKEND_ROOT / "study_cache"
 EAT_STUDY_CACHE_ROOT.mkdir(parents=True, exist_ok=True)
-PROJECTS_ROOT = ROOT / "project_lists"
+PROJECTS_ROOT = resolve_path_env("HAGRAD_PROJECTS_ROOT", STATE_ROOT / "project_lists", create=True)
 PROJECTS_ROOT.mkdir(parents=True, exist_ok=True)
 PROJECT_STATE_FILE = PROJECTS_ROOT / "_state.json"
 EXPORTS_OUTBOX_ROOT = pathlib.Path(
-    os.environ.get("HAGRAD_EXPORTS_OUTBOX") or str(ROOT / "exports_outbox")
+    os.environ.get("HAGRAD_EXPORTS_OUTBOX") or str(STATE_ROOT / "exports_outbox")
 ).expanduser()
 EXPORTS_OUTBOX_ROOT.mkdir(parents=True, exist_ok=True)
 EXPORT_STUDIES_FILE = EXPORTS_OUTBOX_ROOT / "_export_studies.json"
@@ -65,9 +92,10 @@ EAT_ENV_BIN = EAT_ENV_ROOT / "bin"
 EAT_ENV_PYTHON = EAT_ENV_BIN / "python"
 EAT_TOTALSEG = EAT_ENV_BIN / "TotalSegmentator"
 EAT_PIPELINE = ROOT / "scripts" / "run_eat_backend_pipeline.py"
-TOTALSEG_HOME_DIR = ROOT / ".tooling" / "totalsegmentator-home"
+TOTALSEG_HOME_DIR = resolve_path_env("HAGRAD_TOTALSEG_HOME", ROOT / ".tooling" / "totalsegmentator-home")
 TOTALSEG_WEIGHTS_DIR = TOTALSEG_HOME_DIR / "nnunet" / "results"
-TRAINING_ROOT = ROOT / ".tooling" / "eat_training_feedback"
+DEFAULT_TRAINING_ROOT = STATE_ROOT / "eat_training_feedback" if STATE_ROOT_CONFIGURED else ROOT / ".tooling" / "eat_training_feedback"
+TRAINING_ROOT = resolve_path_env("HAGRAD_TRAINING_ROOT", DEFAULT_TRAINING_ROOT, create=True)
 TRAINING_CASES_ROOT = TRAINING_ROOT / "cases"
 TRAINING_PROFILE_PATH = TRAINING_ROOT / "profile.json"
 TRAINING_CASES_ROOT.mkdir(parents=True, exist_ok=True)

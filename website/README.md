@@ -34,14 +34,14 @@ The macOS and Windows buttons are controlled in `site.js`.
 
 Current behavior:
 
-- `Download for macOS` downloads the latest `HAGRad-Viewer-macOS.zip` release asset.
+- `Download for macOS` downloads the latest `HAGRad-Viewer-macOS.dmg` release asset.
 - `Download for Windows` downloads the latest `HAGRad-Viewer-Windows.zip` release asset.
 - `View GitHub releases` opens the release archive.
 
 The platform-specific download URLs use the current research-preview release asset route:
 
 ```text
-https://github.com/mt-hagar/hagrad-viewer/releases/download/v0.9.0-research-preview/HAGRad-Viewer-macOS.zip
+https://github.com/mt-hagar/hagrad-viewer/releases/download/v0.9.0-research-preview/HAGRad-Viewer-macOS.dmg
 https://github.com/mt-hagar/hagrad-viewer/releases/download/v0.9.0-research-preview/HAGRad-Viewer-Windows.zip
 ```
 

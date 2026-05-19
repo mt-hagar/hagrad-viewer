@@ -3,8 +3,8 @@
 
   const DOWNLOADS = {
     macos: {
-      url: "https://github.com/mt-hagar/hagrad-viewer/releases/download/v0.9.0-research-preview/HAGRad-Viewer-macOS.zip",
-      directAsset: "HAGRad-Viewer-macOS.zip",
+      url: "https://github.com/mt-hagar/hagrad-viewer/releases/download/v0.9.0-research-preview/HAGRad-Viewer-macOS.dmg",
+      directAsset: "HAGRad-Viewer-macOS.dmg",
       label: "Download for macOS",
     },
     windows: {

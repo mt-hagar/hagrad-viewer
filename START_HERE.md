@@ -1,47 +1,50 @@
 # Start HAGRad Viewer
 
-HAGRad is designed to run locally on your computer. You should not need to search through the source folders to start it.
-
-In the platform release packages, there is only one visible opener at the top level. All technical files are kept inside `HAGRad_support_files`. Most users can ignore that folder.
+HAGRad is designed to run locally on your computer. You should not need to search through source folders, install Python, or run Terminal commands to start it.
 
 ## macOS
 
-Double-click:
+Preferred packaged build:
 
 ```text
-open-viewer-mac.command
+HAGRad Viewer.app
 ```
 
-On first launch, HAGRad automatically creates or refreshes a `HAGRad Viewer.app` launcher on your Desktop with the HAGRad icon.
-If the original HAGRad folder is moved or the launcher cannot be found later, the Desktop app opens the HAGRad folder so you can double-click `open-viewer-mac.command` manually.
+It is distributed inside `HAGRad-Viewer-macOS.dmg`. The app starts the local server internally and opens HAGRad Viewer in your browser.
+
+Legacy source packages may still include `open-viewer-mac.command`. That script path is for developer/source workflows, not the preferred public download.
 
 ## Windows
 
-Double-click:
+Preferred packaged build:
 
 ```text
-open-viewer-windows.bat
+HAGRad Viewer.exe
 ```
 
-On first launch, HAGRad automatically creates or refreshes a `HAGRad Viewer` shortcut on your Desktop with the HAGRad icon.
-If the original HAGRad folder is moved or the launcher cannot be found later, the Desktop shortcut opens the HAGRad folder so you can double-click `open-viewer-windows.bat` manually.
+It is distributed inside `HAGRad-Viewer-Windows.zip`. The executable starts the local server internally and opens HAGRad Viewer in your browser. Python and OpenSSL are not required for normal packaged use.
 
-Windows note: if Python 3 is missing, the launcher opens the Python download page. If no local
-HTTPS certificate is available, HAGRad automatically uses `http://localhost:3020` instead, so
-OpenSSL is not required for normal use.
+Legacy source packages may still include `open-viewer-windows.bat`. That batch path is for developer/source workflows.
 
 ## First run
 
-On the first run, HAGRad may create a local HTTPS certificate and then open the viewer in your browser at:
+On the first run, packaged HAGRad opens the viewer in your browser at:
+
+```text
+http://localhost:3020/src/viewer.html
+```
+
+If you provide local certificate files in the app support certificate folder, HAGRad can instead use:
 
 ```text
 https://localhost:3020/src/viewer.html
 ```
 
-On Windows without a local certificate, it may instead open:
+If startup fails, check the launcher and server logs:
 
 ```text
-http://localhost:3020/src/viewer.html
+macOS: ~/Library/Logs/HAGRad Viewer/
+Windows: %LOCALAPPDATA%\HAGRad Viewer\logs\
 ```
 
 ## Research use only
