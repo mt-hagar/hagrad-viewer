@@ -28,7 +28,7 @@ HAGRad is moving from a script-based research preview to app-style desktop packa
 
 Current packaging targets:
 
-- macOS: `HAGRad Viewer.dmg` containing one `HAGRad Viewer.app`.
+- macOS: `HAGRad-Viewer-macOS.dmg` containing one `HAGRad Viewer.app`.
 - Windows: `HAGRad-Viewer-Windows.zip` containing one obvious `HAGRad Viewer.exe`, built on Windows.
 - The app/exe launcher embeds the Python runtime with PyInstaller, starts the local HAGRad server internally, and opens the viewer in the default browser.
 - No normal user should need to run `python3`, install Apple Command Line Developer Tools, install OpenSSL, or choose between workflow-specific launchers.
@@ -48,13 +48,15 @@ For packaged macOS builds:
 
 1. Open `HAGRad-Viewer-macOS.dmg`.
 2. Double-click `HAGRad Viewer.app`.
-3. The app starts the bundled local server and opens HAGRad Viewer in the browser.
+3. First launch only: if macOS says the developer cannot be verified, Control-click the app, choose Open, then confirm Open.
+4. The app starts the bundled local server and opens HAGRad Viewer in the browser.
 
 For packaged Windows builds:
 
 1. Unzip `HAGRad-Viewer-Windows.zip`.
 2. Double-click `HAGRad Viewer.exe`.
-3. The executable starts the bundled local server and opens HAGRad Viewer in the browser.
+3. First launch only: if Windows SmartScreen appears, choose More info, then Run anyway if you downloaded it from the official release page.
+4. The executable starts the bundled local server and opens HAGRad Viewer in the browser.
 
 For source/developer workflows:
 

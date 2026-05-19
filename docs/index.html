@@ -514,6 +514,58 @@
         font-weight: 800;
       }
 
+      .download-card {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .download-card p:last-child {
+        margin-top: auto;
+      }
+
+      .download-file {
+        color: #d7e8ee;
+        font-size: 0.92rem;
+        font-weight: 850;
+      }
+
+      .download-steps {
+        display: grid;
+        gap: 9px;
+        margin: 16px 0 22px;
+        padding-left: 1.2rem;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .download-steps strong {
+        color: #d7e8ee;
+      }
+
+      .download-steps code,
+      .download-file code,
+      .download-note-box code {
+        color: var(--gold);
+      }
+
+      .download-note-box {
+        grid-column: 1 / -1;
+        padding: 18px 20px;
+        color: var(--muted);
+        line-height: 1.65;
+        background: rgba(4, 11, 17, 0.46);
+        border: 1px solid rgba(240, 197, 106, 0.28);
+        border-radius: 18px;
+      }
+
+      .download-note-box p {
+        margin-bottom: 0;
+      }
+
+      .download-note-box strong {
+        color: #f8d98b;
+      }
+
       .citation-box {
         padding: 22px;
         overflow-x: auto;
@@ -630,6 +682,10 @@
         .doc-grid {
           grid-template-columns: 1fr;
         }
+
+        .download-card p:last-child {
+          margin-top: 0;
+        }
       }
     </style>
   </head>
@@ -666,7 +722,7 @@
               workflow prototyping.
             </p>
             <div class="hero-buttons">
-              <a class="button primary" href="#downloads">Download research preview</a>
+              <a class="button primary" href="#downloads">Download HAGRad Viewer</a>
               <a class="button secondary" href="https://github.com/mt-hagar/hagrad-viewer">GitHub repository</a>
               <a class="button support" href="https://buymeacoffee.com/hagrad" rel="noopener noreferrer" target="_blank">Support our work</a>
             </div>
@@ -823,27 +879,49 @@
         <section id="downloads" aria-labelledby="downloads-title">
           <div class="section-head">
             <p class="eyebrow">Downloads</p>
-            <h2 id="downloads-title">Download research preview</h2>
+            <h2 id="downloads-title">Download HAGRad Viewer</h2>
             <p>
-              Choose the package for your research workstation. Both downloads run locally and keep
-              DICOM files on your computer.
+              Choose the package for your research workstation. HAGRad Viewer runs locally, keeps DICOM
+              files on your computer, and opens from one app icon after download.
             </p>
           </div>
           <div class="doc-grid">
-            <article class="info-card">
+            <article class="info-card download-card">
               <h3>macOS package</h3>
-              <p>Open the DMG and double-click <code>HAGRad Viewer.app</code>. The app bundles the local server runtime and opens the viewer in your browser.</p>
-              <p><a href="https://github.com/mt-hagar/hagrad-viewer/releases/download/v0.9.0-research-preview/HAGRad-Viewer-macOS.dmg">Download macOS package</a></p>
+              <p class="download-file">Download file: <code>HAGRad-Viewer-macOS.dmg</code></p>
+              <ol class="download-steps">
+                <li>Open the DMG.</li>
+                <li>Double-click <code>HAGRad Viewer.app</code>.</li>
+                <li><strong>First launch only:</strong> if macOS says the developer cannot be verified, Control-click the app, choose Open, then confirm Open.</li>
+              </ol>
+              <p>No Python, Terminal, OpenSSL, or Apple Command Line Tools are required for normal use.</p>
+              <p><a href="https://github.com/mt-hagar/hagrad-viewer/releases/download/v0.9.0-research-preview/HAGRad-Viewer-macOS.dmg">Download for macOS (.dmg)</a></p>
             </article>
-            <article class="info-card">
+            <article class="info-card download-card">
               <h3>Windows package</h3>
-              <p>Unzip and double-click <code>HAGRad Viewer.exe</code>. It bundles the launcher runtime and can use a localhost HTTP fallback without OpenSSL.</p>
-              <p><a href="https://github.com/mt-hagar/hagrad-viewer/releases/download/v0.9.0-research-preview/HAGRad-Viewer-Windows.zip">Download Windows package</a></p>
+              <p class="download-file">Download file: <code>HAGRad-Viewer-Windows.zip</code></p>
+              <ol class="download-steps">
+                <li>Unzip the downloaded file.</li>
+                <li>Double-click <code>HAGRad Viewer.exe</code>.</li>
+                <li><strong>First launch only:</strong> if Windows SmartScreen appears, choose More info, then Run anyway if you downloaded it from this page.</li>
+              </ol>
+              <p>The executable bundles the launcher runtime, starts the local server, and uses localhost HTTP when HTTPS certificates are unavailable.</p>
+              <p><a href="https://github.com/mt-hagar/hagrad-viewer/releases/download/v0.9.0-research-preview/HAGRad-Viewer-Windows.zip">Download for Windows (.zip)</a></p>
             </article>
-            <article class="info-card">
-              <h3>Current release</h3>
+            <article class="info-card download-card">
+              <h3>Release archive</h3>
+              <p>Use GitHub releases for release notes, source archives, demo media, license information, and earlier research-preview builds.</p>
+              <p>The packaged downloads are intended for normal users; source archives are intended for developers and reviewers.</p>
               <p><a href="https://github.com/mt-hagar/hagrad-viewer/releases">View GitHub releases</a></p>
             </article>
+            <div class="download-note-box">
+              <p>
+                <strong>Research use only.</strong> HAGRad is not a clinical product or medical device.
+                If launch fails, the app displays a message and writes logs to
+                <code>~/Library/Logs/HAGRad Viewer/</code> on macOS or
+                <code>%LOCALAPPDATA%\HAGRad Viewer\logs\</code> on Windows.
+              </p>
+            </div>
           </div>
         </section>
 

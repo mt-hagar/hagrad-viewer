@@ -5,12 +5,12 @@
     macos: {
       url: "https://github.com/mt-hagar/hagrad-viewer/releases/download/v0.9.0-research-preview/HAGRad-Viewer-macOS.dmg",
       directAsset: "HAGRad-Viewer-macOS.dmg",
-      label: "Download for macOS",
+      label: "Download for macOS (.dmg)",
     },
     windows: {
       url: "https://github.com/mt-hagar/hagrad-viewer/releases/download/v0.9.0-research-preview/HAGRad-Viewer-Windows.zip",
       directAsset: "HAGRad-Viewer-Windows.zip",
-      label: "Download for Windows",
+      label: "Download for Windows (.zip)",
     },
     github: {
       url: "https://github.com/mt-hagar/hagrad-viewer/releases/latest",

@@ -34,8 +34,8 @@ The macOS and Windows buttons are controlled in `site.js`.
 
 Current behavior:
 
-- `Download for macOS` downloads the latest `HAGRad-Viewer-macOS.dmg` release asset.
-- `Download for Windows` downloads the latest `HAGRad-Viewer-Windows.zip` release asset.
+- `Download for macOS (.dmg)` downloads the current `HAGRad-Viewer-macOS.dmg` release asset.
+- `Download for Windows (.zip)` downloads the current `HAGRad-Viewer-Windows.zip` release asset.
 - `View GitHub releases` opens the release archive.
 
 The platform-specific download URLs use the current research-preview release asset route:
@@ -44,6 +44,10 @@ The platform-specific download URLs use the current research-preview release ass
 https://github.com/mt-hagar/hagrad-viewer/releases/download/v0.9.0-research-preview/HAGRad-Viewer-macOS.dmg
 https://github.com/mt-hagar/hagrad-viewer/releases/download/v0.9.0-research-preview/HAGRad-Viewer-Windows.zip
 ```
+
+Because the research-preview desktop builds are unsigned, the download section should keep the first-launch
+macOS Gatekeeper and Windows SmartScreen notes visible until Apple Developer ID and Windows code-signing
+certificates are available.
 
 ## Custom domain
 

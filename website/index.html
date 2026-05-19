@@ -94,10 +94,10 @@
       <section class="section download-section" id="download">
         <div class="section-heading">
           <p class="eyebrow">Local installation</p>
-          <h2>Download HAGRad</h2>
+          <h2>Download HAGRad Viewer</h2>
           <p>
-            The website is the public portal. The viewer itself runs locally, which is the safer model for
-            medical imaging research data.
+            The website is the public portal. HAGRad Viewer itself runs locally, keeps DICOM files on
+            the user's computer, and opens from one app icon after download.
           </p>
         </div>
         <div class="download-grid">
@@ -105,17 +105,29 @@
             <div>
               <p class="platform">macOS</p>
               <h3>HAGRad for Mac</h3>
-              <p>One app inside a DMG. Starts the bundled local server and opens the viewer without Terminal, Python setup, or OpenSSL.</p>
+              <p class="download-file">Download file: <code>HAGRad-Viewer-macOS.dmg</code></p>
+              <ol class="download-steps">
+                <li>Open the DMG.</li>
+                <li>Double-click <code>HAGRad Viewer.app</code>.</li>
+                <li><strong>First launch only:</strong> if macOS says the developer cannot be verified, Control-click the app, choose Open, then confirm Open.</li>
+              </ol>
+              <p>No Python, Terminal, OpenSSL, or Apple Command Line Tools are required for normal use.</p>
             </div>
-            <a class="button button-primary download-button" data-download="macos" href="#">Download for macOS</a>
+            <a class="button button-primary download-button" data-download="macos" href="#">Download for macOS (.dmg)</a>
           </article>
           <article class="download-card">
             <div>
               <p class="platform">Windows</p>
               <h3>HAGRad for Windows</h3>
-              <p>One visible executable in a ZIP. Starts the bundled local server, opens the browser, and falls back to localhost HTTP when needed.</p>
+              <p class="download-file">Download file: <code>HAGRad-Viewer-Windows.zip</code></p>
+              <ol class="download-steps">
+                <li>Unzip the downloaded file.</li>
+                <li>Double-click <code>HAGRad Viewer.exe</code>.</li>
+                <li><strong>First launch only:</strong> if Windows SmartScreen appears, choose More info, then Run anyway if you downloaded it from this page.</li>
+              </ol>
+              <p>The executable starts the local server, opens the browser, and uses localhost HTTP when HTTPS certificates are unavailable.</p>
             </div>
-            <a class="button button-secondary download-button" data-download="windows" href="#">Download for Windows</a>
+            <a class="button button-secondary download-button" data-download="windows" href="#">Download for Windows (.zip)</a>
           </article>
           <article class="download-card download-card-wide">
             <div>
@@ -129,8 +141,9 @@
           </article>
         </div>
         <p class="download-note">
-          Download links are controlled in <code>website/site.js</code>. When the first public GitHub release is uploaded,
-          only those URLs need to be updated.
+          Research use only. HAGRad is not a clinical product or medical device. If launch fails, the
+          app displays a message and writes logs to <code>~/Library/Logs/HAGRad Viewer/</code> on macOS
+          or <code>%LOCALAPPDATA%\HAGRad Viewer\logs\</code> on Windows.
         </p>
       </section>
 
