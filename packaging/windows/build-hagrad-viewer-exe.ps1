@@ -23,18 +23,18 @@ if (Test-Path $ExePath) {
 }
 
 $DataArgs = @(
-  "--add-data", "src;src",
-  "--add-data", "vendor;vendor",
-  "--add-data", "assets;assets",
-  "--add-data", "scripts\serve_https.py;scripts",
-  "--add-data", "scripts\run_eat_backend_pipeline.py;scripts",
-  "--add-data", "README.md;.",
-  "--add-data", "DISCLAIMER.md;.",
-  "--add-data", "LICENSE;.",
-  "--add-data", "LICENSE.md;.",
-  "--add-data", "CITATION.cff;.",
-  "--add-data", "RELEASE_NOTES.md;.",
-  "--add-data", "help.html;."
+  "--add-data", "$Root\src;src",
+  "--add-data", "$Root\vendor;vendor",
+  "--add-data", "$Root\assets;assets",
+  "--add-data", "$Root\scripts\serve_https.py;scripts",
+  "--add-data", "$Root\scripts\run_eat_backend_pipeline.py;scripts",
+  "--add-data", "$Root\README.md;.",
+  "--add-data", "$Root\DISCLAIMER.md;.",
+  "--add-data", "$Root\LICENSE;.",
+  "--add-data", "$Root\LICENSE.md;.",
+  "--add-data", "$Root\CITATION.cff;.",
+  "--add-data", "$Root\RELEASE_NOTES.md;.",
+  "--add-data", "$Root\help.html;."
 )
 
 & $Python -m PyInstaller `
