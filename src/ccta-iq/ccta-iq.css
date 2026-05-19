@@ -902,7 +902,8 @@ button {
 }
 
 .shortcut-table-shell {
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   margin-top: 10px;
   border-radius: 14px;
   border: 1px solid rgba(145, 181, 201, 0.12);
@@ -912,15 +913,22 @@ button {
 .shortcut-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 320px;
+  min-width: 0;
+  table-layout: fixed;
 }
 
 .shortcut-table th,
 .shortcut-table td {
-  padding: 10px 12px;
+  padding: 8px 8px;
   border-bottom: 1px solid rgba(145, 181, 201, 0.08);
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
+}
+
+.shortcut-table th:last-child,
+.shortcut-table td:last-child {
+  width: 68px;
+  padding-left: 4px;
 }
 
 .shortcut-table th {
@@ -934,7 +942,7 @@ button {
 
 .shortcut-table td {
   color: var(--muted-strong);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .shortcut-table tbody tr:last-child td {
@@ -943,22 +951,25 @@ button {
 
 .shortcut-table input {
   width: 100%;
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 8px 10px;
+  padding: 7px 6px;
   background: rgba(255, 255, 255, 0.05);
   color: var(--text);
 }
 
 .shortcut-key-input {
-  max-width: 88px;
+  max-width: 56px;
   text-align: center;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
 }
 
 .shortcut-action-name {
   font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .shortcut-action-note {
