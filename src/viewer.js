@@ -97,7 +97,6 @@
     { id: "windowLevel", label: "WW/WL", defaultKey: "W", defaultMeaning: "Adjust window width and level" },
     { id: "pan", label: "Pan", defaultKey: "M", defaultMeaning: "Move the current viewport" },
     { id: "zoom", label: "Zoom", defaultKey: "Z", defaultMeaning: "Zoom the current viewport" },
-    { id: "exportCurrent", label: "Export Current PNG", defaultKey: "", defaultMeaning: "Export the current viewport as PNG" },
     { id: "exportCine", label: "Export Cine", defaultKey: "V", defaultMeaning: "Export a cine clip of the stack" },
     { id: "presetCoronary", label: "Coronary Preset", defaultKey: "1", defaultMeaning: "Apply the coronary window preset" },
     { id: "presetSoftTissue", label: "Soft Tissue Preset", defaultKey: "2", defaultMeaning: "Apply the soft tissue preset" },
@@ -474,8 +473,6 @@
     els.shortcutResetButton = document.getElementById("shortcut-reset-button");
     els.shortcutTableBody = document.getElementById("shortcut-table-body");
     els.voiReadout = document.getElementById("voi-readout");
-    els.exportCurrentButton = document.getElementById("export-current-button");
-    els.exportGridButton = document.getElementById("export-grid-button");
     els.exportCineButton = document.getElementById("export-cine-button");
     els.exportMeasurementsButton = document.getElementById("export-measurements-button");
     els.finishCloseButton = document.getElementById("finish-close-button");
@@ -2066,13 +2063,6 @@
       case "pan":
       case "zoom":
         setActiveTool(actionId);
-        return true;
-      case "exportCurrent":
-        setActiveSidebarTab("export");
-        exportCurrentViewportPng().catch((error) => {
-          console.error(error);
-          setStatus(error.message || "Current PNG export failed.", "error");
-        });
         return true;
       case "exportCine":
         setActiveSidebarTab("export");
@@ -7668,114 +7658,6 @@
     return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate.mimeType)) || null;
   }
 
-  function drawViewportToCanvas(ctx, viewportId, x, y, width, height) {
-    const reconstruction = getActiveReconstruction();
-    const sourceCanvas = getViewportCanvas(viewportId);
-    const frame = getViewportFrame(viewportId, reconstruction);
-    if (!sourceCanvas || !frame) {
-      throw new Error("Viewport canvas is not ready yet.");
-    }
-
-    ctx.fillStyle = "#000000";
-    ctx.fillRect(x, y, width, height);
-    ctx.drawImage(sourceCanvas, x, y, width, height);
-    drawHeaderBar(ctx, x, y, width, getViewportTitle(viewportId), getViewportSummary(viewportId));
-    drawOrientationLabels(ctx, x, y, width, height, getOrientationLabels(frame));
-  }
-
-  async function exportCurrentViewportPng() {
-    const reconstruction = getActiveReconstruction();
-    if (!reconstruction) {
-      throw new Error("Load a DICOM series first.");
-    }
-
-    const exportViewportId =
-      state.layout === "presentation" && state.activeViewportId !== "presentation"
-        ? "presentation"
-        : state.activeViewportId;
-    const sourceCanvas = getViewportCanvas(exportViewportId);
-    if (!sourceCanvas) {
-      throw new Error("The current viewport is not ready yet.");
-    }
-
-    const exportCanvas = document.createElement("canvas");
-    exportCanvas.width = sourceCanvas.width;
-    exportCanvas.height = sourceCanvas.height;
-    const ctx = exportCanvas.getContext("2d");
-    drawViewportToCanvas(ctx, exportViewportId, 0, 0, exportCanvas.width, exportCanvas.height);
-    await downloadCanvas(exportCanvas, buildExportFilename(`current_${exportViewportId}`, "png"));
-    setStatus("Current viewport exported as a ZIP bundle.");
-  }
-
-  async function exportFourUpPng() {
-    const reconstruction = getActiveReconstruction();
-    if (!reconstruction) {
-      throw new Error("Load a DICOM series first.");
-    }
-
-    const frame = getCurrentPlaneFrame("axial", reconstruction);
-    const currentIndex = getReadoutIndex(reconstruction, "axial");
-    const count = frame.metrics.count;
-    const tileCount = Math.min(4, count);
-    const startIndex = clamp(currentIndex, 0, Math.max(0, count - tileCount));
-    const tileIndices = Array.from({ length: tileCount }, (_, offset) => startIndex + offset);
-    const sourceCanvas = getViewportCanvas("presentation");
-    if (!sourceCanvas) {
-      throw new Error("The viewer is not ready for export yet.");
-    }
-
-    const tileWidth = sourceCanvas.width;
-    const tileHeight = sourceCanvas.height;
-    const gap = 20;
-    const exportCanvas = document.createElement("canvas");
-    exportCanvas.width = tileWidth * 2 + gap * 3;
-    exportCanvas.height = tileHeight * 2 + gap * 3;
-    const ctx = exportCanvas.getContext("2d");
-    ctx.fillStyle = "#05080b";
-    ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
-
-    const positions = [
-      { x: gap, y: gap },
-      { x: tileWidth + gap * 2, y: gap },
-      { x: gap, y: tileHeight + gap * 2 },
-      { x: tileWidth + gap * 2, y: tileHeight + gap * 2 },
-    ];
-
-    tileIndices.forEach((sliceIndex, tileIndex) => {
-      const tileCanvas = document.createElement("canvas");
-      tileCanvas.width = tileWidth;
-      tileCanvas.height = tileHeight;
-      const tileCtx = tileCanvas.getContext("2d");
-      const viewportState = {
-        zoom: 1,
-        panX: 0,
-        panY: 0,
-        bufferCanvas: document.createElement("canvas"),
-      };
-      const tileFrame = cloneFrame(frame);
-      const offset = (sliceIndex - currentIndex) * frame.metrics.spacingNormal;
-      tileFrame.centerWorld = addVectors(frame.centerWorld, scaleVector(frame.nWorld, offset));
-      drawPlaneScene(tileCtx, reconstruction, tileFrame, tileWidth, tileHeight, viewportState, {
-        includeAnnotations: false,
-        storeGeometry: false,
-      });
-      const position = positions[tileIndex];
-      ctx.drawImage(tileCanvas, position.x, position.y, tileWidth, tileHeight);
-      drawHeaderBar(
-        ctx,
-        position.x,
-        position.y,
-        tileWidth,
-        `Slice ${sliceIndex + 1}`,
-        `${sliceIndex + 1} / ${count}`
-      );
-      drawOrientationLabels(ctx, position.x, position.y, tileWidth, tileHeight, getOrientationLabels(tileFrame));
-    });
-
-    await downloadCanvas(exportCanvas, buildExportFilename("comparison_4up", "png"));
-    setStatus("4-up comparison exported as a ZIP bundle.");
-  }
-
   async function exportCineClip() {
     const reconstruction = getActiveReconstruction();
     if (!reconstruction) {
@@ -11453,24 +11335,6 @@
     });
 
     els.cineButton.addEventListener("click", toggleCine);
-
-    els.exportCurrentButton.addEventListener("click", async () => {
-      try {
-        await exportCurrentViewportPng();
-      } catch (error) {
-        console.error(error);
-        setStatus(error.message || "Current PNG export failed.", "error");
-      }
-    });
-
-    els.exportGridButton.addEventListener("click", async () => {
-      try {
-        await exportFourUpPng();
-      } catch (error) {
-        console.error(error);
-        setStatus(error.message || "4-up PNG export failed.", "error");
-      }
-    });
 
     els.exportCineButton.addEventListener("click", async () => {
       try {
