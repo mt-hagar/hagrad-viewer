@@ -106,7 +106,7 @@
     { id: "plaqueLineProfile", label: "Plaque-Lumen Calcified", defaultKey: "I", defaultMeaning: "Draw a calcified plaque-lumen interface line profile" },
     { id: "plaqueNoncalcifiedLineProfile", label: "Plaque-Lumen Noncalcified", defaultKey: "N", defaultMeaning: "Draw a non-calcified plaque-lumen interface line profile" },
     { id: "vascularLineProfile", label: "Vascular Line Profile", defaultKey: "V", defaultMeaning: "Draw a vessel line profile for lumen FWHM and 10-90 edge sharpness" },
-    { id: "bloomingDiameter", label: "Blooming Diameter", defaultKey: "", defaultMeaning: "Draw outer and inner diameters to estimate blooming percentage" },
+    { id: "bloomingDiameter", label: "Blooming Diameter", defaultKey: "", defaultMeaning: "Draw outer and parallel inner diameters to estimate blooming percentage" },
     { id: "stenosisDiameter", label: "Stenosis Diameter", defaultKey: "", defaultMeaning: "Draw proximal, distal, and minimal lumen diameters to estimate stenosis percentage" },
     { id: "arrow", label: "Arrow", defaultKey: "Y", defaultMeaning: "Place an arrow pointer" },
     { id: "text", label: "Text Label", defaultKey: "T", defaultMeaning: "Place a text label" },
@@ -135,7 +135,7 @@
     plaqueLineProfile: "Plaque-lumen interface: draw across contrast lumen and calcified plaque to quantify blooming width and edge slope.",
     plaqueNoncalcifiedLineProfile: "Plaque-lumen interface: draw from contrast lumen into non-calcified plaque to quantify HU drop and interface width.",
     vascularLineProfile: "Vascular line profile: draw perpendicular across a vessel lumen to calculate FWHM diameter and left/right 10-90 edge sharpness.",
-    bloomingDiameter: "Blooming diameter: draw the outer diameter first, then the inner lumen diameter. HAGRad calculates ((outer - inner) / outer) x 100.",
+    bloomingDiameter: "Blooming diameter: draw the outer diameter first, then the inner lumen diameter. The inner line is constrained parallel to the outer line. HAGRad calculates ((outer - inner) / outer) x 100.",
     stenosisDiameter: "Stenosis diameter: draw proximal reference, distal reference, then minimal lumen diameter. HAGRad averages the references and calculates diameter stenosis.",
     freehandRoi: "ROI Draw: hold the left mouse button and trace the ROI freehand, then release to finish it.",
     segmentationRoi: "ROI Multiple Click: place multiple clicks around a target and finish with double click to create a smoothed ROI.",
@@ -6047,6 +6047,73 @@
     return Number.isFinite(lengthMm) ? lengthMm : null;
   }
 
+  function getDiameterLineUnitDirection(line) {
+    if (!line?.worldPoints?.[0] || !line?.worldPoints?.[1]) {
+      return null;
+    }
+    const vector = subtractVectors(line.worldPoints[1], line.worldPoints[0]);
+    const lengthMm = vectorLength(vector);
+    return Number.isFinite(lengthMm) && lengthMm > 1e-4 ? scaleVector(vector, 1 / lengthMm) : null;
+  }
+
+  function constrainWorldPointToDirection(fixedPoint, targetPoint, unitDirection) {
+    if (!fixedPoint || !targetPoint || !unitDirection) {
+      return targetPoint;
+    }
+    const projectedDistanceMm = dot(subtractVectors(targetPoint, fixedPoint), unitDirection);
+    return addVectors(fixedPoint, scaleVector(unitDirection, projectedDistanceMm));
+  }
+
+  function alignDiameterLineToDirection(line, unitDirection) {
+    const lengthMm = getDiameterLineLengthMm(line);
+    if (!line?.worldPoints?.[0] || !line?.worldPoints?.[1] || !unitDirection || !Number.isFinite(lengthMm) || lengthMm <= 1e-4) {
+      return;
+    }
+    const center = scaleVector(addVectors(line.worldPoints[0], line.worldPoints[1]), 0.5);
+    const halfVector = scaleVector(unitDirection, lengthMm / 2);
+    line.worldPoints = [
+      subtractVectors(center, halfVector),
+      addVectors(center, halfVector),
+    ];
+  }
+
+  function getConstrainedDiameterDragWorldPoints(draft, dragging) {
+    const worldPoints = Array.isArray(dragging?.worldPoints) ? cloneWorldPoints(dragging.worldPoints) : [];
+    if (draft?.toolKey !== "bloomingDiameter" || draft.lines.length !== 1 || worldPoints.length < 2) {
+      return worldPoints;
+    }
+    const outerDirection = getDiameterLineUnitDirection(draft.lines[0]);
+    if (outerDirection) {
+      worldPoints[1] = constrainWorldPointToDirection(worldPoints[0], worldPoints[1], outerDirection);
+    }
+    return worldPoints;
+  }
+
+  function updateBloomingDiameterPoint(lines, lineIndex, pointIndex, worldPoint) {
+    const line = lines[lineIndex];
+    if (!line?.worldPoints?.[pointIndex]) {
+      return false;
+    }
+
+    if (lineIndex === 1) {
+      const outerDirection = getDiameterLineUnitDirection(lines[0]);
+      const fixedPoint = line.worldPoints[pointIndex === 0 ? 1 : 0];
+      line.worldPoints[pointIndex] = outerDirection
+        ? constrainWorldPointToDirection(fixedPoint, worldPoint, outerDirection)
+        : worldPoint;
+      return true;
+    }
+
+    line.worldPoints[pointIndex] = worldPoint;
+    if (lineIndex === 0 && lines[1]) {
+      const outerDirection = getDiameterLineUnitDirection(line);
+      if (outerDirection) {
+        alignDiameterLineToDirection(lines[1], outerDirection);
+      }
+    }
+    return true;
+  }
+
   function getDiameterMeasurementSummary(annotation) {
     const lines = getDiameterAnnotationLines(annotation);
     const lengths = lines.map(getDiameterLineLengthMm);
@@ -11764,8 +11831,9 @@
       if (!worldPoint) {
         return;
       }
-      state.dragging.worldPoints[1] = worldPoint;
       const draft = state.diameterDraft;
+      state.dragging.worldPoints[1] = worldPoint;
+      state.dragging.worldPoints = getConstrainedDiameterDragWorldPoints(draft, state.dragging);
       if (draft) {
         requestRenderViewports(getViewportIdsForPlane(draft.plane), { readouts: false });
       }
@@ -11806,7 +11874,11 @@
         const lines = getDiameterAnnotationLines(annotation);
         const line = lines[state.dragging.lineIndex];
         if (line?.worldPoints?.[state.dragging.pointIndex]) {
-          line.worldPoints[state.dragging.pointIndex] = worldPoint;
+          if (annotation.type === "bloomingDiameter") {
+            updateBloomingDiameterPoint(lines, state.dragging.lineIndex, state.dragging.pointIndex, worldPoint);
+          } else {
+            line.worldPoints[state.dragging.pointIndex] = worldPoint;
+          }
           annotation.diameterLines = lines;
           annotation.worldPoints = lines.flatMap((item) => item.worldPoints);
         }
@@ -11876,14 +11948,15 @@
       addAnnotation(dragging.annotation);
     } else if (dragging.type === "diameterLine") {
       const draft = state.diameterDraft;
-      const lineLengthMm = vectorLength(subtractVectors(dragging.worldPoints[0], dragging.worldPoints[1]));
+      const worldPoints = getConstrainedDiameterDragWorldPoints(draft, dragging);
+      const lineLengthMm = vectorLength(subtractVectors(worldPoints[0], worldPoints[1]));
       if (draft && draft.toolKey === dragging.toolKey && Number.isFinite(lineLengthMm) && lineLengthMm > 0.5) {
         draft.lines.push({
           ...dragging.role,
           frame: dragging.frame ? cloneFrame(dragging.frame) : cloneFrame(draft.frame),
           plane: dragging.plane || dragging.frame?.plane || draft.plane,
           viewContext: dragging.viewContext ? cloneAnnotationViewContext(dragging.viewContext) : null,
-          worldPoints: cloneWorldPoints(dragging.worldPoints),
+          worldPoints,
         });
         const expectedCount = getDiameterToolConfig(draft.toolKey)?.roles?.length || 0;
         if (draft.lines.length >= expectedCount) {
