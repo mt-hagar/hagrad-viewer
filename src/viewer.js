@@ -4854,6 +4854,8 @@
     if (Array.isArray(annotation.diameterLines)) {
       clone.diameterLines = annotation.diameterLines.map((line) => ({
         ...line,
+        frame: line.frame ? cloneFrame(line.frame) : undefined,
+        viewContext: line.viewContext ? cloneAnnotationViewContext(line.viewContext) : undefined,
         worldPoints: cloneWorldPoints(line.worldPoints || []),
       }));
     }
@@ -4938,6 +4940,9 @@
     if (!draft || draft.toolKey !== toolKey || draft.reconstructionId !== reconstruction?.id || draft.plane !== frame?.plane) {
       return false;
     }
+    if (toolKey === "stenosisDiameter") {
+      return dot(draft.frame.nWorld, frame.nWorld) >= 0.992;
+    }
     if (dot(draft.frame.nWorld, frame.nWorld) < 0.992) {
       return false;
     }
@@ -4985,6 +4990,9 @@
       viewContext: cloneAnnotationViewContext(draft.viewContext),
       diameterLines: draft.lines.map((line) => ({
         ...line,
+        frame: line.frame ? cloneFrame(line.frame) : cloneFrame(draft.frame),
+        plane: line.plane || line.frame?.plane || draft.plane,
+        viewContext: line.viewContext ? cloneAnnotationViewContext(line.viewContext) : undefined,
         worldPoints: cloneWorldPoints(line.worldPoints),
       })),
     };
@@ -5788,7 +5796,7 @@
     return true;
   }
 
-  function annotationTouchedByEraser(annotation, planePoint, radiusMm) {
+  function annotationTouchedByEraser(annotation, planePoint, radiusMm, frame) {
     if (annotation.type === "probe" || annotation.type === "text") {
       const point = worldToPlaneCoordinates(annotation.frame, annotation.worldPoints[0]);
       return Math.hypot(point.xMm - planePoint.xMm, point.yMm - planePoint.yMm) <= radiusMm;
@@ -5807,8 +5815,12 @@
 
     if (isMultiDiameterAnnotationType(annotation.type)) {
       return getDiameterAnnotationLines(annotation).some((line) => {
-        const start = worldToPlaneCoordinates(annotation.frame, line.worldPoints[0]);
-        const end = worldToPlaneCoordinates(annotation.frame, line.worldPoints[1]);
+        if (!isDiameterLineVisible(annotation, line, frame)) {
+          return false;
+        }
+        const lineFrame = getDiameterLineFrame(annotation, line);
+        const start = worldToPlaneCoordinates(lineFrame, line.worldPoints[0]);
+        const end = worldToPlaneCoordinates(lineFrame, line.worldPoints[1]);
         const distancePx = pointToSegmentDistancePx(
           { x: planePoint.xMm, y: planePoint.yMm },
           { x: start.xMm, y: start.yMm },
@@ -5880,7 +5892,7 @@
         return;
       }
 
-      if (annotationTouchedByEraser(annotation, planePoint, radiusMm)) {
+      if (annotationTouchedByEraser(annotation, planePoint, radiusMm, frame)) {
         removeAnnotationRecord(reconstruction, annotation);
         changed = true;
       }
@@ -5930,17 +5942,37 @@
     };
   }
 
-  function isAnnotationVisible(annotation, frame) {
-    if (annotation.plane !== frame.plane) {
+  function isFrameVisibleOnFrame(sourceFrame, sourcePlane, frame) {
+    if (!sourceFrame || !frame || sourcePlane !== frame.plane) {
       return false;
     }
 
-    if (dot(annotation.frame.nWorld, frame.nWorld) < 0.992) {
+    if (dot(sourceFrame.nWorld, frame.nWorld) < 0.992) {
       return false;
     }
 
-    const distance = Math.abs(dot(subtractVectors(annotation.frame.centerWorld, frame.centerWorld), frame.nWorld));
+    const distance = Math.abs(dot(subtractVectors(sourceFrame.centerWorld, frame.centerWorld), frame.nWorld));
     return distance <= frame.metrics.spacingNormal * 0.75;
+  }
+
+  function getDiameterLineFrame(annotation, line) {
+    return line?.frame || annotation?.frame || null;
+  }
+
+  function isDiameterLineVisible(annotation, line, frame) {
+    const lineFrame = getDiameterLineFrame(annotation, line);
+    const linePlane = line?.plane || lineFrame?.plane || annotation?.plane;
+    return isFrameVisibleOnFrame(lineFrame, linePlane, frame);
+  }
+
+  function isAnnotationVisible(annotation, frame) {
+    if (!annotation || !frame) {
+      return false;
+    }
+    if (isMultiDiameterAnnotationType(annotation.type)) {
+      return getDiameterAnnotationLines(annotation).some((line) => isDiameterLineVisible(annotation, line, frame));
+    }
+    return isFrameVisibleOnFrame(annotation.frame, annotation.plane, frame);
   }
 
   function projectWorldPointToCanvas(frame, geometry, worldPoint) {
@@ -5981,6 +6013,9 @@
             key: line.key || role.key || `line${index + 1}`,
             label: line.label || role.label || `Line ${index + 1}`,
             color: line.color || role.color || getAnnotationAccentColor(annotation),
+            frame: line.frame || annotation.frame,
+            plane: line.plane || line.frame?.plane || annotation.plane,
+            viewContext: line.viewContext || annotation.viewContext,
             worldPoints,
           };
         })
@@ -5995,6 +6030,9 @@
         key: role.key || `line${lines.length + 1}`,
         label: role.label || `Line ${lines.length + 1}`,
         color: role.color || getAnnotationAccentColor(annotation),
+        frame: annotation.frame,
+        plane: annotation.plane,
+        viewContext: annotation.viewContext,
         worldPoints: [worldPoints[index], worldPoints[index + 1]],
       });
     }
@@ -6271,7 +6309,7 @@
       };
     }
     if (isMultiDiameterAnnotationType(annotation.type)) {
-      const lines = getDiameterAnnotationLines(annotation);
+      const lines = getDiameterAnnotationLines(annotation).filter((line) => isDiameterLineVisible(annotation, line, frame));
       const lastLine = lines[lines.length - 1];
       const anchorWorld = lastLine?.worldPoints?.[1] || annotation.worldPoints?.[annotation.worldPoints.length - 1];
       if (!anchorWorld) {
@@ -6388,6 +6426,9 @@
 
       if (isMultiDiameterAnnotationType(annotation.type)) {
         getDiameterAnnotationLines(annotation).forEach((line, lineIndex) => {
+          if (!isDiameterLineVisible(annotation, line, frame)) {
+            return;
+          }
           const start = projectWorldPointToCanvas(frame, geometry, line.worldPoints[0]);
           const end = projectWorldPointToCanvas(frame, geometry, line.worldPoints[1]);
           const startDistancePx = Math.hypot(planePoint.canvasX - start.x, planePoint.canvasY - start.y);
@@ -6593,6 +6634,9 @@
 
     if (isMultiDiameterAnnotationType(annotation.type)) {
       getDiameterAnnotationLines(annotation).forEach((line) => {
+        if (!isDiameterLineVisible(annotation, line, frame)) {
+          return;
+        }
         const start = projectWorldPointToCanvas(frame, geometry, line.worldPoints[0]);
         const end = projectWorldPointToCanvas(frame, geometry, line.worldPoints[1]);
         ctx.strokeStyle = overlayStyle?.withAlpha?.(line.color || accent, options.hover ? 0.72 : 0.92) || line.color || accent;
@@ -8018,7 +8062,7 @@
   }
 
   function drawDiameterAnnotation(ctx, annotation, reconstruction, frame, geometry, options = {}) {
-    const lines = getDiameterAnnotationLines(annotation);
+    const lines = getDiameterAnnotationLines(annotation).filter((line) => isDiameterLineVisible(annotation, line, frame));
     if (!lines.length) {
       return;
     }
@@ -8078,6 +8122,9 @@
       state.dragging.worldPoints?.length === 2
         ? {
             ...getDiameterDraftRole(draft.toolKey, draft.lines.length),
+            frame: state.dragging.frame ? cloneFrame(state.dragging.frame) : cloneFrame(frame),
+            plane: state.dragging.plane || frame.plane,
+            viewContext: state.dragging.viewContext ? cloneAnnotationViewContext(state.dragging.viewContext) : null,
             worldPoints: state.dragging.worldPoints,
           }
         : null;
@@ -8090,6 +8137,7 @@
       type: draft.toolKey,
       plane: draft.plane,
       frame: draft.frame,
+      viewContext: draft.viewContext,
       diameterLines: lines,
       worldPoints: lines.flatMap((line) => line.worldPoints || []),
     };
@@ -8478,7 +8526,9 @@
       scaleVector(frame.nWorld, delta * frame.metrics.spacingNormal)
     );
     state.polygonDraft = null;
-    state.diameterDraft = null;
+    if (state.diameterDraft?.toolKey !== "stenosisDiameter") {
+      state.diameterDraft = null;
+    }
     updateReadouts();
     requestRenderAll();
   }
@@ -10994,6 +11044,7 @@
       annotationId: hit.annotation.id,
       mode: hit.mode,
       pointIndex: hit.pointIndex,
+      lineIndex: hit.lineIndex,
       cornerIndex: hit.cornerIndex,
       historyCaptured: false,
       startClientX: event.clientX,
@@ -11420,6 +11471,9 @@
         viewportId,
         toolKey: state.activeToolKey,
         role,
+        frame: cloneFrame(frame),
+        plane: frame.plane,
+        viewContext: createAnnotationViewContext(frame, { viewportId }),
         worldPoints: [worldPoint, worldPoint],
       };
       requestRenderViewports(getViewportIdsForPlane(frame.plane), { readouts: false });
@@ -11826,6 +11880,9 @@
       if (draft && draft.toolKey === dragging.toolKey && Number.isFinite(lineLengthMm) && lineLengthMm > 0.5) {
         draft.lines.push({
           ...dragging.role,
+          frame: dragging.frame ? cloneFrame(dragging.frame) : cloneFrame(draft.frame),
+          plane: dragging.plane || dragging.frame?.plane || draft.plane,
+          viewContext: dragging.viewContext ? cloneAnnotationViewContext(dragging.viewContext) : null,
           worldPoints: cloneWorldPoints(dragging.worldPoints),
         });
         const expectedCount = getDiameterToolConfig(draft.toolKey)?.roles?.length || 0;
