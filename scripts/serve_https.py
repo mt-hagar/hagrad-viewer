@@ -932,9 +932,13 @@ def upsert_case(project_id: str, case_payload: dict) -> dict:
 
 
 def safe_relative_path(filename: str, fallback: str) -> pathlib.Path:
-    normalized = filename.replace("\\", "/")
+    normalized = str(filename or "").replace("\\", "/")
     candidate = pathlib.PurePosixPath(normalized)
-    clean_parts = [part for part in candidate.parts if part not in ("", ".", "..")]
+    clean_parts = [
+        part
+        for part in candidate.parts
+        if part not in ("", ".", "..", "/") and not part.endswith(":")
+    ]
     if not clean_parts:
         clean_parts = [fallback]
     return pathlib.Path(*clean_parts)
@@ -969,9 +973,13 @@ def parse_multipart_form(headers, body: bytes) -> tuple[dict[str, list[str]], li
 
 def save_uploaded_files(job_input_dir: pathlib.Path, files: list[dict]) -> list[str]:
     saved_paths: list[str] = []
+    base_dir = job_input_dir.resolve()
     for index, entry in enumerate(files):
         relative_path = safe_relative_path(entry["filename"], f"file_{index:04d}.dcm")
-        target_path = job_input_dir / relative_path
+        target_path = (base_dir / relative_path).resolve()
+        if not target_path.is_relative_to(base_dir):
+            relative_path = pathlib.Path(f"file_{index:04d}.dcm")
+            target_path = base_dir / relative_path
         target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.write_bytes(entry["payload"])
         saved_paths.append(str(relative_path))

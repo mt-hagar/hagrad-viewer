@@ -37,6 +37,13 @@ def main() -> None:
             "reconstructionLabel": "VMI 40 keV",
         }
 
+        unsafe_path = serve_https.safe_relative_path("/tmp/escape.dcm", "fallback.dcm")
+        assert_true(not unsafe_path.is_absolute(), "Absolute upload filenames must be forced relative.")
+        assert_true(str(unsafe_path) == "tmp/escape.dcm", "Unexpected absolute-path cleanup result.")
+
+        windows_path = serve_https.safe_relative_path("C:\\Users\\case\\slice.dcm", "fallback.dcm")
+        assert_true(str(windows_path) == "Users/case/slice.dcm", "Windows drive prefixes must be stripped.")
+
         input_dir, saved_files, cache_info = serve_https.resolve_eat_study_input(
             root / "job_one" / "input",
             sample_files,
