@@ -243,6 +243,9 @@
                         <button class="tool-submenu-button" data-tool="squareProfile" type="button" role="menuitem">Stent Square</button>
                         <button class="tool-submenu-button" data-tool="plaqueLineProfile" type="button" role="menuitem">Plaque Calcified</button>
                         <button class="tool-submenu-button" data-tool="plaqueNoncalcifiedLineProfile" type="button" role="menuitem">Plaque Noncalcified</button>
+                        <button class="tool-submenu-button" data-tool="vascularLineProfile" type="button" role="menuitem">Vascular Profile</button>
+                        <button class="tool-submenu-button" data-tool="bloomingDiameter" type="button" role="menuitem">Blooming %</button>
+                        <button class="tool-submenu-button" data-tool="stenosisDiameter" type="button" role="menuitem">Stenosis %</button>
                       </div>
                     </div>
                   </div>
@@ -543,7 +546,7 @@
               <dl class="profile-metrics" id="profile-metrics">
                 <div class="meta-row">
                   <dt>Selection</dt>
-                  <dd>Draw a line or square profile to see the curve and edge metrics here.</dd>
+                  <dd>Draw a vascular, stent, plaque, or square profile to see the curve and edge metrics here.</dd>
                 </div>
               </dl>
               <p class="hint">
@@ -551,8 +554,8 @@
                 cutoffs manually. The measurements update automatically.
               </p>
               <p class="hint">
-                `Stent Line` and `Stent Square` quantify the stent-lumen interface. `Plaque Calcified`
-                and `Plaque Noncalcified` quantify plaque-lumen interfaces from contrast lumen into plaque.
+                `Stent Line` and `Stent Square` quantify the stent-lumen interface. `Plaque Calcified`,
+                `Plaque Noncalcified`, and `Vascular Profile` quantify vessel/plaque edges.
               </p>
               <p class="hint">
                 Right-click any annotation to edit it directly.

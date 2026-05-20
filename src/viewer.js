@@ -9,10 +9,23 @@
   };
 
   const VIEWPORT_IDS = Object.keys(VIEWPORT_CONFIG);
-  const PROFILE_TYPES = new Set(["lineProfile", "squareProfile", "plaqueLineProfile", "plaqueNoncalcifiedLineProfile"]);
-  const LINE_PROFILE_TYPES = new Set(["lineProfile", "plaqueLineProfile", "plaqueNoncalcifiedLineProfile"]);
+  const PROFILE_TYPES = new Set(["lineProfile", "squareProfile", "plaqueLineProfile", "plaqueNoncalcifiedLineProfile", "vascularLineProfile"]);
+  const LINE_PROFILE_TYPES = new Set(["lineProfile", "plaqueLineProfile", "plaqueNoncalcifiedLineProfile", "vascularLineProfile"]);
   const STENT_INTERFACE_PROFILE_TYPES = new Set(["lineProfile", "squareProfile"]);
-  const MEASUREMENT_TYPES = new Set(["length", "probe", "freehandRoi", "brushRoi", "lineProfile", "squareProfile", "plaqueLineProfile", "plaqueNoncalcifiedLineProfile"]);
+  const MULTI_DIAMETER_TYPES = new Set(["bloomingDiameter", "stenosisDiameter"]);
+  const MEASUREMENT_TYPES = new Set([
+    "length",
+    "probe",
+    "freehandRoi",
+    "brushRoi",
+    "lineProfile",
+    "squareProfile",
+    "plaqueLineProfile",
+    "plaqueNoncalcifiedLineProfile",
+    "vascularLineProfile",
+    "bloomingDiameter",
+    "stenosisDiameter",
+  ]);
   const POLYGON_DRAFT_TOOLS = new Set(["freehandRoi", "segmentationRoi"]);
   const CIRCULAR_ROI_SEGMENTS = 14;
   const ROI_HANDLE_LIMIT = 8;
@@ -92,6 +105,9 @@
     { id: "squareProfile", label: "Stent-Lumen Square", defaultKey: "S", defaultMeaning: "Draw a band profile for stent-lumen interface analysis" },
     { id: "plaqueLineProfile", label: "Plaque-Lumen Calcified", defaultKey: "I", defaultMeaning: "Draw a calcified plaque-lumen interface line profile" },
     { id: "plaqueNoncalcifiedLineProfile", label: "Plaque-Lumen Noncalcified", defaultKey: "N", defaultMeaning: "Draw a non-calcified plaque-lumen interface line profile" },
+    { id: "vascularLineProfile", label: "Vascular Line Profile", defaultKey: "", defaultMeaning: "Draw a vessel line profile for lumen FWHM and 10-90 edge sharpness" },
+    { id: "bloomingDiameter", label: "Blooming Diameter", defaultKey: "", defaultMeaning: "Draw outer and inner diameters to estimate blooming percentage" },
+    { id: "stenosisDiameter", label: "Stenosis Diameter", defaultKey: "", defaultMeaning: "Draw proximal, distal, and minimal lumen diameters to estimate stenosis percentage" },
     { id: "arrow", label: "Arrow", defaultKey: "Y", defaultMeaning: "Place an arrow pointer" },
     { id: "text", label: "Text Label", defaultKey: "T", defaultMeaning: "Place a text label" },
     { id: "windowLevel", label: "WW/WL", defaultKey: "W", defaultMeaning: "Adjust window width and level" },
@@ -118,6 +134,9 @@
     squareProfile: "Stent-lumen interface: draw a rectangular band profile for cleaner stent analysis and export.",
     plaqueLineProfile: "Plaque-lumen interface: draw across contrast lumen and calcified plaque to quantify blooming width and edge slope.",
     plaqueNoncalcifiedLineProfile: "Plaque-lumen interface: draw from contrast lumen into non-calcified plaque to quantify HU drop and interface width.",
+    vascularLineProfile: "Vascular line profile: draw perpendicular across a vessel lumen to calculate FWHM diameter and left/right 10-90 edge sharpness.",
+    bloomingDiameter: "Blooming diameter: draw the outer diameter first, then the inner lumen diameter. HAGRad calculates ((outer - inner) / outer) x 100.",
+    stenosisDiameter: "Stenosis diameter: draw proximal reference, distal reference, then minimal lumen diameter. HAGRad averages the references and calculates diameter stenosis.",
     freehandRoi: "ROI Draw: hold the left mouse button and trace the ROI freehand, then release to finish it.",
     segmentationRoi: "ROI Multiple Click: place multiple clicks around a target and finish with double click to create a smoothed ROI.",
     brushRoi: "Paint a threshold-aware continuous ROI with grow/shrink refinement.",
@@ -142,12 +161,36 @@
     "squareProfile",
     "plaqueLineProfile",
     "plaqueNoncalcifiedLineProfile",
+    "vascularLineProfile",
+    "bloomingDiameter",
+    "stenosisDiameter",
   ];
   const INTERFACE_TOOL_LABELS = {
     lineProfile: "Stent Line",
     squareProfile: "Stent Square",
     plaqueLineProfile: "Plaque Calcified",
     plaqueNoncalcifiedLineProfile: "Plaque Noncalcified",
+    vascularLineProfile: "Vascular Profile",
+    bloomingDiameter: "Blooming %",
+    stenosisDiameter: "Stenosis %",
+  };
+
+  const DIAMETER_TOOL_CONFIGS = {
+    bloomingDiameter: {
+      label: "Blooming",
+      roles: [
+        { key: "outer", label: "Outer", color: "#ff7f6e" },
+        { key: "inner", label: "Inner", color: "#f8f53a" },
+      ],
+    },
+    stenosisDiameter: {
+      label: "Stenosis",
+      roles: [
+        { key: "proximal", label: "Prox ref", color: "#57c8ff" },
+        { key: "distal", label: "Dist ref", color: "#66d9d0" },
+        { key: "minimal", label: "MLD", color: "#ff7f6e" },
+      ],
+    },
   };
 
   const RIGHT_DRAG_SCRUB_HEIGHT_FACTOR = 0.9;
@@ -181,6 +224,9 @@
     squareProfile: "crosshair",
     plaqueLineProfile: "crosshair",
     plaqueNoncalcifiedLineProfile: "crosshair",
+    vascularLineProfile: "crosshair",
+    bloomingDiameter: "crosshair",
+    stenosisDiameter: "crosshair",
     freehandRoi: "crosshair",
     segmentationRoi: "crosshair",
     brushRoi: "crosshair",
@@ -272,6 +318,7 @@
     cineTimerId: null,
     dragging: null,
     polygonDraft: null,
+    diameterDraft: null,
     contourCorrectionDraft: null,
     renderQueued: false,
     renderDirtyViewports: new Set(VIEWPORT_IDS),
@@ -374,6 +421,8 @@
   }
   const {
     averageFinite,
+    smoothSeries,
+    interpolateThresholdCrossing,
     sanitizeStentGuideIndices,
     sanitizePlaqueGuideIndices,
     analyzeProfileSamples,
@@ -2056,6 +2105,9 @@
       case "squareProfile":
       case "plaqueLineProfile":
       case "plaqueNoncalcifiedLineProfile":
+      case "vascularLineProfile":
+      case "bloomingDiameter":
+      case "stenosisDiameter":
       case "arrow":
       case "text":
       case "mprCursor":
@@ -2116,6 +2168,10 @@
     return LINE_PROFILE_TYPES.has(type);
   }
 
+  function isMultiDiameterAnnotationType(type) {
+    return MULTI_DIAMETER_TYPES.has(type);
+  }
+
   function isPlaqueProfileAnnotation(annotation) {
     return annotation?.type === "plaqueLineProfile" || annotation?.type === "plaqueNoncalcifiedLineProfile";
   }
@@ -2125,6 +2181,9 @@
   }
 
   function getProfileFamily(annotation) {
+    if (annotation?.type === "vascularLineProfile") {
+      return "vascular_lumen_profile";
+    }
     return isPlaqueProfileAnnotation(annotation) ? "plaque_lumen_interface" : "stent_lumen_interface";
   }
 
@@ -2451,6 +2510,9 @@
     if (!POLYGON_DRAFT_TOOLS.has(toolKey)) {
       state.polygonDraft = null;
     }
+    if (!isMultiDiameterAnnotationType(toolKey) || state.diameterDraft?.toolKey !== toolKey) {
+      state.diameterDraft = null;
+    }
     if (toolKey !== "contourCorrect") {
       state.contourCorrectionDraft = null;
     }
@@ -2465,6 +2527,9 @@
     updateToolButtons();
     updateToolOptionsUi();
     updateViewportCursors();
+    if (isMultiDiameterAnnotationType(toolKey)) {
+      setStatus(getDiameterDraftStatus(toolKey, state.diameterDraft?.lines?.length || 0));
+    }
     requestRenderAll();
   }
 
@@ -2553,6 +2618,7 @@
     state.history.isRestoring = true;
     state.dragging = null;
     state.polygonDraft = null;
+    state.diameterDraft = null;
     state.eraser.preview = null;
     state.annotationSequence = snapshot.annotationSequence;
     state.roiClipboard = snapshot.roiClipboard
@@ -2690,6 +2756,7 @@
     stopCine();
     state.dragging = null;
     state.polygonDraft = null;
+    state.diameterDraft = null;
     state.eraser.preview = null;
     state.uiMode = "advanced";
     saveUiModePreference();
@@ -2938,6 +3005,12 @@
     if ((annotation.type === "freehandRoi" || annotation.type === "brushRoi") && summary.areaMm2 != null) {
       return `${leadType}${summary.areaMm2.toFixed(1)} mm2 • Avg ${summary.mean != null ? Math.round(summary.mean) : "-"} HU`;
     }
+    if (annotation.type === "bloomingDiameter") {
+      return `${leadType}${summary.outerDiameterMm != null ? summary.outerDiameterMm.toFixed(1) : "-"} / ${summary.innerDiameterMm != null ? summary.innerDiameterMm.toFixed(1) : "-"} mm • ${summary.bloomingPercent != null ? summary.bloomingPercent.toFixed(1) : "-"}% blooming`;
+    }
+    if (annotation.type === "stenosisDiameter") {
+      return `${leadType}Ref ${summary.referenceDiameterMm != null ? summary.referenceDiameterMm.toFixed(1) : "-"} mm • MLD ${summary.minimalLumenDiameterMm != null ? summary.minimalLumenDiameterMm.toFixed(1) : "-"} mm • ${summary.stenosisPercent != null ? summary.stenosisPercent.toFixed(1) : "-"}% stenosis`;
+    }
     if (PROFILE_TYPES.has(annotation.type)) {
       const detailBits = [];
       if (annotation.customName) {
@@ -2974,7 +3047,7 @@
     }
 
     const baseName = formatMeasurementType(annotation);
-    if (PROFILE_TYPES.has(annotation.type)) {
+    if (PROFILE_TYPES.has(annotation.type) || isMultiDiameterAnnotationType(annotation.type)) {
       const ordinal = getAnnotationTypeOrdinal(annotation, reconstruction);
       if (ordinal != null) {
         return `${baseName} ${ordinal}`;
@@ -3139,6 +3212,7 @@
 
     stopCine();
     state.polygonDraft = null;
+    state.diameterDraft = null;
     state.contourCorrectionDraft = null;
     state.eraser.preview = null;
 
@@ -4768,6 +4842,12 @@
     if (annotation.plaqueGuideAdjustments) {
       clone.plaqueGuideAdjustments = { ...annotation.plaqueGuideAdjustments };
     }
+    if (Array.isArray(annotation.diameterLines)) {
+      clone.diameterLines = annotation.diameterLines.map((line) => ({
+        ...line,
+        worldPoints: cloneWorldPoints(line.worldPoints || []),
+      }));
+    }
     return clone;
   }
 
@@ -4843,6 +4923,64 @@
       viewContext: createAnnotationViewContext(frame, options),
       worldPoints: [],
     };
+  }
+
+  function diameterDraftMatches(draft, toolKey, reconstruction, frame) {
+    if (!draft || draft.toolKey !== toolKey || draft.reconstructionId !== reconstruction?.id || draft.plane !== frame?.plane) {
+      return false;
+    }
+    if (dot(draft.frame.nWorld, frame.nWorld) < 0.992) {
+      return false;
+    }
+    const distance = Math.abs(dot(subtractVectors(draft.frame.centerWorld, frame.centerWorld), frame.nWorld));
+    return distance <= frame.metrics.spacingNormal * 0.75;
+  }
+
+  function ensureDiameterDraft(toolKey, reconstruction, frame, viewportId) {
+    if (!diameterDraftMatches(state.diameterDraft, toolKey, reconstruction, frame)) {
+      state.diameterDraft = {
+        toolKey,
+        reconstructionId: reconstruction.id,
+        plane: frame.plane,
+        frame: cloneFrame(frame),
+        viewContext: createAnnotationViewContext(frame, { viewportId }),
+        lines: [],
+      };
+    }
+    return state.diameterDraft;
+  }
+
+  function getDiameterDraftRole(toolKey, index) {
+    return getDiameterToolConfig(toolKey)?.roles?.[index] || {
+      key: `line${index + 1}`,
+      label: `Line ${index + 1}`,
+      color: getAnnotationAccentColor({ type: toolKey }),
+    };
+  }
+
+  function getDiameterDraftStatus(toolKey, nextIndex) {
+    const config = getDiameterToolConfig(toolKey);
+    const role = config?.roles?.[nextIndex];
+    if (!config || !role) {
+      return "Draw the next diameter.";
+    }
+    return `${config.label}: draw ${role.label.toLowerCase()} diameter (${nextIndex + 1} of ${config.roles.length}).`;
+  }
+
+  function buildDiameterAnnotationFromDraft(draft) {
+    const annotation = {
+      ...createAnnotationBase(draft.toolKey, draft.frame, {
+        layout: draft.viewContext?.layout,
+        viewportId: draft.viewContext?.viewportId,
+      }),
+      viewContext: cloneAnnotationViewContext(draft.viewContext),
+      diameterLines: draft.lines.map((line) => ({
+        ...line,
+        worldPoints: cloneWorldPoints(line.worldPoints),
+      })),
+    };
+    annotation.worldPoints = annotation.diameterLines.flatMap((line) => line.worldPoints);
+    return annotation;
   }
 
   function getBrushMaskStepMm(frame) {
@@ -5658,6 +5796,19 @@
       return distancePx <= radiusMm;
     }
 
+    if (isMultiDiameterAnnotationType(annotation.type)) {
+      return getDiameterAnnotationLines(annotation).some((line) => {
+        const start = worldToPlaneCoordinates(annotation.frame, line.worldPoints[0]);
+        const end = worldToPlaneCoordinates(annotation.frame, line.worldPoints[1]);
+        const distancePx = pointToSegmentDistancePx(
+          { x: planePoint.xMm, y: planePoint.yMm },
+          { x: start.xMm, y: start.yMm },
+          { x: end.xMm, y: end.yMm }
+        );
+        return distancePx <= radiusMm;
+      });
+    }
+
     if (annotation.type === "squareProfile") {
       const box = getSquareProfilePlaneBox(annotation);
       const polygon = getSquareProfileCorners(box).map((corner) => ({ x: corner.xMm, y: corner.yMm }));
@@ -5798,6 +5949,106 @@
   function getProbeLabel(annotation, reconstruction) {
     const value = sampleVolumeAtWorld(reconstruction.volume, annotation.worldPoints[0]);
     return value == null ? "Probe" : `${Math.round(value)} HU`;
+  }
+
+  function getDiameterToolConfig(type) {
+    return DIAMETER_TOOL_CONFIGS[type] || null;
+  }
+
+  function getDiameterAnnotationLines(annotation) {
+    if (!annotation || !isMultiDiameterAnnotationType(annotation.type)) {
+      return [];
+    }
+    const config = getDiameterToolConfig(annotation.type);
+    if (Array.isArray(annotation.diameterLines) && annotation.diameterLines.length) {
+      return annotation.diameterLines
+        .map((line, index) => {
+          const role = config?.roles?.[index] || {};
+          const worldPoints = Array.isArray(line.worldPoints) ? line.worldPoints.slice(0, 2) : [];
+          if (worldPoints.length < 2) {
+            return null;
+          }
+          return {
+            key: line.key || role.key || `line${index + 1}`,
+            label: line.label || role.label || `Line ${index + 1}`,
+            color: line.color || role.color || getAnnotationAccentColor(annotation),
+            worldPoints,
+          };
+        })
+        .filter(Boolean);
+    }
+
+    const worldPoints = Array.isArray(annotation.worldPoints) ? annotation.worldPoints : [];
+    const lines = [];
+    for (let index = 0; index + 1 < worldPoints.length; index += 2) {
+      const role = config?.roles?.[index / 2] || {};
+      lines.push({
+        key: role.key || `line${lines.length + 1}`,
+        label: role.label || `Line ${lines.length + 1}`,
+        color: role.color || getAnnotationAccentColor(annotation),
+        worldPoints: [worldPoints[index], worldPoints[index + 1]],
+      });
+    }
+    return lines;
+  }
+
+  function getDiameterLineLengthMm(line) {
+    if (!line?.worldPoints?.[0] || !line?.worldPoints?.[1]) {
+      return null;
+    }
+    const lengthMm = vectorLength(subtractVectors(line.worldPoints[0], line.worldPoints[1]));
+    return Number.isFinite(lengthMm) ? lengthMm : null;
+  }
+
+  function getDiameterMeasurementSummary(annotation) {
+    const lines = getDiameterAnnotationLines(annotation);
+    const lengths = lines.map(getDiameterLineLengthMm);
+    if (annotation?.type === "bloomingDiameter") {
+      const outerDiameterMm = lengths[0];
+      const innerDiameterMm = lengths[1];
+      const bloomingPercent =
+        Number.isFinite(outerDiameterMm) && outerDiameterMm > 0 && Number.isFinite(innerDiameterMm)
+          ? ((outerDiameterMm - innerDiameterMm) / outerDiameterMm) * 100
+          : null;
+      return {
+        outerDiameterMm,
+        innerDiameterMm,
+        bloomingPercent,
+      };
+    }
+    if (annotation?.type === "stenosisDiameter") {
+      const proximalReferenceDiameterMm = lengths[0];
+      const distalReferenceDiameterMm = lengths[1];
+      const minimalLumenDiameterMm = lengths[2];
+      const referenceDiameterMm = averageFinite([proximalReferenceDiameterMm, distalReferenceDiameterMm]);
+      const stenosisPercent =
+        Number.isFinite(referenceDiameterMm) && referenceDiameterMm > 0 && Number.isFinite(minimalLumenDiameterMm)
+          ? ((referenceDiameterMm - minimalLumenDiameterMm) / referenceDiameterMm) * 100
+          : null;
+      return {
+        proximalReferenceDiameterMm,
+        distalReferenceDiameterMm,
+        referenceDiameterMm,
+        minimalLumenDiameterMm,
+        stenosisPercent,
+      };
+    }
+    return {};
+  }
+
+  function getMultiDiameterLabel(annotation) {
+    const summary = getDiameterMeasurementSummary(annotation);
+    if (annotation?.type === "bloomingDiameter") {
+      return Number.isFinite(summary.bloomingPercent)
+        ? `Blooming ${summary.bloomingPercent.toFixed(1)}%`
+        : "Blooming";
+    }
+    if (annotation?.type === "stenosisDiameter") {
+      return Number.isFinite(summary.stenosisPercent)
+        ? `Stenosis ${summary.stenosisPercent.toFixed(1)}%`
+        : "Stenosis";
+    }
+    return getDiameterToolConfig(annotation?.type)?.label || "Diameter";
   }
 
   function pointInPolygon(point, polygon) {
@@ -5962,6 +6213,15 @@
     if (annotation.type === "plaqueNoncalcifiedLineProfile") {
       return overlayStyle?.COLORS?.plaqueNoncalcified || "#66d9d0";
     }
+    if (annotation.type === "vascularLineProfile") {
+      return "#f8f53a";
+    }
+    if (annotation.type === "bloomingDiameter") {
+      return "#ffcf66";
+    }
+    if (annotation.type === "stenosisDiameter") {
+      return "#57c8ff";
+    }
     if (annotation.type === "text") {
       return overlayStyle?.COLORS?.text || "#ffd27f";
     }
@@ -5991,8 +6251,26 @@
     if (isLineProfileAnnotationType(annotation.type)) {
       const point = projectWorldPointToCanvas(frame, geometry, annotation.worldPoints[1]);
       return {
-        text: isPlaqueProfileAnnotation(annotation) ? "Plaque-Lumen" : "Stent-Lumen",
+        text:
+          annotation.type === "vascularLineProfile"
+            ? "Vascular Profile"
+            : isPlaqueProfileAnnotation(annotation)
+              ? "Plaque-Lumen"
+              : "Stent-Lumen",
         anchor: point,
+        accent,
+      };
+    }
+    if (isMultiDiameterAnnotationType(annotation.type)) {
+      const lines = getDiameterAnnotationLines(annotation);
+      const lastLine = lines[lines.length - 1];
+      const anchorWorld = lastLine?.worldPoints?.[1] || annotation.worldPoints?.[annotation.worldPoints.length - 1];
+      if (!anchorWorld) {
+        return null;
+      }
+      return {
+        text: getMultiDiameterLabel(annotation),
+        anchor: projectWorldPointToCanvas(frame, geometry, anchorWorld),
         accent,
       };
     }
@@ -6096,6 +6374,36 @@
             ? { annotation, mode: "move", priority: 1, distancePx: lineDistancePx }
             : null
         );
+        return;
+      }
+
+      if (isMultiDiameterAnnotationType(annotation.type)) {
+        getDiameterAnnotationLines(annotation).forEach((line, lineIndex) => {
+          const start = projectWorldPointToCanvas(frame, geometry, line.worldPoints[0]);
+          const end = projectWorldPointToCanvas(frame, geometry, line.worldPoints[1]);
+          const startDistancePx = Math.hypot(planePoint.canvasX - start.x, planePoint.canvasY - start.y);
+          const endDistancePx = Math.hypot(planePoint.canvasX - end.x, planePoint.canvasY - end.y);
+          considerHit(
+            startDistancePx <= handleRadiusPx
+              ? { annotation, mode: "diameterPoint", lineIndex, pointIndex: 0, priority: 0, distancePx: startDistancePx }
+              : null
+          );
+          considerHit(
+            endDistancePx <= handleRadiusPx
+              ? { annotation, mode: "diameterPoint", lineIndex, pointIndex: 1, priority: 0, distancePx: endDistancePx }
+              : null
+          );
+          const lineDistancePx = pointToSegmentDistancePx(
+            { x: planePoint.canvasX, y: planePoint.canvasY },
+            start,
+            end
+          );
+          considerHit(
+            lineDistancePx <= bodyRadiusPx
+              ? { annotation, mode: "move", priority: 1, distancePx: lineDistancePx }
+              : null
+          );
+        });
         return;
       }
 
@@ -6270,6 +6578,22 @@
       ctx.stroke();
       drawSelectionHandle(ctx, start, handleRadiusPx, accent);
       drawSelectionHandle(ctx, end, handleRadiusPx, accent);
+      ctx.restore();
+      return;
+    }
+
+    if (isMultiDiameterAnnotationType(annotation.type)) {
+      getDiameterAnnotationLines(annotation).forEach((line) => {
+        const start = projectWorldPointToCanvas(frame, geometry, line.worldPoints[0]);
+        const end = projectWorldPointToCanvas(frame, geometry, line.worldPoints[1]);
+        ctx.strokeStyle = overlayStyle?.withAlpha?.(line.color || accent, options.hover ? 0.72 : 0.92) || line.color || accent;
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+        ctx.stroke();
+        drawSelectionHandle(ctx, start, handleRadiusPx, line.color || accent);
+        drawSelectionHandle(ctx, end, handleRadiusPx, line.color || accent);
+      });
       ctx.restore();
       return;
     }
@@ -6459,6 +6783,157 @@
     };
   }
 
+  function findProfileMaxIndex(values, startIndex, endIndex) {
+    const start = clamp(Math.min(startIndex, endIndex), 0, Math.max(0, values.length - 1));
+    const end = clamp(Math.max(startIndex, endIndex), 0, Math.max(0, values.length - 1));
+    let bestIndex = null;
+    let bestValue = Number.NEGATIVE_INFINITY;
+    for (let index = start; index <= end; index += 1) {
+      const value = values[index];
+      if (!Number.isFinite(value)) {
+        continue;
+      }
+      if (value > bestValue) {
+        bestValue = value;
+        bestIndex = index;
+      }
+    }
+    return bestIndex;
+  }
+
+  function findProfileThresholdCrossing(distancesMm, values, threshold, startIndex, endIndex) {
+    if (!Number.isFinite(threshold) || !Array.isArray(values) || values.length < 2) {
+      return null;
+    }
+    const start = clamp(Math.round(startIndex), 0, values.length - 1);
+    const end = clamp(Math.round(endIndex), 0, values.length - 1);
+    const direction = end >= start ? 1 : -1;
+    let previousIndex = start;
+    for (let index = start + direction; direction > 0 ? index <= end : index >= end; index += direction) {
+      const left = values[previousIndex];
+      const right = values[index];
+      if (Number.isFinite(left) && Number.isFinite(right)) {
+        const crosses = (left <= threshold && right >= threshold) || (left >= threshold && right <= threshold);
+        if (crosses) {
+          return {
+            index: direction > 0 ? previousIndex : index,
+            distanceMm: interpolateThresholdCrossing(
+              distancesMm[previousIndex],
+              left,
+              distancesMm[index],
+              right,
+              threshold
+            ),
+          };
+        }
+      }
+      previousIndex = index;
+    }
+    return null;
+  }
+
+  function buildVascularEdgeMetric(distancesMm, values, lowHu, peakHu, peakIndex, side) {
+    const amplitudeHu = peakHu - lowHu;
+    if (!Number.isFinite(amplitudeHu) || amplitudeHu <= 5) {
+      return null;
+    }
+    const threshold10Hu = lowHu + amplitudeHu * 0.1;
+    const threshold90Hu = lowHu + amplitudeHu * 0.9;
+    const firstThreshold = side === "left" ? threshold10Hu : threshold90Hu;
+    const secondThreshold = side === "left" ? threshold90Hu : threshold10Hu;
+    const first = findProfileThresholdCrossing(
+      distancesMm,
+      values,
+      firstThreshold,
+      side === "left" ? 0 : peakIndex,
+      side === "left" ? peakIndex : values.length - 1
+    );
+    if (!first) {
+      return null;
+    }
+    const second = findProfileThresholdCrossing(
+      distancesMm,
+      values,
+      secondThreshold,
+      first.index,
+      side === "left" ? peakIndex : values.length - 1
+    );
+    if (!second) {
+      return null;
+    }
+    const riseDistanceMm = Math.abs(second.distanceMm - first.distanceMm);
+    if (!Number.isFinite(riseDistanceMm) || riseDistanceMm <= 0) {
+      return null;
+    }
+    return {
+      side,
+      threshold10Hu,
+      threshold90Hu,
+      threshold10DistanceMm: side === "left" ? first.distanceMm : second.distanceMm,
+      threshold90DistanceMm: side === "left" ? second.distanceMm : first.distanceMm,
+      riseDistanceMm,
+      slopeHuPerMm: (amplitudeHu * 0.8) / riseDistanceMm,
+    };
+  }
+
+  function buildVascularLineProfileModel(base) {
+    if (!base || base.mode !== "line" || !Array.isArray(base.valuesHu) || base.valuesHu.length < 5) {
+      return null;
+    }
+    const smoothHu = smoothSeries(base.valuesHu, 1);
+    const finiteValues = smoothHu.filter(Number.isFinite);
+    if (finiteValues.length < 5) {
+      return {
+        smoothHu,
+        vascular: null,
+      };
+    }
+    const peakIndex = findProfileMaxIndex(smoothHu, 0, smoothHu.length - 1);
+    const peakHu = peakIndex == null ? null : smoothHu[peakIndex];
+    const edgeSampleCount = clamp(Math.round(smoothHu.length * 0.12), 2, Math.max(2, Math.floor(smoothHu.length / 3)));
+    const leftBackgroundHu = averageFinite(smoothHu.slice(0, edgeSampleCount));
+    const rightBackgroundHu = averageFinite(smoothHu.slice(Math.max(0, smoothHu.length - edgeSampleCount)));
+    const backgroundHu = averageFinite([leftBackgroundHu, rightBackgroundHu]);
+    const amplitudeHu = Number.isFinite(peakHu) && Number.isFinite(backgroundHu) ? peakHu - backgroundHu : null;
+    if (!Number.isFinite(amplitudeHu) || amplitudeHu <= 5 || peakIndex == null) {
+      return {
+        smoothHu,
+        vascular: null,
+      };
+    }
+
+    const halfMaximumHu = backgroundHu + amplitudeHu * 0.5;
+    const leftHalf = findProfileThresholdCrossing(base.distancesMm, smoothHu, halfMaximumHu, peakIndex, 0);
+    const rightHalf = findProfileThresholdCrossing(base.distancesMm, smoothHu, halfMaximumHu, peakIndex, smoothHu.length - 1);
+    const fwhmMm =
+      leftHalf && rightHalf && Number.isFinite(leftHalf.distanceMm) && Number.isFinite(rightHalf.distanceMm)
+        ? Math.abs(rightHalf.distanceMm - leftHalf.distanceMm)
+        : null;
+    const leftEdge = buildVascularEdgeMetric(base.distancesMm, smoothHu, backgroundHu, peakHu, peakIndex, "left");
+    const rightEdge = buildVascularEdgeMetric(base.distancesMm, smoothHu, backgroundHu, peakHu, peakIndex, "right");
+    const averageSlopeHuPerMm = averageFinite([leftEdge?.slopeHuPerMm, rightEdge?.slopeHuPerMm]);
+
+    return {
+      smoothHu,
+      vascular: {
+        peakIndex,
+        peakDistanceMm: base.distancesMm[peakIndex],
+        peakHu,
+        leftBackgroundHu,
+        rightBackgroundHu,
+        backgroundHu,
+        amplitudeHu,
+        halfMaximumHu,
+        fwhmMm,
+        leftHalfDistanceMm: leftHalf?.distanceMm ?? null,
+        rightHalfDistanceMm: rightHalf?.distanceMm ?? null,
+        leftEdge,
+        rightEdge,
+        averageSlopeHuPerMm,
+      },
+    };
+  }
+
   function buildProfileAnalysis(annotation, reconstruction) {
     const base =
       isLineProfileAnnotationType(annotation.type)
@@ -6471,6 +6946,14 @@
     }
     base.profileFamily = getProfileFamily(annotation);
     base.profileSubtype = isPlaqueProfileAnnotation(annotation) ? getPlaqueProfileSubtype(annotation) : "";
+    if (annotation.type === "vascularLineProfile") {
+      const vascular = buildVascularLineProfileModel(base);
+      return {
+        ...base,
+        smoothHu: vascular?.smoothHu || smoothSeries(base.valuesHu, 1),
+        vascular: vascular?.vascular || null,
+      };
+    }
     return analyzeProfileSamples(
       base,
       STENT_INTERFACE_PROFILE_TYPES.has(annotation.type) ? annotation.profileGuideAdjustments || null : null,
@@ -6589,7 +7072,61 @@
 
     const guideHandles = [];
 
-    if (profile.profileFamily === "plaque_lumen_interface" && profile.plaque) {
+    if (profile.profileFamily === "vascular_lumen_profile" && profile.vascular) {
+      const vascular = profile.vascular;
+      [
+        { hu: vascular.backgroundHu, color: "rgba(145, 181, 201, 0.68)" },
+        { hu: vascular.halfMaximumHu, color: "rgba(248, 245, 58, 0.82)" },
+        { hu: vascular.peakHu, color: "rgba(246, 247, 249, 0.58)" },
+      ]
+        .filter((entry) => Number.isFinite(entry.hu))
+        .forEach((guide) => {
+          ctx.save();
+          ctx.setLineDash([6, 4]);
+          ctx.strokeStyle = guide.color;
+          ctx.lineWidth = 1.1;
+          const y = yAt(guide.hu);
+          ctx.beginPath();
+          ctx.moveTo(plot.x, y);
+          ctx.lineTo(plot.x + plot.width, y);
+          ctx.stroke();
+          ctx.restore();
+        });
+
+      if (Number.isFinite(vascular.leftHalfDistanceMm) && Number.isFinite(vascular.rightHalfDistanceMm)) {
+        ctx.strokeStyle = "#f8f53a";
+        ctx.lineWidth = 5;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(xAt(vascular.leftHalfDistanceMm), yAt(vascular.halfMaximumHu));
+        ctx.lineTo(xAt(vascular.rightHalfDistanceMm), yAt(vascular.halfMaximumHu));
+        ctx.stroke();
+      }
+
+      [vascular.leftEdge, vascular.rightEdge].filter(Boolean).forEach((edge) => {
+        ctx.save();
+        ctx.strokeStyle = edge.side === "left" ? "#57c8ff" : "#66d9d0";
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(xAt(edge.threshold10DistanceMm), yAt(edge.threshold10Hu));
+        ctx.lineTo(xAt(edge.threshold90DistanceMm), yAt(edge.threshold90Hu));
+        ctx.stroke();
+        ctx.restore();
+      });
+
+      if (Number.isFinite(vascular.peakDistanceMm)) {
+        ctx.save();
+        ctx.setLineDash([3, 5]);
+        ctx.strokeStyle = "rgba(246, 247, 249, 0.5)";
+        ctx.lineWidth = 1.2;
+        const x = xAt(vascular.peakDistanceMm);
+        ctx.beginPath();
+        ctx.moveTo(x, plot.y);
+        ctx.lineTo(x, plot.y + plot.height);
+        ctx.stroke();
+        ctx.restore();
+      }
+    } else if (profile.profileFamily === "plaque_lumen_interface" && profile.plaque) {
       const plaque = profile.plaque;
       const primary = plaque.primaryInterface || null;
       const isNonCalcified = plaque.type === "non_calcified";
@@ -6933,7 +7470,7 @@
       els.profileMetrics.innerHTML = `
         <div class="meta-row">
           <dt>Selection</dt>
-          <dd>Draw a line or square profile to see the curve and edge metrics here.</dd>
+          <dd>Draw a vascular, stent, plaque, or square profile to see the curve and edge metrics here.</dd>
         </div>
       `;
       drawEmptyProfileChart("Draw a profile to see the curve.");
@@ -6951,6 +7488,39 @@
         </div>
       `;
       drawEmptyProfileChart("This profile could not be sampled.");
+      return;
+    }
+
+    const vascular = analysis.profileFamily === "vascular_lumen_profile" ? analysis.vascular || null : null;
+    if (analysis.profileFamily === "vascular_lumen_profile") {
+      els.profileStatus.textContent = `${getAnnotationDisplayName(annotation, reconstruction)} • ${analysis.sampleCount} samples • vascular line profile`;
+      els.profileMetrics.innerHTML = `
+        <div class="meta-row">
+          <dt>Length</dt>
+          <dd>${formatMetricValue(analysis.lengthMm, "mm", 2)}</dd>
+        </div>
+        <div class="meta-row">
+          <dt>FWHM Lumen</dt>
+          <dd>${formatMetricValue(vascular?.fwhmMm, "mm", 3)}</dd>
+        </div>
+        <div class="meta-row">
+          <dt>Left Edge</dt>
+          <dd>10-90 ${formatMetricValue(vascular?.leftEdge?.riseDistanceMm, "mm", 3)} | ${formatMetricValue(vascular?.leftEdge?.slopeHuPerMm, "HU/mm", 1)}</dd>
+        </div>
+        <div class="meta-row">
+          <dt>Right Edge</dt>
+          <dd>10-90 ${formatMetricValue(vascular?.rightEdge?.riseDistanceMm, "mm", 3)} | ${formatMetricValue(vascular?.rightEdge?.slopeHuPerMm, "HU/mm", 1)}</dd>
+        </div>
+        <div class="meta-row">
+          <dt>Average Sharpness</dt>
+          <dd>${formatMetricValue(vascular?.averageSlopeHuPerMm, "HU/mm", 1)}</dd>
+        </div>
+        <div class="meta-row">
+          <dt>Peak / Background</dt>
+          <dd>${formatMetricValue(vascular?.peakHu, "HU", 0)} / ${formatMetricValue(vascular?.backgroundHu, "HU", 0)}</dd>
+        </div>
+      `;
+      drawProfileChart(analysis);
       return;
     }
 
@@ -7082,8 +7652,30 @@
     if (annotation.type === "brushRoi") {
       return getBrushStats(annotation, reconstruction) || {};
     }
+    if (isMultiDiameterAnnotationType(annotation.type)) {
+      return getDiameterMeasurementSummary(annotation);
+    }
     if (PROFILE_TYPES.has(annotation.type)) {
       const analysis = buildProfileAnalysis(annotation, reconstruction);
+      if (analysis?.profileFamily === "vascular_lumen_profile") {
+        const vascular = analysis.vascular || null;
+        return {
+          profileFamily: "vascular_lumen_profile",
+          profileLengthMm: analysis?.lengthMm,
+          profileAxis: analysis?.axis,
+          sampleCount: analysis?.sampleCount,
+          vascularPeakHu: vascular?.peakHu,
+          vascularBackgroundHu: vascular?.backgroundHu,
+          vascularAmplitudeHu: vascular?.amplitudeHu,
+          vascularFwhmMm: vascular?.fwhmMm,
+          vascularHalfMaximumHu: vascular?.halfMaximumHu,
+          vascularLeftRise10To90Mm: vascular?.leftEdge?.riseDistanceMm,
+          vascularLeftSlopeHuPerMm: vascular?.leftEdge?.slopeHuPerMm,
+          vascularRightRise10To90Mm: vascular?.rightEdge?.riseDistanceMm,
+          vascularRightSlopeHuPerMm: vascular?.rightEdge?.slopeHuPerMm,
+          vascularAverageSlopeHuPerMm: vascular?.averageSlopeHuPerMm,
+        };
+      }
       const plaque = analysis?.profileFamily === "plaque_lumen_interface" ? analysis?.plaque || null : null;
       if (plaque) {
         const primary = plaque.primaryInterface || null;
@@ -7201,6 +7793,15 @@
     if (type === "plaqueNoncalcifiedLineProfile") {
       return "Plaque-Lumen Interface (Non-calcified)";
     }
+    if (type === "vascularLineProfile") {
+      return "Vascular Line Profile";
+    }
+    if (type === "bloomingDiameter") {
+      return "Blooming Diameter";
+    }
+    if (type === "stenosisDiameter") {
+      return "Stenosis Diameter";
+    }
     if (type === "freehandRoi") {
       if (annotation?.roiSourceTool === "circularRoi") {
         return "ROI Circle";
@@ -7229,6 +7830,88 @@
       return "Text Label";
     }
     return type;
+  }
+
+  function drawDiameterAnnotation(ctx, annotation, reconstruction, frame, geometry, options = {}) {
+    const lines = getDiameterAnnotationLines(annotation);
+    if (!lines.length) {
+      return;
+    }
+
+    ctx.save();
+    lines.forEach((line) => {
+      const start = projectWorldPointToCanvas(frame, geometry, line.worldPoints[0]);
+      const end = projectWorldPointToCanvas(frame, geometry, line.worldPoints[1]);
+      const color = line.color || getAnnotationAccentColor(annotation);
+      ctx.lineCap = "round";
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.72)";
+      ctx.lineWidth = options.preview ? 6 : 5;
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(end.x, end.y);
+      ctx.stroke();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = options.preview ? 2.8 : 2.5;
+      ctx.setLineDash(options.preview ? [7, 5] : []);
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(end.x, end.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const lengthMm = getDiameterLineLengthMm(line);
+      const midpoint = {
+        x: (start.x + end.x) / 2,
+        y: (start.y + end.y) / 2,
+      };
+      const label = Number.isFinite(lengthMm)
+        ? `${line.label} ${lengthMm.toFixed(1)} mm`
+        : line.label;
+      drawLabelChip(ctx, label, midpoint.x, midpoint.y, color, {
+        annotation,
+        selected: Boolean(annotation.id && annotation.id === state.selectedAnnotationId),
+      });
+    });
+    ctx.restore();
+
+    const label = reconstruction ? getAnnotationLabelSpec(annotation, reconstruction, frame, geometry) : null;
+    if (label) {
+      drawLabelChip(ctx, label.text, label.anchor.x, label.anchor.y, label.accent, {
+        annotation,
+        selected: Boolean(annotation.id && annotation.id === state.selectedAnnotationId),
+      });
+    }
+  }
+
+  function drawDiameterDraftPreview(ctx, draft, frame, geometry) {
+    if (!draft || draft.plane !== frame.plane) {
+      return;
+    }
+    const liveLine =
+      state.dragging?.type === "diameterLine" &&
+      state.dragging.toolKey === draft.toolKey &&
+      state.dragging.worldPoints?.length === 2
+        ? {
+            ...getDiameterDraftRole(draft.toolKey, draft.lines.length),
+            worldPoints: state.dragging.worldPoints,
+          }
+        : null;
+    const lines = liveLine ? [...draft.lines, liveLine] : draft.lines;
+    if (!lines.length) {
+      return;
+    }
+    const previewAnnotation = {
+      id: null,
+      type: draft.toolKey,
+      plane: draft.plane,
+      frame: draft.frame,
+      diameterLines: lines,
+      worldPoints: lines.flatMap((line) => line.worldPoints || []),
+    };
+    if (!isAnnotationVisible(previewAnnotation, frame)) {
+      return;
+    }
+    drawDiameterAnnotation(ctx, previewAnnotation, null, frame, geometry, { preview: true });
   }
 
   function drawAnnotation(ctx, annotation, reconstruction, frame, geometry) {
@@ -7313,6 +7996,11 @@
       drawPolygonShape(ctx, points, accent, overlayStyle?.withAlpha?.(accent, 0.11) || "rgba(156, 240, 107, 0.10)");
       const label = getAnnotationLabelSpec(annotation, reconstruction, frame, geometry);
       drawLabelChip(ctx, label.text, label.anchor.x, label.anchor.y, accent, labelOptions);
+      return;
+    }
+
+    if (isMultiDiameterAnnotationType(annotation.type)) {
+      drawDiameterAnnotation(ctx, annotation, reconstruction, frame, geometry);
       return;
     }
 
@@ -7465,6 +8153,9 @@
       if (state.polygonDraft && state.polygonDraft.reconstructionId === reconstruction.id) {
         drawFreehandPreview(ctx, state.polygonDraft, frame, geometry);
       }
+      if (state.diameterDraft && state.diameterDraft.reconstructionId === reconstruction.id) {
+        drawDiameterDraftPreview(ctx, state.diameterDraft, frame, geometry);
+      }
       drawContourCorrectionPreview(ctx, frame, geometry);
       drawEraserPreview(ctx, frame, geometry);
       if (options?.previewAnnotation) {
@@ -7602,6 +8293,7 @@
       scaleVector(frame.nWorld, delta * frame.metrics.spacingNormal)
     );
     state.polygonDraft = null;
+    state.diameterDraft = null;
     updateReadouts();
     requestRenderAll();
   }
@@ -8666,6 +9358,24 @@
       "profile_samples",
       "profile_family",
       "profile_adjustment_mode",
+      "vascular_peak_hu",
+      "vascular_background_hu",
+      "vascular_amplitude_hu",
+      "vascular_fwhm_mm",
+      "vascular_half_max_hu",
+      "vascular_left_rise_10_90_mm",
+      "vascular_left_slope_hu_per_mm",
+      "vascular_right_rise_10_90_mm",
+      "vascular_right_slope_hu_per_mm",
+      "vascular_average_slope_hu_per_mm",
+      "blooming_outer_diameter_mm",
+      "blooming_inner_diameter_mm",
+      "blooming_percent",
+      "stenosis_proximal_reference_mm",
+      "stenosis_distal_reference_mm",
+      "stenosis_reference_diameter_mm",
+      "stenosis_minimal_lumen_diameter_mm",
+      "stenosis_percent",
       "plaque_type",
       "plaque_peak_hu",
       "plaque_hu",
@@ -8762,6 +9472,24 @@
         profile_samples: entry.summary.sampleCount != null ? entry.summary.sampleCount : "",
         profile_family: entry.summary.profileFamily || "",
         profile_adjustment_mode: entry.summary.profileAdjustmentMode || "",
+        vascular_peak_hu: entry.summary.vascularPeakHu != null ? entry.summary.vascularPeakHu.toFixed(1) : "",
+        vascular_background_hu: entry.summary.vascularBackgroundHu != null ? entry.summary.vascularBackgroundHu.toFixed(1) : "",
+        vascular_amplitude_hu: entry.summary.vascularAmplitudeHu != null ? entry.summary.vascularAmplitudeHu.toFixed(1) : "",
+        vascular_fwhm_mm: entry.summary.vascularFwhmMm != null ? entry.summary.vascularFwhmMm.toFixed(3) : "",
+        vascular_half_max_hu: entry.summary.vascularHalfMaximumHu != null ? entry.summary.vascularHalfMaximumHu.toFixed(1) : "",
+        vascular_left_rise_10_90_mm: entry.summary.vascularLeftRise10To90Mm != null ? entry.summary.vascularLeftRise10To90Mm.toFixed(3) : "",
+        vascular_left_slope_hu_per_mm: entry.summary.vascularLeftSlopeHuPerMm != null ? entry.summary.vascularLeftSlopeHuPerMm.toFixed(3) : "",
+        vascular_right_rise_10_90_mm: entry.summary.vascularRightRise10To90Mm != null ? entry.summary.vascularRightRise10To90Mm.toFixed(3) : "",
+        vascular_right_slope_hu_per_mm: entry.summary.vascularRightSlopeHuPerMm != null ? entry.summary.vascularRightSlopeHuPerMm.toFixed(3) : "",
+        vascular_average_slope_hu_per_mm: entry.summary.vascularAverageSlopeHuPerMm != null ? entry.summary.vascularAverageSlopeHuPerMm.toFixed(3) : "",
+        blooming_outer_diameter_mm: entry.summary.outerDiameterMm != null ? entry.summary.outerDiameterMm.toFixed(3) : "",
+        blooming_inner_diameter_mm: entry.summary.innerDiameterMm != null ? entry.summary.innerDiameterMm.toFixed(3) : "",
+        blooming_percent: entry.summary.bloomingPercent != null ? entry.summary.bloomingPercent.toFixed(3) : "",
+        stenosis_proximal_reference_mm: entry.summary.proximalReferenceDiameterMm != null ? entry.summary.proximalReferenceDiameterMm.toFixed(3) : "",
+        stenosis_distal_reference_mm: entry.summary.distalReferenceDiameterMm != null ? entry.summary.distalReferenceDiameterMm.toFixed(3) : "",
+        stenosis_reference_diameter_mm: entry.summary.referenceDiameterMm != null ? entry.summary.referenceDiameterMm.toFixed(3) : "",
+        stenosis_minimal_lumen_diameter_mm: entry.summary.minimalLumenDiameterMm != null ? entry.summary.minimalLumenDiameterMm.toFixed(3) : "",
+        stenosis_percent: entry.summary.stenosisPercent != null ? entry.summary.stenosisPercent.toFixed(3) : "",
         plaque_type: entry.summary.plaqueType || "",
         plaque_peak_hu: entry.summary.plaquePeakHu != null ? entry.summary.plaquePeakHu.toFixed(1) : "",
         plaque_hu: entry.summary.plaqueHu != null ? entry.summary.plaqueHu.toFixed(1) : "",
@@ -8853,6 +9581,17 @@
   }
 
   function buildProfileExportSummaryLines(analysis) {
+    if (analysis?.profileFamily === "vascular_lumen_profile") {
+      const vascular = analysis.vascular || null;
+      return [
+        "Family: vascular line profile",
+        `FWHM lumen: ${formatMetricValue(vascular?.fwhmMm, "mm", 3)}`,
+        `Left 10-90: ${formatMetricValue(vascular?.leftEdge?.riseDistanceMm, "mm", 3)} | ${formatMetricValue(vascular?.leftEdge?.slopeHuPerMm, "HU/mm", 1)}`,
+        `Right 10-90: ${formatMetricValue(vascular?.rightEdge?.riseDistanceMm, "mm", 3)} | ${formatMetricValue(vascular?.rightEdge?.slopeHuPerMm, "HU/mm", 1)}`,
+        `Average sharpness: ${formatMetricValue(vascular?.averageSlopeHuPerMm, "HU/mm", 1)}`,
+        `Peak/background: ${formatMetricValue(vascular?.peakHu, "HU", 0)} / ${formatMetricValue(vascular?.backgroundHu, "HU", 0)}`,
+      ];
+    }
     if (analysis?.profileFamily === "plaque_lumen_interface" && analysis?.plaque) {
       const plaque = analysis.plaque;
       const primary = plaque.primaryInterface || null;
@@ -9106,6 +9845,18 @@
       });
       return;
     }
+    if (isMultiDiameterAnnotationType(sourceAnnotation.type)) {
+      const translation = addVectors(
+        scaleVector(sourceAnnotation.frame.uWorld, deltaXmm),
+        scaleVector(sourceAnnotation.frame.vWorld, deltaYmm)
+      );
+      annotation.diameterLines = getDiameterAnnotationLines(sourceAnnotation).map((line) => ({
+        ...line,
+        worldPoints: line.worldPoints.map((point) => addVectors(point, translation)),
+      }));
+      annotation.worldPoints = annotation.diameterLines.flatMap((line) => line.worldPoints);
+      return;
+    }
     if (isCircularRoiAnnotation(sourceAnnotation)) {
       const sourceGeometry = getCircularRoiGeometry(sourceAnnotation);
       if (sourceGeometry) {
@@ -9227,6 +9978,7 @@
     captureUndoSnapshot();
     state.dragging = null;
     state.polygonDraft = null;
+    state.diameterDraft = null;
     reconstruction.annotations = [];
     state.selectedAnnotationId = null;
     state.selectedProfileAnnotationId = null;
@@ -9247,6 +9999,7 @@
     state.referenceBasis = null;
     state.dragging = null;
     state.polygonDraft = null;
+    state.diameterDraft = null;
     state.roiClipboard = null;
     state.selectedAnnotationId = null;
     state.selectedProfileAnnotationId = null;
@@ -9975,6 +10728,12 @@
       const box = getSquareProfilePlaneBox(annotation);
       return box.widthMm > 0.5 && box.heightMm > 0.5;
     }
+    if (isMultiDiameterAnnotationType(annotation.type)) {
+      const config = getDiameterToolConfig(annotation.type);
+      const lines = getDiameterAnnotationLines(annotation);
+      const expectedCount = config?.roles?.length || 0;
+      return lines.length >= expectedCount && lines.every((line) => (getDiameterLineLengthMm(line) || 0) > 0.5);
+    }
     if (annotation.type === "freehandRoi") {
       return getFreehandPlanePoints(annotation).length >= 3 && getPolygonAreaMm2(getFreehandPlanePoints(annotation)) > 0.8;
     }
@@ -10205,7 +10964,9 @@
         state.activeToolKey === "lineProfile" ||
         state.activeToolKey === "plaqueLineProfile" ||
         state.activeToolKey === "plaqueNoncalcifiedLineProfile" ||
-        state.activeToolKey === "squareProfile") &&
+        state.activeToolKey === "vascularLineProfile" ||
+        state.activeToolKey === "squareProfile" ||
+        isMultiDiameterAnnotationType(state.activeToolKey)) &&
       !worldPoint
     ) {
       return;
@@ -10466,12 +11227,27 @@
       return;
     }
 
+    if (isMultiDiameterAnnotationType(state.activeToolKey)) {
+      const draft = ensureDiameterDraft(state.activeToolKey, reconstruction, frame, viewportId);
+      const role = getDiameterDraftRole(state.activeToolKey, draft.lines.length);
+      state.dragging = {
+        type: "diameterLine",
+        viewportId,
+        toolKey: state.activeToolKey,
+        role,
+        worldPoints: [worldPoint, worldPoint],
+      };
+      requestRenderViewports(getViewportIdsForPlane(frame.plane), { readouts: false });
+      return;
+    }
+
     if (
       state.activeToolKey === "length" ||
       state.activeToolKey === "arrow" ||
       state.activeToolKey === "lineProfile" ||
       state.activeToolKey === "plaqueLineProfile" ||
       state.activeToolKey === "plaqueNoncalcifiedLineProfile" ||
+      state.activeToolKey === "vascularLineProfile" ||
       state.activeToolKey === "squareProfile"
     ) {
       state.dragging = {
@@ -10732,6 +11508,19 @@
       return;
     }
 
+    if (state.dragging.type === "diameterLine") {
+      const worldPoint = canvasToWorldPoint(state.dragging.viewportId, event.clientX, event.clientY);
+      if (!worldPoint) {
+        return;
+      }
+      state.dragging.worldPoints[1] = worldPoint;
+      const draft = state.diameterDraft;
+      if (draft) {
+        requestRenderViewports(getViewportIdsForPlane(draft.plane), { readouts: false });
+      }
+      return;
+    }
+
     if (state.dragging.type === "editAnnotation") {
       const reconstruction = getActiveReconstruction();
       const annotation = getSelectedAnnotation();
@@ -10762,6 +11551,14 @@
         translateAnnotationInPlane(annotation, state.dragging.sourceAnnotation, deltaXmm, deltaYmm);
       } else if (state.dragging.mode === "point" && worldPoint) {
         annotation.worldPoints[state.dragging.pointIndex] = worldPoint;
+      } else if (state.dragging.mode === "diameterPoint" && worldPoint) {
+        const lines = getDiameterAnnotationLines(annotation);
+        const line = lines[state.dragging.lineIndex];
+        if (line?.worldPoints?.[state.dragging.pointIndex]) {
+          line.worldPoints[state.dragging.pointIndex] = worldPoint;
+          annotation.diameterLines = lines;
+          annotation.worldPoints = lines.flatMap((item) => item.worldPoints);
+        }
       } else if (state.dragging.mode === "circleRadius") {
         const sourceGeometry = getCircularRoiGeometry(state.dragging.sourceAnnotation);
         if (!sourceGeometry) {
@@ -10826,6 +11623,24 @@
 
     if (dragging.type === "annotation" && isValidDragAnnotation(dragging.annotation)) {
       addAnnotation(dragging.annotation);
+    } else if (dragging.type === "diameterLine") {
+      const draft = state.diameterDraft;
+      const lineLengthMm = vectorLength(subtractVectors(dragging.worldPoints[0], dragging.worldPoints[1]));
+      if (draft && draft.toolKey === dragging.toolKey && Number.isFinite(lineLengthMm) && lineLengthMm > 0.5) {
+        draft.lines.push({
+          ...dragging.role,
+          worldPoints: cloneWorldPoints(dragging.worldPoints),
+        });
+        const expectedCount = getDiameterToolConfig(draft.toolKey)?.roles?.length || 0;
+        if (draft.lines.length >= expectedCount) {
+          const annotation = buildDiameterAnnotationFromDraft(draft);
+          state.diameterDraft = null;
+          addAnnotation(annotation);
+          setStatus(`${getMultiDiameterLabel(annotation)} saved.`);
+        } else {
+          setStatus(getDiameterDraftStatus(draft.toolKey, draft.lines.length));
+        }
+      }
     } else if (dragging.type === "circularRoi") {
       if ((dragging.maxPointerDistancePx || 0) < 4) {
         setCircularRoiGeometry(dragging.annotation, {
