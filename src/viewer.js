@@ -105,7 +105,7 @@
     { id: "squareProfile", label: "Stent-Lumen Square", defaultKey: "S", defaultMeaning: "Draw a band profile for stent-lumen interface analysis" },
     { id: "plaqueLineProfile", label: "Plaque-Lumen Calcified", defaultKey: "I", defaultMeaning: "Draw a calcified plaque-lumen interface line profile" },
     { id: "plaqueNoncalcifiedLineProfile", label: "Plaque-Lumen Noncalcified", defaultKey: "N", defaultMeaning: "Draw a non-calcified plaque-lumen interface line profile" },
-    { id: "vascularLineProfile", label: "Vascular Line Profile", defaultKey: "", defaultMeaning: "Draw a vessel line profile for lumen FWHM and 10-90 edge sharpness" },
+    { id: "vascularLineProfile", label: "Vascular Line Profile", defaultKey: "V", defaultMeaning: "Draw a vessel line profile for lumen FWHM and 10-90 edge sharpness" },
     { id: "bloomingDiameter", label: "Blooming Diameter", defaultKey: "", defaultMeaning: "Draw outer and inner diameters to estimate blooming percentage" },
     { id: "stenosisDiameter", label: "Stenosis Diameter", defaultKey: "", defaultMeaning: "Draw proximal, distal, and minimal lumen diameters to estimate stenosis percentage" },
     { id: "arrow", label: "Arrow", defaultKey: "Y", defaultMeaning: "Place an arrow pointer" },
@@ -113,7 +113,7 @@
     { id: "windowLevel", label: "WW/WL", defaultKey: "W", defaultMeaning: "Adjust window width and level" },
     { id: "pan", label: "Pan", defaultKey: "M", defaultMeaning: "Move the current viewport" },
     { id: "zoom", label: "Zoom", defaultKey: "Z", defaultMeaning: "Zoom the current viewport" },
-    { id: "exportCine", label: "Export Cine", defaultKey: "V", defaultMeaning: "Export a cine clip of the stack" },
+    { id: "exportCine", label: "Export Cine", defaultKey: "", defaultMeaning: "Export a cine clip of the stack" },
     { id: "presetCoronary", label: "Coronary Preset", defaultKey: "1", defaultMeaning: "Apply the coronary window preset" },
     { id: "presetSoftTissue", label: "Soft Tissue Preset", defaultKey: "2", defaultMeaning: "Apply the soft tissue preset" },
     { id: "presetLung", label: "Lung Preset", defaultKey: "3", defaultMeaning: "Apply the lung preset" },
@@ -209,6 +209,12 @@
     lumenIndex: { color: "#7af4a8", label: "Lumen" },
     plaqueIndex: { color: "#ff7f6e", label: "Plaque" },
     rightOutsideIndex: { color: "#f6f7f9", label: "Right" },
+  };
+
+  const VASCULAR_PROFILE_GUIDE_STYLES = {
+    leftBackgroundIndex: { color: "#57c8ff", label: "BG L" },
+    peakIndex: { color: "#f8f53a", label: "Peak" },
+    rightBackgroundIndex: { color: "#66d9d0", label: "BG R" },
   };
 
   const TOOL_CURSORS = {
@@ -4842,6 +4848,9 @@
     if (annotation.plaqueGuideAdjustments) {
       clone.plaqueGuideAdjustments = { ...annotation.plaqueGuideAdjustments };
     }
+    if (annotation.vascularGuideAdjustments) {
+      clone.vascularGuideAdjustments = { ...annotation.vascularGuideAdjustments };
+    }
     if (Array.isArray(annotation.diameterLines)) {
       clone.diameterLines = annotation.diameterLines.map((line) => ({
         ...line,
@@ -6801,6 +6810,60 @@
     return bestIndex;
   }
 
+  function findProfileMinIndex(values, startIndex, endIndex) {
+    const start = clamp(Math.min(startIndex, endIndex), 0, Math.max(0, values.length - 1));
+    const end = clamp(Math.max(startIndex, endIndex), 0, Math.max(0, values.length - 1));
+    let bestIndex = null;
+    let bestValue = Number.POSITIVE_INFINITY;
+    for (let index = start; index <= end; index += 1) {
+      const value = values[index];
+      if (!Number.isFinite(value)) {
+        continue;
+      }
+      if (value < bestValue) {
+        bestValue = value;
+        bestIndex = index;
+      }
+    }
+    return bestIndex;
+  }
+
+  function averageProfileWindow(values, centerIndex, radius) {
+    if (!Number.isInteger(centerIndex) || centerIndex < 0 || centerIndex >= values.length) {
+      return null;
+    }
+    const start = Math.max(0, centerIndex - radius);
+    const end = Math.min(values.length - 1, centerIndex + radius);
+    return averageFinite(values.slice(start, end + 1));
+  }
+
+  function sanitizeVascularGuideIndices(length, preferred, fallback) {
+    if (length < 3 || !fallback) {
+      return null;
+    }
+    const source = preferred || fallback;
+    const leftBackgroundIndex = clamp(
+      Math.round(source.leftBackgroundIndex ?? fallback.leftBackgroundIndex ?? 0),
+      0,
+      Math.max(0, length - 3)
+    );
+    const peakIndex = clamp(
+      Math.round(source.peakIndex ?? fallback.peakIndex ?? Math.round(length / 2)),
+      leftBackgroundIndex + 1,
+      Math.max(leftBackgroundIndex + 1, length - 2)
+    );
+    const rightBackgroundIndex = clamp(
+      Math.round(source.rightBackgroundIndex ?? fallback.rightBackgroundIndex ?? length - 1),
+      peakIndex + 1,
+      length - 1
+    );
+    return {
+      leftBackgroundIndex,
+      peakIndex,
+      rightBackgroundIndex,
+    };
+  }
+
   function findProfileThresholdCrossing(distancesMm, values, threshold, startIndex, endIndex) {
     if (!Number.isFinite(threshold) || !Array.isArray(values) || values.length < 2) {
       return null;
@@ -6832,7 +6895,7 @@
     return null;
   }
 
-  function buildVascularEdgeMetric(distancesMm, values, lowHu, peakHu, peakIndex, side) {
+  function buildVascularEdgeMetric(distancesMm, values, lowHu, peakHu, peakIndex, side, boundIndex) {
     const amplitudeHu = peakHu - lowHu;
     if (!Number.isFinite(amplitudeHu) || amplitudeHu <= 5) {
       return null;
@@ -6841,12 +6904,13 @@
     const threshold90Hu = lowHu + amplitudeHu * 0.9;
     const firstThreshold = side === "left" ? threshold10Hu : threshold90Hu;
     const secondThreshold = side === "left" ? threshold90Hu : threshold10Hu;
+    const boundedIndex = clamp(boundIndex, 0, values.length - 1);
     const first = findProfileThresholdCrossing(
       distancesMm,
       values,
       firstThreshold,
-      side === "left" ? 0 : peakIndex,
-      side === "left" ? peakIndex : values.length - 1
+      side === "left" ? boundedIndex : peakIndex,
+      side === "left" ? peakIndex : boundedIndex
     );
     if (!first) {
       return null;
@@ -6856,7 +6920,7 @@
       values,
       secondThreshold,
       first.index,
-      side === "left" ? peakIndex : values.length - 1
+      side === "left" ? peakIndex : boundedIndex
     );
     if (!second) {
       return null;
@@ -6876,7 +6940,7 @@
     };
   }
 
-  function buildVascularLineProfileModel(base) {
+  function buildVascularLineProfileModel(base, guideAdjustments) {
     if (!base || base.mode !== "line" || !Array.isArray(base.valuesHu) || base.valuesHu.length < 5) {
       return null;
     }
@@ -6888,11 +6952,35 @@
         vascular: null,
       };
     }
-    const peakIndex = findProfileMaxIndex(smoothHu, 0, smoothHu.length - 1);
+    const autoPeakIndex = findProfileMaxIndex(smoothHu, 0, smoothHu.length - 1);
+    const autoLeftBackgroundIndex = autoPeakIndex == null
+      ? 0
+      : findProfileMinIndex(smoothHu, 0, Math.max(0, autoPeakIndex - 1)) ?? 0;
+    const autoRightBackgroundIndex = autoPeakIndex == null
+      ? smoothHu.length - 1
+      : findProfileMinIndex(smoothHu, Math.min(smoothHu.length - 1, autoPeakIndex + 1), smoothHu.length - 1) ?? smoothHu.length - 1;
+    const guideIndices = sanitizeVascularGuideIndices(
+      smoothHu.length,
+      guideAdjustments,
+      {
+        leftBackgroundIndex: autoLeftBackgroundIndex,
+        peakIndex: autoPeakIndex ?? Math.round(smoothHu.length / 2),
+        rightBackgroundIndex: autoRightBackgroundIndex,
+      }
+    );
+    if (!guideIndices) {
+      return {
+        smoothHu,
+        vascular: null,
+      };
+    }
+
+    const peakIndex = guideIndices.peakIndex;
     const peakHu = peakIndex == null ? null : smoothHu[peakIndex];
     const edgeSampleCount = clamp(Math.round(smoothHu.length * 0.12), 2, Math.max(2, Math.floor(smoothHu.length / 3)));
-    const leftBackgroundHu = averageFinite(smoothHu.slice(0, edgeSampleCount));
-    const rightBackgroundHu = averageFinite(smoothHu.slice(Math.max(0, smoothHu.length - edgeSampleCount)));
+    const averagingRadius = Math.max(1, Math.round(edgeSampleCount / 2));
+    const leftBackgroundHu = averageProfileWindow(smoothHu, guideIndices.leftBackgroundIndex, averagingRadius);
+    const rightBackgroundHu = averageProfileWindow(smoothHu, guideIndices.rightBackgroundIndex, averagingRadius);
     const backgroundHu = averageFinite([leftBackgroundHu, rightBackgroundHu]);
     const amplitudeHu = Number.isFinite(peakHu) && Number.isFinite(backgroundHu) ? peakHu - backgroundHu : null;
     if (!Number.isFinite(amplitudeHu) || amplitudeHu <= 5 || peakIndex == null) {
@@ -6903,14 +6991,42 @@
     }
 
     const halfMaximumHu = backgroundHu + amplitudeHu * 0.5;
-    const leftHalf = findProfileThresholdCrossing(base.distancesMm, smoothHu, halfMaximumHu, peakIndex, 0);
-    const rightHalf = findProfileThresholdCrossing(base.distancesMm, smoothHu, halfMaximumHu, peakIndex, smoothHu.length - 1);
+    const leftHalf = findProfileThresholdCrossing(
+      base.distancesMm,
+      smoothHu,
+      halfMaximumHu,
+      peakIndex,
+      guideIndices.leftBackgroundIndex
+    );
+    const rightHalf = findProfileThresholdCrossing(
+      base.distancesMm,
+      smoothHu,
+      halfMaximumHu,
+      peakIndex,
+      guideIndices.rightBackgroundIndex
+    );
     const fwhmMm =
       leftHalf && rightHalf && Number.isFinite(leftHalf.distanceMm) && Number.isFinite(rightHalf.distanceMm)
         ? Math.abs(rightHalf.distanceMm - leftHalf.distanceMm)
         : null;
-    const leftEdge = buildVascularEdgeMetric(base.distancesMm, smoothHu, backgroundHu, peakHu, peakIndex, "left");
-    const rightEdge = buildVascularEdgeMetric(base.distancesMm, smoothHu, backgroundHu, peakHu, peakIndex, "right");
+    const leftEdge = buildVascularEdgeMetric(
+      base.distancesMm,
+      smoothHu,
+      backgroundHu,
+      peakHu,
+      peakIndex,
+      "left",
+      guideIndices.leftBackgroundIndex
+    );
+    const rightEdge = buildVascularEdgeMetric(
+      base.distancesMm,
+      smoothHu,
+      backgroundHu,
+      peakHu,
+      peakIndex,
+      "right",
+      guideIndices.rightBackgroundIndex
+    );
     const averageSlopeHuPerMm = averageFinite([leftEdge?.slopeHuPerMm, rightEdge?.slopeHuPerMm]);
 
     return {
@@ -6922,6 +7038,13 @@
         leftBackgroundHu,
         rightBackgroundHu,
         backgroundHu,
+        guideIndices,
+        guideDistancesMm: {
+          leftBackgroundMm: base.distancesMm[guideIndices.leftBackgroundIndex],
+          peakMm: base.distancesMm[guideIndices.peakIndex],
+          rightBackgroundMm: base.distancesMm[guideIndices.rightBackgroundIndex],
+        },
+        adjustmentMode: guideAdjustments ? "manual" : "auto",
         amplitudeHu,
         halfMaximumHu,
         fwhmMm,
@@ -6947,7 +7070,7 @@
     base.profileFamily = getProfileFamily(annotation);
     base.profileSubtype = isPlaqueProfileAnnotation(annotation) ? getPlaqueProfileSubtype(annotation) : "";
     if (annotation.type === "vascularLineProfile") {
-      const vascular = buildVascularLineProfileModel(base);
+      const vascular = buildVascularLineProfileModel(base, annotation.vascularGuideAdjustments || null);
       return {
         ...base,
         smoothHu: vascular?.smoothHu || smoothSeries(base.valuesHu, 1),
@@ -7125,6 +7248,47 @@
         ctx.lineTo(x, plot.y + plot.height);
         ctx.stroke();
         ctx.restore();
+      }
+
+      if (options?.showManualGuides !== false) {
+        Object.entries(vascular.guideIndices || {}).forEach(([key, index]) => {
+          const style = VASCULAR_PROFILE_GUIDE_STYLES[key];
+          const distanceMm = profile.distancesMm[index];
+          if (!style || !Number.isFinite(distanceMm)) {
+            return;
+          }
+          const x = xAt(distanceMm);
+          ctx.save();
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = style.color;
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.moveTo(x, plot.y);
+          ctx.lineTo(x, plot.y + plot.height);
+          ctx.stroke();
+          ctx.restore();
+
+          ctx.save();
+          ctx.fillStyle = style.color;
+          ctx.beginPath();
+          ctx.arc(x, plot.y + 8, 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#d2e0e9";
+          ctx.font = "11px Aptos, Segoe UI, sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(style.label, x, plot.y + plot.height + 14);
+          ctx.restore();
+
+          guideHandles.push({
+            key,
+            kind: "vascular",
+            index,
+            distanceMm,
+            x,
+            y: plot.y + 8,
+            radiusPx: 8,
+          });
+        });
       }
     } else if (profile.profileFamily === "plaque_lumen_interface" && profile.plaque) {
       const plaque = profile.plaque;
@@ -7441,6 +7605,20 @@
     annotation.plaqueGuideAdjustments = sanitizePlaqueGuideIndices(sampleCount, next, current);
   }
 
+  function setVascularGuideAdjustment(annotation, guideKey, targetIndex, sampleCount, currentGuides) {
+    const current = sanitizeVascularGuideIndices(
+      sampleCount,
+      annotation.vascularGuideAdjustments || currentGuides,
+      currentGuides
+    );
+    if (!current) {
+      return;
+    }
+    const next = { ...current };
+    next[guideKey] = targetIndex;
+    annotation.vascularGuideAdjustments = sanitizeVascularGuideIndices(sampleCount, next, current);
+  }
+
   function resetSelectedProfileAuto() {
     const annotation = getActiveProfileAnnotation();
     if (!annotation || !PROFILE_TYPES.has(annotation.type)) {
@@ -7448,6 +7626,7 @@
     }
     delete annotation.profileGuideAdjustments;
     delete annotation.plaqueGuideAdjustments;
+    delete annotation.vascularGuideAdjustments;
     updateProfilePanel();
     requestRenderAll();
     setStatus("Profile analysis reset to automatic cutoffs.");
@@ -7493,11 +7672,16 @@
 
     const vascular = analysis.profileFamily === "vascular_lumen_profile" ? analysis.vascular || null : null;
     if (analysis.profileFamily === "vascular_lumen_profile") {
-      els.profileStatus.textContent = `${getAnnotationDisplayName(annotation, reconstruction)} • ${analysis.sampleCount} samples • vascular line profile`;
+      const adjustmentMode = vascular?.adjustmentMode === "manual" ? "manual" : "auto";
+      els.profileStatus.textContent = `${getAnnotationDisplayName(annotation, reconstruction)} • ${analysis.sampleCount} samples • vascular line profile • ${adjustmentMode}`;
       els.profileMetrics.innerHTML = `
         <div class="meta-row">
           <dt>Length</dt>
           <dd>${formatMetricValue(analysis.lengthMm, "mm", 2)}</dd>
+        </div>
+        <div class="meta-row">
+          <dt>Guide Mode</dt>
+          <dd>${adjustmentMode}</dd>
         </div>
         <div class="meta-row">
           <dt>FWHM Lumen</dt>
@@ -7664,6 +7848,7 @@
           profileLengthMm: analysis?.lengthMm,
           profileAxis: analysis?.axis,
           sampleCount: analysis?.sampleCount,
+          profileAdjustmentMode: vascular?.adjustmentMode || "auto",
           vascularPeakHu: vascular?.peakHu,
           vascularBackgroundHu: vascular?.backgroundHu,
           vascularAmplitudeHu: vascular?.amplitudeHu,
@@ -9584,7 +9769,7 @@
     if (analysis?.profileFamily === "vascular_lumen_profile") {
       const vascular = analysis.vascular || null;
       return [
-        "Family: vascular line profile",
+        `Family: vascular line profile | ${vascular?.adjustmentMode || "auto"}`,
         `FWHM lumen: ${formatMetricValue(vascular?.fwhmMm, "mm", 3)}`,
         `Left 10-90: ${formatMetricValue(vascular?.leftEdge?.riseDistanceMm, "mm", 3)} | ${formatMetricValue(vascular?.leftEdge?.slopeHuPerMm, "HU/mm", 1)}`,
         `Right 10-90: ${formatMetricValue(vascular?.rightEdge?.riseDistanceMm, "mm", 3)} | ${formatMetricValue(vascular?.rightEdge?.slopeHuPerMm, "HU/mm", 1)}`,
@@ -10557,7 +10742,7 @@
     const annotation = getActiveProfileAnnotation();
     const chartState = state.profileChartState;
     const hit = getProfileChartGuideHit(event.clientX, event.clientY);
-    if (!annotation || !(chartState?.profile?.stent || chartState?.profile?.plaque) || !hit) {
+    if (!annotation || !(chartState?.profile?.stent || chartState?.profile?.plaque || chartState?.profile?.vascular) || !hit) {
       return;
     }
 
@@ -11464,7 +11649,11 @@
     if (state.dragging.type === "profileGuide") {
       const annotation = getActiveProfileAnnotation();
       const chartState = state.profileChartState;
-      if (!annotation || !(chartState?.profile?.stent || chartState?.profile?.plaque) || annotation.id !== state.dragging.annotationId) {
+      if (
+        !annotation ||
+        !(chartState?.profile?.stent || chartState?.profile?.plaque || chartState?.profile?.vascular) ||
+        annotation.id !== state.dragging.annotationId
+      ) {
         return;
       }
       if (!state.dragging.historyCaptured) {
@@ -11483,6 +11672,14 @@
           targetIndex,
           chartState.profile.distancesMm.length,
           chartState.profile.plaque?.guideIndices
+        );
+      } else if (state.dragging.guideKind === "vascular") {
+        setVascularGuideAdjustment(
+          annotation,
+          state.dragging.guideKey,
+          targetIndex,
+          chartState.profile.distancesMm.length,
+          chartState.profile.vascular?.guideIndices
         );
       } else {
         setProfileGuideAdjustment(
