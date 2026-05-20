@@ -162,8 +162,6 @@
     "plaqueLineProfile",
     "plaqueNoncalcifiedLineProfile",
     "vascularLineProfile",
-    "bloomingDiameter",
-    "stenosisDiameter",
   ];
   const INTERFACE_TOOL_LABELS = {
     lineProfile: "Stent Line",
@@ -171,8 +169,6 @@
     plaqueLineProfile: "Plaque Calcified",
     plaqueNoncalcifiedLineProfile: "Plaque Noncalcified",
     vascularLineProfile: "Vascular Profile",
-    bloomingDiameter: "Blooming %",
-    stenosisDiameter: "Stenosis %",
   };
 
   const DIAMETER_TOOL_CONFIGS = {
