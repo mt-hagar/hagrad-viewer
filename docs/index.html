@@ -393,7 +393,7 @@
       }
 
       .module-grid {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
       }
 
       .module-card,
@@ -719,7 +719,7 @@
             <p class="lede">
               A local DICOM research environment for cardiac CT review, multi-planar reformation,
               quantitative measurement, coronary CTA image-quality analysis, EAT quantification, and
-              workflow prototyping.
+              CT phantom noise-power research.
             </p>
             <div class="hero-buttons">
               <a class="button primary" href="#downloads">Download HAGRad Viewer</a>
@@ -756,12 +756,17 @@
             <article class="module-card">
               <span class="tag">Core viewer</span>
               <h3>Core DICOM Viewer</h3>
-              <p>Cardiac CT DICOM review with window/level, zoom, pan, measurements, MPR, profile analysis, and ZIP exports.</p>
+              <p>Cardiac CT DICOM review with window/level, zoom, pan, MPR, vessel profile, blooming/stenosis diameter tools, and ZIP exports.</p>
             </article>
             <article class="module-card">
               <span class="tag">CCTA IQ</span>
               <h3>CCTA Image Quality</h3>
               <p>Objective coronary CTA ROI measurements, subjective reader scoring, editable protocols, SNR/CNR metrics, and structured export.</p>
+            </article>
+            <article class="module-card">
+              <span class="tag">Physics</span>
+              <h3>Noise Power</h3>
+              <p>CT phantom square ROI statistics, circular NPS placement, multi-reconstruction noise-power comparison, TTF metrics, and export bundles.</p>
             </article>
             <article class="module-card">
               <span class="tag">EAT</span>

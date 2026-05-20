@@ -6,10 +6,11 @@ HAGRad is designed for retrospective scientific analysis and technical developme
 
 ## Current Modules
 
-- **HAGRad Viewer**: Core DICOM viewer for local cardiac CT review, window/level, pan, zoom, measurements, MPR, profile analysis, structured exports, and research workflow navigation.
+- **HAGRad Viewer**: Core DICOM viewer for local cardiac CT review, window/level, pan, zoom, measurements, MPR, vessel profile, blooming/stenosis diameter tools, structured exports, and research workflow navigation.
 - **CCTA IQ**: Coronary CT angiography image-quality workflow for objective ROI measurements and subjective reader scoring.
 - **EAT**: Epicardial adipose tissue workflow for contouring, threshold-based quantification, multi-reconstruction review, and structured export.
 - **QCA**: Quantitative coronary angiography prototype for invasive angiography frame selection, vessel segmentation workflow, stenosis measurements, and export bundles.
+- **Noise Power**: CT phantom physics workflow for square ROI noise statistics, circular NPS placement, multi-reconstruction NPS comparison, TTF/NPS reporting, and reproducible ZIP export.
 
 ## CCTA IQ Functionality
 

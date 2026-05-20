@@ -1,0 +1,358 @@
+ObjC.import("Foundation");
+
+function readText(path) {
+  return $.NSString.stringWithContentsOfFileEncodingError($(path), $.NSUTF8StringEncoding, null).js;
+}
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+const root = "/Users/mt_hagar/Documents/Playground/ppt-dicom-viewer";
+globalThis.window = globalThis;
+eval(readText(root + "/src/noisepower/noisepower-core.js"));
+
+const core = globalThis.HAGRadNoisePowerCore;
+assert(core, "Noise Power core did not load.");
+const bv72Reference = core.kernelRho10Reference({ convolutionKernel: "Bv72u\\4" });
+assert(bv72Reference && bv72Reference.kernel === "Bv72", "Kernel reference lookup should normalize Siemens Bv suffixes.");
+assert(Math.abs(bv72Reference.rho10LpCm - 17.4) < 1e-9, "Bv72 rho10 reference should match the literature table.");
+const bv76Reference = core.kernelRho10Reference({ convolutionKernel: "Bv76" });
+assert(Math.abs(bv76Reference.rho50LpCm - 16.47) < 1e-9, "Bv76 rho50 reference should match Supplementary Table S1.");
+assert(Math.abs(bv76Reference.rho02LpCm - 24.93) < 1e-9, "Bv76 rho02 reference should match Supplementary Table S1.");
+assert(Math.abs(core.rhoMaxLpCmFromSpacing(0.2002, 0.2002) - 24.975024975) < 1e-6, "rhoMax should follow Nyquist from pixel spacing.");
+assert(core.kernelSamplingComparison(24.98, bv72Reference).status === "adequate", "rhoMax above reference rho10 should be adequate.");
+
+function makeRecord(z, spacing) {
+  return {
+    studyInstanceUID: "study",
+    seriesInstanceUID: "series",
+    sopInstanceUID: "sop-" + z,
+    modality: "CT",
+    seriesNumber: 9,
+    pixelSpacing: spacing || [1, 1],
+    imagePositionPatient: [0, 0, z],
+    imageOrientationPatient: [1, 0, 0, 0, 1, 0],
+    rowDirection: [1, 0, 0],
+    columnDirection: [0, 1, 0],
+    normalVector: [0, 0, 1],
+    rescaleSlope: 1,
+    rescaleIntercept: 0,
+  };
+}
+
+function makeRecordWithKernel(z, spacing, kernel) {
+  const record = makeRecord(z, spacing);
+  record.convolutionKernel = kernel;
+  return record;
+}
+
+const pixels8 = Int16Array.from(Array.from({ length: 64 }, (_, index) => index));
+const volume = {
+  rows: 8,
+  columns: 8,
+  depth: 1,
+  rowSpacing: 1,
+  columnSpacing: 1,
+  slices: [{ pixels: pixels8, slope: 1, intercept: -10, units: "HU", record: makeRecord(0) }],
+};
+
+const roi = core.createNoiseSquareRoi({
+  id: "roi_exact",
+  label: "Exact ROI",
+  datasetId: "source",
+  sliceIndex: 0,
+  centerXImg: 1.5,
+  centerYImg: 1.5,
+  edgePx: 4,
+});
+const geometry = core.resolveSquareGeometry(roi, volume);
+assert(geometry.edgePx === 4, "Square ROI edge should remain exact in source image coordinates.");
+assert(geometry.selectedRowCount === 4 && geometry.selectedColumnCount === 4, "Square ROI should extract 4 x 4 pixels.");
+assert(geometry.areaMm2 === 16, "Square ROI area should use Pixel Spacing.");
+
+const extraction = core.extractSquareRoiPixels(volume, 0, roi);
+assert(!extraction.error, "Square ROI extraction should succeed.");
+assert(extraction.calibratedMatrix.length === 4 && extraction.calibratedMatrix[0].length === 4, "Calibrated matrix should be square.");
+assert(extraction.calibratedMatrix[0][0] === -10, "Extraction should apply rescale intercept.");
+assert(extraction.statsCalibrated.count === 16, "Extraction stats should include all ROI pixels.");
+assert(extraction.profileAnalysis.profilesByType["horizontal-center"].samples.length === 4, "Horizontal center profile should be available.");
+assert(extraction.profileAnalysis.profilesByType["vertical-center"].samples.length === 4, "Vertical center profile should be available.");
+
+const edgePixels = Int16Array.from(Array.from({ length: 32 * 32 }, (_, index) => {
+  const column = index % 32;
+  return Math.round(60 + 60 * Math.tanh((column - 15.5) / 6));
+}));
+const edgeVolume = {
+  rows: 32,
+  columns: 32,
+  depth: 1,
+  rowSpacing: 0.5,
+  columnSpacing: 0.5,
+  slices: [{ pixels: edgePixels, slope: 1, intercept: 0, units: "HU", record: makeRecord(0, [0.5, 0.5]) }],
+};
+const edgeRoi = core.createNoiseSquareRoi({
+  id: "roi_ttf",
+  label: "TTF Edge",
+  datasetId: "source",
+  sliceIndex: 0,
+  centerXImg: 15.5,
+  centerYImg: 15.5,
+  edgePx: 32,
+});
+const edgeExtraction = core.extractSquareRoiPixels(edgeVolume, 0, edgeRoi);
+assert(edgeExtraction.ttfAnalysis.valid, "Square ROI spanning a synthetic edge should produce valid TTFxy.");
+assert(edgeExtraction.ttfAnalysis.ttf.length > 0, "TTFxy curve should contain frequency samples.");
+assert(Number.isFinite(edgeExtraction.ttfAnalysis.f50Frequency), "TTFxy f50 should be finite for synthetic edge.");
+assert(edgeExtraction.ttfAnalysis.f50Frequency <= edgeExtraction.ttfAnalysis.nyquistFrequency + 1e-12, "TTFxy f50 should respect Nyquist.");
+assert(Number.isFinite(edgeExtraction.ttfAnalysis.rhoMaxLpCm), "TTFxy should report rhoMax in lp/cm.");
+
+const lowCnrPixels = Int16Array.from(Array.from({ length: 32 * 32 }, (_, index) => {
+  const column = index % 32;
+  const row = Math.floor(index / 32);
+  return Math.round((column - 15.5) * 0.2 + (((row * 17 + column * 13) % 19) - 9) * 22);
+}));
+const lowCnrVolume = {
+  rows: 32,
+  columns: 32,
+  depth: 1,
+  rowSpacing: 0.5,
+  columnSpacing: 0.5,
+  slices: [{ pixels: lowCnrPixels, slope: 1, intercept: 0, units: "HU", record: makeRecord(0, [0.5, 0.5]) }],
+};
+const lowCnrExtraction = core.extractSquareRoiPixels(lowCnrVolume, 0, edgeRoi);
+assert(!lowCnrExtraction.ttfAnalysis.valid, "Low-CNR homogeneous ROI should not report valid TTFxy.");
+assert(lowCnrExtraction.ttfAnalysis.warnings.includes("ttf-low-cnr-tg233"), "Low-CNR TTFxy should carry TG-233 warning.");
+assert(!Number.isFinite(lowCnrExtraction.ttfAnalysis.rho10LpCm), "Low-CNR TTFxy should not report rho10.");
+assert(Number.isFinite(lowCnrExtraction.ttfAnalysis.rhoMaxLpCm), "Low-CNR TTFxy should still report rhoMax.");
+
+const circle = core.createNoisePowerCircle({
+  id: "circle_001",
+  label: "Circle 1",
+  datasetId: "source",
+  sliceIndex: 0,
+  centerXImg: 32,
+  centerYImg: 32,
+  radiusPx: 20,
+  roiEdgePx: 4,
+  peripheralRoiCount: 4,
+  includeCenter: true,
+});
+const layout = core.generateNpsRoisForCircle(circle, { sequenceStart: 1 });
+assert(layout.rois.length === 5, "Default NPS layout should include center plus 4 peripheral ROIs.");
+assert(layout.rois[1].angleRadians === 0, "First peripheral ROI should start at zero radians.");
+assert(Math.abs(layout.rois[2].angleRadians - Math.PI / 2) < 1e-9, "Peripheral ROIs should use equal angular spacing.");
+assert(!layout.warnings.includes("nps-roi-overlap"), "Reasonable circle layout should avoid overlap warnings.");
+
+const smallCircle = core.createNoisePowerCircle({
+  id: "circle_small",
+  datasetId: "source",
+  sliceIndex: 0,
+  centerXImg: 10,
+  centerYImg: 10,
+  radiusPx: 6,
+  roiEdgePx: 8,
+  peripheralRoiCount: 8,
+  includeCenter: true,
+});
+const smallLayout = core.generateNpsRoisForCircle(smallCircle, { sequenceStart: 20 });
+assert(smallLayout.warnings.length > 0, "Small dense NPS circle should warn about overlap or inadequate radius.");
+
+const npsMatrix = [
+  [1, 0, -1, 0],
+  [1, 0, -1, 0],
+  [1, 0, -1, 0],
+  [1, 0, -1, 0],
+];
+const nps = core.buildNpsAnalysisFromMatrices([npsMatrix], { spacingX: 1, spacingY: 1, units: "HU" });
+assert(!nps.error, "Synthetic NPS analysis should complete.");
+assert(nps.edgePx === 4, "NPS edge size should be preserved.");
+assert(Math.abs(nps.meanRoiVariance - 0.5) < 1e-9, "Synthetic ROI variance should be exact.");
+assert(Math.abs(nps.integratedNps - 0.5) < 1e-9, "Integrated NPS should close to ROI variance.");
+assert(Number.isFinite(nps.rhoMaxLpCm), "NPS analysis should report rhoMax in lp/cm.");
+assert(Math.abs(nps.varianceClosureRatio - 1) < 1e-9, "Variance closure ratio should be 1 for synthetic matrix.");
+assert(Math.abs(nps.frequencyStepX - 0.25) < 1e-9, "Frequency step should be 1/(N*dx).");
+assert(nps.radialBins.length > 0, "Radial bins should be created.");
+assert(nps.radialBins.some((bin) => Number.isFinite(bin.normalizedNps)), "Normalized radial NPS should be created.");
+for (let index = 1; index < nps.radialBins.length; index += 1) {
+  assert(
+    nps.radialBins[index].cumulativeNoisePower + 1e-12 >= nps.radialBins[index - 1].cumulativeNoisePower,
+    "Cumulative NPS should be monotonic."
+  );
+}
+assert(nps.f10Frequency <= nps.f50Frequency && nps.f50Frequency <= nps.f90Frequency, "Cumulative frequency metrics should be ordered.");
+
+const sourceDataset = {
+  id: "source",
+  label: "Source",
+  meta: makeRecordWithKernel(0, [1, 1], "Bv72u\\4"),
+  volume: {
+    rows: 16,
+    columns: 16,
+    depth: 1,
+    rowSpacing: 1,
+    columnSpacing: 1,
+    normalDirection: [0, 0, 1],
+    slices: [{ record: makeRecord(0, [1, 1]) }],
+  },
+};
+const targetDataset = {
+  id: "target",
+  label: "Target",
+  meta: makeRecord(0, [0.5, 0.5]),
+  volume: {
+    rows: 32,
+    columns: 32,
+    depth: 1,
+    rowSpacing: 0.5,
+    columnSpacing: 0.5,
+    normalDirection: [0, 0, 1],
+    slices: [{ record: makeRecord(0, [0.5, 0.5]) }],
+  },
+};
+const copySource = core.createNoiseSquareRoi({
+  id: "copy_source",
+  datasetId: "source",
+  sliceIndex: 0,
+  centerXImg: 4,
+  centerYImg: 6,
+  edgePx: 4,
+});
+const mapped = core.mapSquareRoiToTarget(copySource, sourceDataset, targetDataset, { id: "copy_target" });
+assert(Math.abs(mapped.centerXImg - 9.5) < 1e-9, "Mapped ROI x center should preserve patient-space position with exact even-square snapping.");
+assert(Math.abs(mapped.centerYImg - 13.5) < 1e-9, "Mapped ROI y center should preserve patient-space position with exact even-square snapping.");
+assert(mapped.edgePx === 8, "Mapped ROI edge should preserve physical size when spacing changes.");
+
+const exportVolume = {
+  rows: 64,
+  columns: 64,
+  depth: 1,
+  rowSpacing: 1,
+  columnSpacing: 1,
+  slices: [{ pixels: Int16Array.from(new Array(64 * 64).fill(0).map((_, index) => (index % 7) - 3)), slope: 1, intercept: 0, units: "HU", record: makeRecord(0) }],
+};
+const exportDataset = { id: "source", label: "Recon A", meta: makeRecordWithKernel(0, null, "Bv72u\\4"), volume: exportVolume };
+const pooledCircleA = core.createNoisePowerCircle({
+  id: "pool_a",
+  label: "Pooled NPS",
+  datasetId: "source",
+  sliceIndex: 0,
+  centerXImg: 20,
+  centerYImg: 32,
+  radiusPx: 10,
+  roiEdgePx: 4,
+  peripheralRoiCount: 4,
+  includeCenter: true,
+  generated: true,
+  npsSetId: "pool_a",
+});
+const pooledCircleB = core.createNoisePowerCircle({
+  id: "pool_b",
+  label: "Pooled NPS companion",
+  datasetId: "source",
+  sliceIndex: 0,
+  centerXImg: 44,
+  centerYImg: 32,
+  radiusPx: 10,
+  roiEdgePx: 4,
+  peripheralRoiCount: 4,
+  includeCenter: true,
+  generated: true,
+  copiedFromCircleId: "pool_a",
+  npsSetId: "pool_a",
+});
+const pooledLayoutA = core.generateNpsRoisForCircle(pooledCircleA, { sequenceStart: 100 });
+const pooledLayoutB = core.generateNpsRoisForCircle(pooledCircleB, { sequenceStart: pooledLayoutA.nextSequence });
+const pooledModels = core.buildNpsModels([exportDataset], [pooledCircleA, pooledCircleB], pooledLayoutA.rois.concat(pooledLayoutB.rois));
+assert(pooledModels.length === 1, "Linked NPS circles should produce one pooled analysis model.");
+assert(pooledModels[0].analysis.circleCount === 2, "Pooled NPS analysis should report two organizer circles.");
+assert(
+  pooledModels[0].analysis.validRoiCount === pooledLayoutA.rois.length + pooledLayoutB.rois.length,
+  "Pooled NPS analysis should use square ROIs from both linked circles."
+);
+const pooledFlaglessA = Object.assign({}, pooledCircleA, { generated: false });
+const pooledFlaglessB = Object.assign({}, pooledCircleB, { generated: false });
+const pooledFlaglessModels = core.buildNpsModels(
+  [exportDataset],
+  [pooledFlaglessA, pooledFlaglessB],
+  pooledLayoutA.rois.concat(pooledLayoutB.rois)
+);
+assert(pooledFlaglessModels.length === 1, "NPS analysis should use attached square ROIs even if generated flags are stale.");
+assert(pooledFlaglessModels[0].analysis.circleCount === 2, "Flagless pooled NPS analysis should still retain both organizer circles.");
+const exportDatasetB = { id: "target", label: "Recon B", meta: Object.assign({}, makeRecord(0), { seriesNumber: 10 }), volume: exportVolume };
+const targetCircleA = core.createNoisePowerCircle(Object.assign({}, pooledCircleA, {
+  id: "pool_a_target",
+  datasetId: "target",
+  copiedFromCircleId: "pool_a",
+  npsSetId: "pool_a",
+  generated: true,
+}));
+const targetCircleB = core.createNoisePowerCircle(Object.assign({}, pooledCircleB, {
+  id: "pool_b_target",
+  datasetId: "target",
+  copiedFromCircleId: "pool_b",
+  npsSetId: "pool_a",
+  generated: true,
+}));
+const targetLayoutA = core.generateNpsRoisForCircle(targetCircleA, { sequenceStart: 200 });
+const targetLayoutB = core.generateNpsRoisForCircle(targetCircleB, { sequenceStart: targetLayoutA.nextSequence });
+const copiedMultiReconModels = core.buildNpsModels(
+  [exportDataset, exportDatasetB],
+  [pooledCircleA, pooledCircleB, targetCircleA, targetCircleB],
+  pooledLayoutA.rois.concat(pooledLayoutB.rois, targetLayoutA.rois, targetLayoutB.rois)
+);
+assert(copiedMultiReconModels.length === 2, "Copied pooled NPS sets should create one analysis model per reconstruction.");
+assert(copiedMultiReconModels.every((model) => model.analysis.circleCount === 2), "Copied pooled NPS models should preserve the two-circle pooled set.");
+const exportRoi = core.createNoiseSquareRoi({ id: "roi_export", datasetId: "source", sliceIndex: 0, centerXImg: 16, centerYImg: 16, edgePx: 8 });
+const exportCircle = core.createNoisePowerCircle({ id: "circle_export", datasetId: "source", sliceIndex: 0, centerXImg: 32, centerYImg: 32, radiusPx: 20, roiEdgePx: 4, peripheralRoiCount: 4 });
+const exportLayout = core.generateNpsRoisForCircle(exportCircle, { sequenceStart: 1 });
+const bundle = core.buildMandatoryExportFiles([exportDataset], [exportRoi].concat(exportLayout.rois), [exportCircle], {
+  researchStudyId: "study",
+  patientStudyId: "case",
+  timestamp: "2026-05-19T12:00:00Z",
+});
+const fileNames = bundle.files.map((file) => file.name).sort();
+[
+  "README.txt",
+  "analysis_metadata.json",
+  "nps_2d_matrix.json",
+  "noise_power_data.xls",
+].forEach((name) => assert(fileNames.indexOf(name) >= 0, "Missing mandatory export file: " + name));
+assert(!fileNames.some((name) => /\.csv$/i.test(name)), "Tabular export should be consolidated into one Excel workbook, not separate CSV files.");
+const workbookFile = bundle.files.find((file) => file.name === "noise_power_data.xls");
+[
+  'ss:Name="Square ROI Summary"',
+  'ss:Name="Square ROI Profiles"',
+  'ss:Name="TTF Metrics"',
+  'ss:Name="TTF Curves"',
+  'ss:Name="NPS ROI Summary"',
+  'ss:Name="NPS Curve 1D"',
+  'ss:Name="NPS Metrics"',
+].forEach((marker) => assert(workbookFile.content.indexOf(marker) >= 0, "Excel workbook missing sheet marker: " + marker));
+assert(bundle.squareRows.length === 1, "Export should include one square ROI summary row.");
+assert(bundle.ttfMetricsRows.length === 1, "Export should include one TTF metrics row per square ROI.");
+assert(bundle.npsRoiRows.length === exportLayout.rois.length, "Export should include one NPS ROI row per generated square.");
+assert(bundle.npsCurveRows.length > 0, "Export should include long-format NPS curve rows.");
+assert(bundle.npsMetricsRows.length === 1, "Export should include one NPS metrics row per circle/reconstruction.");
+assert(bundle.squareRows[0].reconstruction_label === "Recon A", "Export should include explicit reconstruction label.");
+assert(bundle.squareRows[0].series_number === 9, "Export should include DICOM series number.");
+assert(bundle.npsMetricsRows[0].series_number === 9, "NPS metric export should include DICOM series number.");
+assert(Number.isFinite(Number(bundle.npsMetricsRows[0].f10_cumulative_mm_minus_1)), "NPS metric export should include cumulative f10.");
+assert(Number.isFinite(Number(bundle.npsMetricsRows[0].f90_cumulative_mm_minus_1)), "NPS metric export should include cumulative f90.");
+assert(Number.isFinite(Number(bundle.npsMetricsRows[0].rho_max_lp_cm)), "NPS metric export should include rhoMax.");
+assert(Number(bundle.npsMetricsRows[0].kernel_rho10_reference_lp_cm) === 17.4, "NPS metric export should include kernel rho10 reference.");
+assert("kernel_rho50_reference_lp_cm" in bundle.npsMetricsRows[0], "NPS metric export should include kernel rho50 reference column.");
+assert("kernel_rho02_reference_lp_cm" in bundle.npsMetricsRows[0], "NPS metric export should include kernel rho02 reference column.");
+assert(bundle.npsMetricsRows[0].rho_max_kernel_sampling_status === "rhoMax-below-kernel-rho10", "NPS metric export should include kernel sampling status.");
+assert("rho10_lp_cm" in bundle.ttfMetricsRows[0], "TTF metric export should include rho10.");
+
+JSON.stringify({
+  roiPixels: extraction.statsCalibrated.count,
+  npsRois: layout.rois.length,
+  npsIntegrated: nps.integratedNps,
+  mappedEdgePx: mapped.edgePx,
+  exportFiles: fileNames.length,
+  curveRows: bundle.npsCurveRows.length,
+});

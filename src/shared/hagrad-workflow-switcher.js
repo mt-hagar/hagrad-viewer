@@ -4,6 +4,7 @@
   const WORKFLOW_LABELS = new Map([
     ["/src/viewer.html", "HAGRad Viewer"],
     ["/src/ccta-iq/index.html", "HAGRad Image Quality"],
+    ["/src/noisepower/index.html", "HAGRad Noise Power"],
     ["/src/eat.html", "HAGRad EAT"],
     ["/src/qca/index.html", "HAGRad QCA"],
   ]);

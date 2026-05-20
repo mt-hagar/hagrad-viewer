@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HAGRad Noise Power</title>
+    <link rel="stylesheet" href="/src/noisepower/noisepower.css?v=20260520-overview-heatmaps" />
+    <link rel="stylesheet" href="/src/shared/hagrad-shell.css?v=20260519-noise-power" />
+  </head>
+  <body>
+    <main class="app noise-power-app">
+      <header class="hero shell-card">
+        <div class="hero-copy">
+          <p class="eyebrow">HAGRad Viewer</p>
+          <h1>HAGRad Noise Power</h1>
+          <nav class="hero-workflow-switcher" aria-label="HAGRad workflow apps">
+            <span class="workflow-switcher-label">Workflows</span>
+            <a
+              class="workflow-switcher-link"
+              href="/src/viewer.html"
+              data-help="Main DICOM research viewer with presentation, MPR, annotation, and export tools."
+            >
+              Viewer
+            </a>
+            <a
+              class="workflow-switcher-link"
+              href="/src/ccta-iq/index.html"
+              data-help="Objective and subjective coronary CTA image-quality analysis."
+            >
+              Image Quality
+            </a>
+            <a
+              class="workflow-switcher-link is-active"
+              href="/src/noisepower/index.html"
+              aria-current="page"
+              data-help="CT phantom square ROI, TTF, and noise power spectrum workflow."
+            >
+              Noise Power
+            </a>
+            <a
+              class="workflow-switcher-link"
+              href="/src/eat.html"
+              data-help="Epicardial adipose tissue workflow for CT-based EAT analysis."
+            >
+              EAT
+            </a>
+            <a
+              class="workflow-switcher-link"
+              href="/src/qca/index.html"
+              data-help="Quantitative coronary angiography workflow for invasive angiography frames."
+            >
+              QCA
+            </a>
+          </nav>
+          <p class="research-disclaimer">Research use only. Not for clinical diagnosis or patient care.</p>
+        </div>
+
+        <div class="hero-actions">
+          <div class="status-pill" id="np-status-pill">Ready for CT phantom DICOM</div>
+          <div class="hero-control-stack">
+            <div class="hero-load-row">
+              <label class="button primary" for="np-dicom-input">Load DICOM</label>
+              <label class="button secondary" for="np-folder-input">Load Folder</label>
+            </div>
+            <input id="np-dicom-input" type="file" multiple accept=".dcm,.dicom,application/dicom" />
+            <input id="np-folder-input" type="file" multiple webkitdirectory directory accept=".dcm,.dicom,application/dicom" />
+            <label class="button secondary" for="np-add-input">Add Recon Files</label>
+            <input id="np-add-input" type="file" multiple accept=".dcm,.dicom,application/dicom" />
+            <button id="np-clear-button" class="button secondary" type="button">Clear Study</button>
+          </div>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="sidebar shell-card">
+          <div class="sidebar-tabs np-sidebar-tabs" aria-label="Noise Power sidebar sections">
+            <button class="sidebar-tab is-active" data-np-sidebar-jump="np-sidebar-case" type="button">Case</button>
+            <button class="sidebar-tab" data-np-sidebar-jump="np-sidebar-analysis" type="button">Analyze</button>
+            <button class="sidebar-tab" data-np-sidebar-jump="np-sidebar-export" type="button">Export</button>
+          </div>
+
+          <div id="np-sidebar-case" class="sidebar-category">Patient</div>
+
+          <section class="sidebar-section">
+            <div class="section-header">
+              <div>
+                <h2>Reconstructions</h2>
+                <p class="section-note" id="np-study-note">No series loaded</p>
+              </div>
+            </div>
+            <div class="section-body">
+              <div id="np-recon-list" class="recon-list">
+                <p class="empty-copy">Load one or more axial CT phantom reconstructions.</p>
+              </div>
+            </div>
+          </section>
+
+          <div class="sidebar-category">Tools</div>
+
+          <section class="sidebar-section">
+            <div class="section-header">
+              <div>
+                <h2>Tools</h2>
+                <p class="section-note">Esc selects. Cmd/Ctrl + wheel zooms. Middle drag pans. Right drag scrolls.</p>
+              </div>
+            </div>
+            <div class="section-body">
+              <div class="tool-grid">
+                <button class="tool-button is-active" data-tool="select" type="button">Select</button>
+                <button class="tool-button" data-tool="windowLevel" type="button">WW/WL</button>
+                <button class="tool-button" data-tool="pan" type="button">Pan</button>
+                <button class="tool-button" data-tool="zoom" type="button">Zoom</button>
+                <button class="tool-button" data-tool="noiseSquare" type="button">TTF Square ROI</button>
+                <button class="tool-button" data-tool="noiseCircle" type="button">Noise Power Circle</button>
+              </div>
+            </div>
+          </section>
+
+          <div id="np-sidebar-analysis" class="sidebar-category">Analysis</div>
+
+          <section class="sidebar-section">
+            <div class="section-header">
+              <div>
+                <h2>TTF Square ROI</h2>
+                <p class="section-note">Click-drag an exact square for HU profiles and TTFxy edge response.</p>
+              </div>
+            </div>
+            <div class="section-body">
+              <div class="inline-actions">
+                <button id="np-duplicate-button" class="button tertiary" type="button">Duplicate</button>
+                <button id="np-delete-button" class="button tertiary" type="button">Delete</button>
+              </div>
+              <div id="np-object-list" class="object-list">
+                <p class="empty-copy">ROIs and circles appear here.</p>
+              </div>
+            </div>
+          </section>
+
+          <div id="np-sidebar-export" class="sidebar-category">Export</div>
+
+          <section class="sidebar-section">
+            <div class="section-header">
+              <div>
+                <h2>Noise Power Circle</h2>
+                <p class="section-note">Circle organizes square NPS ROIs. It is not itself the NPS source.</p>
+              </div>
+            </div>
+            <div class="section-body">
+              <div class="numeric-grid">
+                <label class="number-field">
+                  <span>NPS ROI Edge</span>
+                  <select id="np-nps-edge">
+                    <option value="32">32 px</option>
+                    <option value="64" selected>64 px</option>
+                    <option value="128">128 px</option>
+                  </select>
+                </label>
+                <label class="number-field">
+                  <span>Peripheral ROIs</span>
+                  <select id="np-nps-peripheral">
+                    <option value="4" selected>4</option>
+                    <option value="8">8</option>
+                    <option value="12">12</option>
+                    <option value="16">16</option>
+                    <option value="24">24</option>
+                    <option value="32">32</option>
+                    <option value="36">36</option>
+                    <option value="42">42</option>
+                  </select>
+                </label>
+              </div>
+              <label class="checkbox-row">
+                <input id="np-nps-center" type="checkbox" checked />
+                <span>Include center square</span>
+              </label>
+              <label class="checkbox-row">
+                <input id="np-nps-detrend" type="checkbox" />
+                <span>Plane detrend before FFT</span>
+              </label>
+              <label class="checkbox-row">
+                <input id="np-show-nps-labels" type="checkbox" />
+                <span>Show NPS square labels</span>
+              </label>
+              <button id="np-add-nps-set-circle-button" class="button tertiary wide" type="button">Add Circle To Same NPS Set</button>
+              <button id="np-generate-nps-button" class="button secondary wide" type="button">Generate Squares For Selected Circle</button>
+              <div id="np-nps-summary" class="analysis-summary compact-summary">
+                <p class="empty-copy">No NPS circle selected.</p>
+              </div>
+            </div>
+          </section>
+
+          <div class="sidebar-standalone-action" aria-label="Shared analysis actions">
+            <button id="np-copy-to-all-button" class="button secondary wide" type="button">Copy To All Recons</button>
+          </div>
+
+          <section class="sidebar-section">
+            <div class="section-header">
+              <div>
+                <h2>Selected Object</h2>
+                <p class="section-note" id="np-selection-note">Nothing selected</p>
+              </div>
+            </div>
+            <div class="section-body">
+              <div id="np-selection-detail" class="detail-shell">
+                <p class="empty-copy">Right-click an overlay or choose an item from the list.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="sidebar-section">
+            <div class="section-header">
+              <div>
+                <h2>Export</h2>
+                <p class="section-note">Copy geometry to all reconstructions, then export a reproducible ZIP.</p>
+              </div>
+            </div>
+            <div class="section-body">
+              <label class="number-field">
+                <span>Study / Research ID</span>
+                <input id="np-research-id" type="text" placeholder="phantom_noise_2026" />
+              </label>
+              <label class="number-field">
+                <span>Patient / Study ID</span>
+                <input id="np-patient-id" type="text" placeholder="case_001" />
+              </label>
+              <label class="number-field">
+                <span>Export Scope</span>
+                <select id="np-export-scope">
+                  <option value="all">All reconstructions</option>
+                  <option value="active">Selected reconstruction only</option>
+                </select>
+              </label>
+              <button id="np-export-button" class="button primary wide" type="button">Export Noise Power ZIP</button>
+              <button id="np-print-report-button" class="button secondary wide" type="button">Print PDF Report</button>
+            </div>
+          </section>
+        </aside>
+
+        <section class="viewport-shell shell-card">
+          <div class="workspace-page-tabs" role="tablist" aria-label="Noise Power workspace pages">
+            <button id="np-viewer-page-button" class="page-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="np-viewer-page">Viewer</button>
+            <button id="np-analysis-page-button" class="page-tab" type="button" role="tab" aria-selected="false" aria-controls="np-analysis-page">Analysis</button>
+          </div>
+
+          <section id="np-viewer-page" class="workspace-page viewer-page" role="tabpanel" aria-labelledby="np-viewer-page-button">
+            <div class="viewport-toolbar">
+              <div class="toolbar-group">
+                <button id="np-prev-slice" class="button tertiary" type="button">Prev</button>
+                <button id="np-next-slice" class="button tertiary" type="button">Next</button>
+              </div>
+              <div class="toolbar-sliders">
+                <label class="slider-field">
+                  <span>Slice</span>
+                  <input id="np-slice-slider" type="range" min="0" max="0" value="0" />
+                </label>
+                <label class="slider-field small">
+                  <span>WW</span>
+                  <input id="np-window-width" type="number" step="1" value="400" />
+                </label>
+                <label class="slider-field small">
+                  <span>WL</span>
+                  <input id="np-window-center" type="number" step="1" value="40" />
+                </label>
+              </div>
+              <div class="toolbar-readout" id="np-readout">Slice 1 / 1</div>
+            </div>
+
+            <div id="np-dropzone" class="viewport-stage">
+              <canvas id="np-canvas" width="1200" height="900"></canvas>
+              <div class="viewport-mini-actions">
+                <button id="np-fit-button" class="viewport-mini-button" type="button" title="Reset zoom and center">Fit</button>
+                <button id="np-reset-wl-button" class="viewport-mini-button" type="button" title="Reset window/level">WL</button>
+                <button id="np-dicom-toggle-button" class="viewport-mini-button" type="button" title="Toggle DICOM information">DICOM</button>
+                <button id="np-grid-toggle-button" class="viewport-mini-button grid-toggle" type="button" title="Toggle source-image grid overlay">Grid</button>
+              </div>
+              <div id="np-dicom-overlay" class="dicom-info-overlay" hidden></div>
+              <div id="np-overlay-note" class="overlay-note">Drop CT phantom DICOM files or folders here.</div>
+            </div>
+          </section>
+
+          <section id="np-analysis-page" class="workspace-page analysis-page" role="tabpanel" aria-labelledby="np-analysis-page-button" hidden>
+            <section class="analysis-panel">
+              <div class="analysis-header">
+                <div>
+                  <h2>Noise Analysis</h2>
+                  <p class="section-note" id="np-analysis-note">Place a square ROI or NPS circle to begin.</p>
+                </div>
+              </div>
+              <article class="analysis-card">
+                <div class="analysis-card-header">
+                  <div>
+                    <h3>Series Controls</h3>
+                    <p class="section-note">Rename curves, pick colors, and hide noisy overlays without changing the source data.</p>
+                  </div>
+                </div>
+                <div id="np-series-controls" class="series-controls">
+                  <p class="empty-copy">Generate or copy NPS circles to populate plot series.</p>
+                </div>
+              </article>
+              <div id="np-analysis-grid" class="analysis-grid">
+                <article id="np-ttf-profile-card" class="analysis-card">
+                  <div class="analysis-card-header">
+                    <div>
+                      <h3>TTF Square ROI Profiles</h3>
+                      <p class="section-note">Center profiles overlay matching TTF square ROIs across copied reconstructions.</p>
+                    </div>
+                  </div>
+                  <div id="np-profile-series-controls" class="series-controls profile-series-controls">
+                    <p class="empty-copy">Copy a TTF square ROI across reconstructions to compare profiles.</p>
+                  </div>
+                  <canvas id="np-profile-canvas" class="analysis-canvas" width="640" height="220"></canvas>
+                  <canvas id="np-histogram-canvas" class="analysis-canvas short" width="640" height="180"></canvas>
+                </article>
+                <article id="np-ttf-edge-card" class="analysis-card">
+                  <div class="analysis-card-header">
+                    <div>
+                      <h3>TTFxy Edge Response</h3>
+                      <p class="section-note">TTF square ROI must span an insert or material edge. Homogeneous noise ROIs are marked invalid.</p>
+                    </div>
+                  </div>
+                  <canvas id="np-ttf-esf-canvas" class="analysis-canvas short" width="640" height="180"></canvas>
+                  <canvas id="np-ttf-curve-canvas" class="analysis-canvas" width="640" height="220"></canvas>
+                </article>
+                <article id="np-nps-analysis-card" class="analysis-card nps-analysis-card">
+                  <div class="analysis-card-header">
+                    <div>
+                      <h3>NPS</h3>
+                      <p class="section-note">2D NPS, radial NPS, normalized NPS, and cumulative power.</p>
+                    </div>
+                  </div>
+                  <div id="np-nps-analysis-status" class="analysis-status-note">
+                    Select or generate a Noise Power circle to review NPS curves.
+                  </div>
+                  <div class="nps-canvas-grid">
+                    <canvas id="np-nps-heatmap-canvas" class="analysis-canvas square" width="320" height="320"></canvas>
+                    <canvas id="np-nps-curve-canvas" class="analysis-canvas" width="620" height="220"></canvas>
+                    <canvas id="np-nps-normalized-canvas" class="analysis-canvas" width="620" height="220"></canvas>
+                    <canvas id="np-nps-cumulative-canvas" class="analysis-canvas" width="620" height="220"></canvas>
+                  </div>
+                </article>
+              </div>
+              <article class="analysis-card comparison-card">
+                <div class="analysis-card-header">
+                  <div>
+                    <h3>Reconstruction Comparison</h3>
+                    <p class="section-note">Paper-oriented NPS and square ROI metrics across reconstructions.</p>
+                  </div>
+                </div>
+                <canvas id="np-comparison-canvas" class="analysis-canvas" width="980" height="260"></canvas>
+                <div id="np-comparison-table" class="comparison-table"></div>
+              </article>
+              <article class="analysis-card report-card">
+                <div class="analysis-card-header">
+                  <div>
+                    <h3>Paper Table</h3>
+                    <p class="section-note">Core values to report when comparing reconstruction kernels, strengths, or dose settings.</p>
+                  </div>
+                </div>
+                <div id="np-report-table" class="comparison-table report-table"></div>
+              </article>
+            </section>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <div id="np-context-menu" class="context-menu" hidden role="menu" aria-label="Noise Power object actions">
+      <button type="button" data-menu-action="rename">Rename</button>
+      <button type="button" data-menu-action="duplicate">Duplicate</button>
+      <button type="button" data-menu-action="copy">Copy To All Recons</button>
+      <button type="button" data-menu-action="generate-nps">Generate NPS Squares</button>
+      <button type="button" data-menu-action="delete">Delete</button>
+    </div>
+
+    <script src="/vendor/cornerstone.min.js"></script>
+    <script src="/vendor/dicomParser.min.js"></script>
+    <script src="/vendor/cornerstoneWADOImageLoaderNoWebWorkers.bundle.min.js"></script>
+    <script src="/src/shared/hagrad-core.js"></script>
+    <script src="/src/shared/hagrad-dicom.js"></script>
+    <script src="/src/shared/hagrad-zip.js"></script>
+    <script src="/src/noisepower/noisepower-core.js?v=20260520-overview-heatmaps"></script>
+    <script src="/src/noisepower/noisepower-export.js?v=20260520-overview-heatmaps"></script>
+    <script src="/src/noisepower/noisepower.js?v=20260520-overview-heatmaps"></script>
+  </body>
+</html>

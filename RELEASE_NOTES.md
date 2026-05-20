@@ -8,8 +8,11 @@ This release is intended to make HAGRad citable, downloadable, and testable by c
 
 ## Current Build Update
 
-This build refreshes the HAGRad Viewer workflow shell:
+This build refreshes the HAGRad Viewer workflow shell and adds new research tools:
 
+- Adds vessel profile and vascular diameter tools to the main HAGRad Viewer.
+- Adds blooming and stenosis diameter measurements for coronary research workflows.
+- Adds HAGRad Noise Power for CT phantom square ROI statistics, TTF metrics, circular NPS placement, multi-reconstruction NPS comparison, print-ready reporting, and reproducible ZIP export.
 - Adds a shared HAGRad workflow switcher across the main Viewer, Image Quality / CCTA IQ, EAT, and QCA pages.
 - Adds guard behavior before moving between workflows when a study appears to be open.
 - Tightens immersive focus-shell spacing across the viewer and companion workflows.
@@ -27,6 +30,7 @@ The downloadable release bundle includes the HAGRad local research suite, with t
 
 - HAGRad Viewer
 - HAGRad Image Quality / CCTA IQ
+- HAGRad Noise Power
 - HAGRad EAT Workflow
 - HAGRad QCA
 
@@ -47,7 +51,7 @@ On Windows:
 2. Double-click `HAGRad Viewer.exe`.
 3. HAGRad starts the bundled local server and opens the main viewer in your browser.
 
-The main HAGRad Viewer contains the workflow buttons for Image Quality / CCTA IQ, EAT, and QCA. The old per-workflow launchers are intentionally not included as public app entry points.
+The main HAGRad Viewer contains the workflow buttons for Image Quality / CCTA IQ, Noise Power, EAT, and QCA. The old per-workflow launchers are intentionally not included as public app entry points.
 
 ## Important Notes
 
