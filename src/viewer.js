@@ -4632,8 +4632,8 @@
   }
 
   function drawLabelChip(ctx, text, x, y, fill, options = {}) {
-    const offsetX = Number(options.annotation?.labelOffsetXpx) || 0;
-    const offsetY = Number(options.annotation?.labelOffsetYpx) || 0;
+    const offsetX = (Number(options.annotation?.labelOffsetXpx) || 0) + (Number(options.offsetX) || 0);
+    const offsetY = (Number(options.annotation?.labelOffsetYpx) || 0) + (Number(options.offsetY) || 0);
     if (overlayStyle?.drawLabel) {
       return overlayStyle.drawLabel(ctx, text, x, y, fill, {
         ...options,
@@ -4658,8 +4658,8 @@
   }
 
   function getLabelChipBounds(ctx, text, x, y, options = {}) {
-    const offsetX = Number(options.annotation?.labelOffsetXpx) || 0;
-    const offsetY = Number(options.annotation?.labelOffsetYpx) || 0;
+    const offsetX = (Number(options.annotation?.labelOffsetXpx) || 0) + (Number(options.offsetX) || 0);
+    const offsetY = (Number(options.annotation?.labelOffsetYpx) || 0) + (Number(options.offsetY) || 0);
     if (overlayStyle?.layoutLabel) {
       return overlayStyle.layoutLabel(ctx, text, x, y, {
         ...options,
@@ -4709,6 +4709,73 @@
     const projectionX = start.x + t * dx;
     const projectionY = start.y + t * dy;
     return Math.hypot(point.x - projectionX, point.y - projectionY);
+  }
+
+  function expandRect(rect, padding) {
+    return {
+      x: rect.x - padding,
+      y: rect.y - padding,
+      width: rect.width + padding * 2,
+      height: rect.height + padding * 2,
+    };
+  }
+
+  function rectsOverlap(a, b, padding = 0) {
+    const left = expandRect(a, padding);
+    const right = expandRect(b, padding);
+    return (
+      left.x < right.x + right.width &&
+      left.x + left.width > right.x &&
+      left.y < right.y + right.height &&
+      left.y + left.height > right.y
+    );
+  }
+
+  function pointInsideRect(point, rect) {
+    return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height;
+  }
+
+  function lineSegmentsIntersect(a, b, c, d) {
+    const direction = (p, q, r) => (r.x - p.x) * (q.y - p.y) - (q.x - p.x) * (r.y - p.y);
+    const onSegment = (p, q, r) =>
+      Math.min(p.x, q.x) <= r.x + 1e-6 &&
+      r.x <= Math.max(p.x, q.x) + 1e-6 &&
+      Math.min(p.y, q.y) <= r.y + 1e-6 &&
+      r.y <= Math.max(p.y, q.y) + 1e-6;
+
+    const d1 = direction(c, d, a);
+    const d2 = direction(c, d, b);
+    const d3 = direction(a, b, c);
+    const d4 = direction(a, b, d);
+
+    if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
+      return true;
+    }
+    return (
+      (Math.abs(d1) <= 1e-6 && onSegment(c, d, a)) ||
+      (Math.abs(d2) <= 1e-6 && onSegment(c, d, b)) ||
+      (Math.abs(d3) <= 1e-6 && onSegment(a, b, c)) ||
+      (Math.abs(d4) <= 1e-6 && onSegment(a, b, d))
+    );
+  }
+
+  function segmentIntersectsRect(start, end, rect, padding = 0) {
+    const expanded = expandRect(rect, padding);
+    if (pointInsideRect(start, expanded) || pointInsideRect(end, expanded)) {
+      return true;
+    }
+    const corners = [
+      { x: expanded.x, y: expanded.y },
+      { x: expanded.x + expanded.width, y: expanded.y },
+      { x: expanded.x + expanded.width, y: expanded.y + expanded.height },
+      { x: expanded.x, y: expanded.y + expanded.height },
+    ];
+    for (let index = 0; index < corners.length; index += 1) {
+      if (lineSegmentsIntersect(start, end, corners[index], corners[(index + 1) % corners.length])) {
+        return true;
+      }
+    }
+    return false;
   }
 
   function planePointToWorld(frame, xMm, yMm) {
@@ -6161,6 +6228,161 @@
     return getDiameterToolConfig(annotation?.type)?.label || "Diameter";
   }
 
+  function getCanvasVectorPair(start, end) {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.hypot(dx, dy);
+    if (!Number.isFinite(length) || length <= 1e-4) {
+      return {
+        tangent: { x: 1, y: 0 },
+        normal: { x: 0, y: -1 },
+      };
+    }
+    const tangent = { x: dx / length, y: dy / length };
+    return {
+      tangent,
+      normal: { x: -tangent.y, y: tangent.x },
+    };
+  }
+
+  function getBoundsCenter(bounds) {
+    return {
+      x: bounds.x + bounds.width / 2,
+      y: bounds.y + bounds.height / 2,
+    };
+  }
+
+  function getDiameterLabelCandidates(ctx, item, annotation) {
+    const baseBounds = getLabelChipBounds(ctx, item.text, item.anchor.x, item.anchor.y, {
+      annotation,
+      viewportWidth: ctx.canvas?.width,
+      viewportHeight: ctx.canvas?.height,
+    });
+    const baseCenter = getBoundsCenter(baseBounds);
+    const distances = item.kind === "summary" ? [48, 74, 100, 126, 152] : [36, 60, 84, 108, 132];
+    const shifts = item.kind === "summary" ? [0, 38, -38, 76, -76] : [0, 30, -30, 60, -60];
+    const preferredSide = item.preferredSide || -1;
+    const sides = [preferredSide, -preferredSide];
+    const candidates = [];
+
+    sides.forEach((side, sideIndex) => {
+      distances.forEach((distance, distanceIndex) => {
+        shifts.forEach((shift, shiftIndex) => {
+          const targetCenter = {
+            x: item.anchor.x + item.normal.x * side * distance + item.tangent.x * shift,
+            y: item.anchor.y + item.normal.y * side * distance + item.tangent.y * shift,
+          };
+          candidates.push({
+            offsetX: targetCenter.x - baseCenter.x,
+            offsetY: targetCenter.y - baseCenter.y,
+            rank: sideIndex * 200 + distanceIndex * 20 + shiftIndex,
+          });
+        });
+      });
+    });
+
+    candidates.push({ offsetX: 0, offsetY: 0, rank: 10000 });
+    return candidates;
+  }
+
+  function scoreDiameterLabelBounds(bounds, candidate, placedBounds, segments) {
+    let score = candidate.rank;
+    segments.forEach((segment) => {
+      if (segmentIntersectsRect(segment.start, segment.end, bounds, 8)) {
+        score += 100000;
+      } else {
+        const center = getBoundsCenter(bounds);
+        const distance = pointToSegmentDistancePx(center, segment.start, segment.end);
+        score += Math.max(0, 28 - distance) * 35;
+      }
+    });
+    placedBounds.forEach((placed) => {
+      if (rectsOverlap(bounds, placed, 5)) {
+        score += 100000;
+      }
+    });
+    return score;
+  }
+
+  function getDiameterLabelPlacements(ctx, annotation, reconstruction, frame, geometry, options = {}) {
+    const lines = getDiameterAnnotationLines(annotation).filter((line) => isDiameterLineVisible(annotation, line, frame));
+    const segments = lines.map((line) => ({
+      line,
+      start: projectWorldPointToCanvas(frame, geometry, line.worldPoints[0]),
+      end: projectWorldPointToCanvas(frame, geometry, line.worldPoints[1]),
+    }));
+    if (!segments.length) {
+      return [];
+    }
+
+    const groupCenter = segments.reduce(
+      (sum, segment) => ({
+        x: sum.x + (segment.start.x + segment.end.x) / 2,
+        y: sum.y + (segment.start.y + segment.end.y) / 2,
+      }),
+      { x: 0, y: 0 }
+    );
+    groupCenter.x /= segments.length;
+    groupCenter.y /= segments.length;
+
+    const items = segments.map((segment, index) => {
+      const vectors = getCanvasVectorPair(segment.start, segment.end);
+      const anchor = {
+        x: (segment.start.x + segment.end.x) / 2,
+        y: (segment.start.y + segment.end.y) / 2,
+      };
+      const relativeSide =
+        Math.sign((anchor.x - groupCenter.x) * vectors.normal.x + (anchor.y - groupCenter.y) * vectors.normal.y) ||
+        (index % 2 === 0 ? -1 : 1);
+      const lengthMm = getDiameterLineLengthMm(segment.line);
+      return {
+        kind: "line",
+        text: Number.isFinite(lengthMm)
+          ? `${segment.line.label} ${lengthMm.toFixed(1)} mm`
+          : segment.line.label,
+        anchor,
+        color: segment.line.color || getAnnotationAccentColor(annotation),
+        tangent: vectors.tangent,
+        normal: vectors.normal,
+        preferredSide: relativeSide,
+      };
+    });
+
+    if (reconstruction && !options.preview) {
+      const lastSegment = segments[segments.length - 1];
+      const vectors = getCanvasVectorPair(lastSegment.start, lastSegment.end);
+      items.push({
+        kind: "summary",
+        text: getMultiDiameterLabel(annotation),
+        anchor: groupCenter,
+        color: getAnnotationAccentColor(annotation),
+        tangent: vectors.tangent,
+        normal: vectors.normal,
+        preferredSide: -1,
+      });
+    }
+
+    const placedBounds = [];
+    return items.map((item) => {
+      let best = null;
+      getDiameterLabelCandidates(ctx, item, annotation).forEach((candidate) => {
+        const bounds = getLabelChipBounds(ctx, item.text, item.anchor.x, item.anchor.y, {
+          annotation,
+          offsetX: candidate.offsetX,
+          offsetY: candidate.offsetY,
+          viewportWidth: ctx.canvas?.width,
+          viewportHeight: ctx.canvas?.height,
+        });
+        const score = scoreDiameterLabelBounds(bounds, candidate, placedBounds, segments);
+        if (!best || score < best.score) {
+          best = { ...item, ...candidate, bounds, score };
+        }
+      });
+      placedBounds.push(best.bounds);
+      return best;
+    });
+  }
+
   function pointInPolygon(point, polygon) {
     let inside = false;
     for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index, index += 1) {
@@ -6427,25 +6649,36 @@
     };
 
     annotations.forEach((annotation) => {
-      const labelSpec = getAnnotationLabelSpec(annotation, reconstruction, frame, geometry);
-      if (labelSpec && viewportState.ctx) {
-        const bounds = getLabelChipBounds(
-          viewportState.ctx,
-          labelSpec.text,
-          labelSpec.anchor.x,
-          labelSpec.anchor.y,
-          { annotation }
-        );
-        const insideLabel =
-          planePoint.canvasX >= bounds.x &&
-          planePoint.canvasX <= bounds.x + bounds.width &&
-          planePoint.canvasY >= bounds.y &&
-          planePoint.canvasY <= bounds.y + bounds.height;
-        considerHit(
-          insideLabel
-            ? { annotation, mode: "label", priority: 0, distancePx: 0 }
-            : null
-        );
+      if (viewportState.ctx && isMultiDiameterAnnotationType(annotation.type)) {
+        getDiameterLabelPlacements(viewportState.ctx, annotation, reconstruction, frame, geometry).forEach((placement) => {
+          const insideLabel =
+            planePoint.canvasX >= placement.bounds.x &&
+            planePoint.canvasX <= placement.bounds.x + placement.bounds.width &&
+            planePoint.canvasY >= placement.bounds.y &&
+            planePoint.canvasY <= placement.bounds.y + placement.bounds.height;
+          considerHit(insideLabel ? { annotation, mode: "label", priority: 0, distancePx: 0 } : null);
+        });
+      } else {
+        const labelSpec = getAnnotationLabelSpec(annotation, reconstruction, frame, geometry);
+        if (labelSpec && viewportState.ctx) {
+          const bounds = getLabelChipBounds(
+            viewportState.ctx,
+            labelSpec.text,
+            labelSpec.anchor.x,
+            labelSpec.anchor.y,
+            { annotation }
+          );
+          const insideLabel =
+            planePoint.canvasX >= bounds.x &&
+            planePoint.canvasX <= bounds.x + bounds.width &&
+            planePoint.canvasY >= bounds.y &&
+            planePoint.canvasY <= bounds.y + bounds.height;
+          considerHit(
+            insideLabel
+              ? { annotation, mode: "label", priority: 0, distancePx: 0 }
+              : null
+          );
+        }
       }
 
       if (annotation.type === "probe" || annotation.type === "text") {
@@ -8150,29 +8383,17 @@
       ctx.lineTo(end.x, end.y);
       ctx.stroke();
       ctx.setLineDash([]);
-
-      const lengthMm = getDiameterLineLengthMm(line);
-      const midpoint = {
-        x: (start.x + end.x) / 2,
-        y: (start.y + end.y) / 2,
-      };
-      const label = Number.isFinite(lengthMm)
-        ? `${line.label} ${lengthMm.toFixed(1)} mm`
-        : line.label;
-      drawLabelChip(ctx, label, midpoint.x, midpoint.y, color, {
-        annotation,
-        selected: Boolean(annotation.id && annotation.id === state.selectedAnnotationId),
-      });
     });
     ctx.restore();
 
-    const label = reconstruction ? getAnnotationLabelSpec(annotation, reconstruction, frame, geometry) : null;
-    if (label) {
-      drawLabelChip(ctx, label.text, label.anchor.x, label.anchor.y, label.accent, {
+    getDiameterLabelPlacements(ctx, annotation, reconstruction, frame, geometry, options).forEach((placement) => {
+      drawLabelChip(ctx, placement.text, placement.anchor.x, placement.anchor.y, placement.color, {
         annotation,
         selected: Boolean(annotation.id && annotation.id === state.selectedAnnotationId),
+        offsetX: placement.offsetX,
+        offsetY: placement.offsetY,
       });
-    }
+    });
   }
 
   function drawDiameterDraftPreview(ctx, draft, frame, geometry) {
