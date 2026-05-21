@@ -203,13 +203,17 @@ def is_port_open() -> bool:
         return False
 
 
-def server_ready(scheme: str) -> bool:
+def url_available(scheme: str, path: str) -> bool:
     context = ssl._create_unverified_context()
     try:
-        with urllib.request.urlopen(url_for(scheme, HEALTH_PATH), timeout=2, context=context):
-            return True
+        with urllib.request.urlopen(url_for(scheme, path), timeout=2, context=context) as response:
+            return 200 <= response.status < 400
     except Exception:
         return False
+
+
+def server_ready(scheme: str) -> bool:
+    return url_available(scheme, HEALTH_PATH) and url_available(scheme, VIEWER_PATH)
 
 
 def ready_scheme(cert_root: Path) -> str | None:
