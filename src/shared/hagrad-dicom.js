@@ -25,6 +25,18 @@
     "1.2.840.10008.1.2",
     "1.2.840.10008.1.2.1",
   ]);
+  const DICOM_HEADER_READ_LIMITS = [
+    256 * 1024,
+    1024 * 1024,
+    4 * 1024 * 1024,
+    16 * 1024 * 1024,
+    Infinity,
+  ];
+  const DICOM_HEADER_PARSE_CONCURRENCY = Math.min(
+    8,
+    Math.max(3, Math.floor(((global.navigator && global.navigator.hardwareConcurrency) || 8) / 2))
+  );
+  const DICOM_HEADER_PROGRESS_INTERVAL = 50;
 
   function waitForUiYield() {
     if (typeof waitForAnimationFrame === "function") {
@@ -49,12 +61,26 @@
     return new Uint16Array(values || []);
   }
 
-  function parseDicomHeader(file) {
-    return file.arrayBuffer().then((buffer) => {
+  function readDicomHeaderBuffer(file, byteLimit) {
+    if (Number.isFinite(byteLimit) && file.size > byteLimit && typeof file.slice === "function") {
+      return file.slice(0, byteLimit).arrayBuffer();
+    }
+    return file.arrayBuffer();
+  }
+
+  async function parseDicomHeader(file) {
+    let lastError = null;
+    for (const byteLimit of DICOM_HEADER_READ_LIMITS) {
+      try {
+        const buffer = await readDicomHeaderBuffer(file, byteLimit);
       const byteArray = new Uint8Array(buffer);
       const dataSet = global.dicomParser.parseDicom(byteArray, { untilTag: "x7fe00010" });
       const imageOrientationPatient = parseNumericArray(dataSet.string("x00200037"));
       const pixelDataElement = dataSet.elements.x7fe00010 || dataSet.elements.x7fe00008;
+      const isPartialRead = Number.isFinite(byteLimit) && file.size > byteLimit;
+      if (!pixelDataElement && isPartialRead) {
+        continue;
+      }
 
       return {
         file,
@@ -110,19 +136,47 @@
         rescaleType: safeString(dataSet.string("x00281054")),
         hasPixelData: Boolean(pixelDataElement),
       };
-    });
+      } catch (error) {
+        lastError = error;
+        if (!Number.isFinite(byteLimit) || file.size <= byteLimit) {
+          break;
+        }
+      }
+    }
+    throw lastError || new Error("The DICOM header could not be parsed.");
   }
 
-  async function parseDicomFiles(files) {
-    const parsed = await Promise.all(
-      (files || []).map(async (file) => {
+  async function parseDicomFiles(files, options = {}) {
+    const sourceFiles = Array.from(files || []);
+    const parsed = new Array(sourceFiles.length);
+    const concurrency = Math.min(sourceFiles.length || 1, options.concurrency || DICOM_HEADER_PARSE_CONCURRENCY);
+    let nextIndex = 0;
+    let completed = 0;
+    let lastYieldAt = 0;
+    const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
+
+    async function worker() {
+      while (nextIndex < sourceFiles.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
         try {
-          return await parseDicomHeader(file);
+          parsed[currentIndex] = await parseDicomHeader(sourceFiles[currentIndex]);
         } catch (_error) {
-          return null;
+          parsed[currentIndex] = null;
+        } finally {
+          completed += 1;
+          if (onProgress && (completed === sourceFiles.length || completed % DICOM_HEADER_PROGRESS_INTERVAL === 0)) {
+            onProgress(completed, sourceFiles.length);
+          }
+          if (completed - lastYieldAt >= DICOM_HEADER_PROGRESS_INTERVAL) {
+            lastYieldAt = completed;
+            await waitForUiYield();
+          }
         }
-      })
-    );
+      }
+    }
+
+    await Promise.all(Array.from({ length: concurrency }, worker));
     return parsed.filter(Boolean);
   }
 

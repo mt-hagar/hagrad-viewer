@@ -1657,7 +1657,11 @@
       return;
     }
     setStatus(`Parsing ${list.length} DICOM file${list.length === 1 ? "" : "s"}...`);
-    const parsed = await dicomApi.parseDicomFiles(list);
+    const parsed = await dicomApi.parseDicomFiles(list, {
+      onProgress(done, total) {
+        setStatus(`Reading DICOM headers ${done} / ${total}...`);
+      },
+    });
     const candidates = dicomApi.buildSeriesCandidates(parsed);
     if (!candidates.length) {
       throw new Error("No image series with DICOM pixel data were found.");
