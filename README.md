@@ -54,8 +54,8 @@ For packaged macOS builds:
 
 For packaged Windows builds:
 
-1. Unzip `HAGRad-Viewer-Windows.zip`.
-2. Double-click `HAGRad Viewer.exe`.
+1. Right-click `HAGRad-Viewer-Windows.zip` and choose **Extract All**.
+2. Open the extracted folder, then double-click `HAGRad Viewer.exe`.
 3. First launch only: if Windows SmartScreen appears, choose More info, then Run anyway if you downloaded it from the official release page.
 4. The executable starts the bundled local server and opens HAGRad Viewer in the browser.
 

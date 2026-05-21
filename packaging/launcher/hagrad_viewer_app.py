@@ -136,6 +136,18 @@ def server_environment(root: Path, dirs: dict[str, Path]) -> dict[str, str]:
     return env
 
 
+def child_server_environment(root: Path, dirs: dict[str, Path]) -> dict[str, str]:
+    env = server_environment(root, dirs)
+
+    if os.name == "nt" and getattr(sys, "frozen", False) and getattr(sys, "_MEIPASS", None):
+        # A Windows one-file build extracts again for the --server child. Let the
+        # child use its own live extraction dir instead of the launcher's temp dir.
+        for key in ["HAGRAD_RUNTIME_ROOT", "HAGRAD_APP_ROOT", "HAGRAD_ROOT"]:
+            env.pop(key, None)
+
+    return env
+
+
 def launcher_log_path(dirs: dict[str, Path]) -> Path:
     return dirs["log_root"] / "hagrad-launcher.log"
 
@@ -274,7 +286,7 @@ def run_server_mode() -> int:
 def run_launcher() -> int:
     root = runtime_root()
     dirs = platform_dirs()
-    env = server_environment(root, dirs)
+    env = child_server_environment(root, dirs)
     launch_log = launcher_log_path(dirs)
 
     append_log(launch_log, "")

@@ -22,7 +22,7 @@ Preferred packaged build:
 HAGRad Viewer.exe
 ```
 
-It is distributed inside `HAGRad-Viewer-Windows.zip`. The executable starts the local server internally and opens HAGRad Viewer in your browser. Python and OpenSSL are not required for normal packaged use.
+It is distributed inside `HAGRad-Viewer-Windows.zip`. Right-click the zip and choose **Extract All**, then open the extracted folder and double-click `HAGRad Viewer.exe`. The executable starts the local server internally and opens HAGRad Viewer in your browser. Python and OpenSSL are not required for normal packaged use.
 
 Legacy source packages may still include `open-viewer-windows.bat`. That batch path is for developer/source workflows.
 
