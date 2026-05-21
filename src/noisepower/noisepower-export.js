@@ -997,6 +997,12 @@
     return `${sanitizeFilePart(token, "series")}_${baseName}`;
   }
 
+  function npsModelFigureToken(model, index) {
+    const seriesToken = seriesTokenForDataset(model?.dataset, `series_${index + 1}`);
+    const circleToken = sanitizeFilePart(model?.circle?.label || model?.circle?.id || `nps_set_${index + 1}`, `nps_set_${index + 1}`);
+    return `${seriesToken}_${circleToken}`;
+  }
+
   async function createNoisePowerPngFiles(options) {
     const files = [];
     const datasets = options.datasets || [];
@@ -1125,16 +1131,36 @@
     const firstModel = models[0] || null;
     const firstModelToken = seriesTokenForDataset(firstModel?.dataset, "nps_series");
     const modelSetToken = seriesTokenForModels(models);
-    files.push(
-      await createCanvasFile(namedFigure("nps_2d_heatmap.png", firstModelToken), 680, 680, (ctx, size) =>
-        drawNpsHeatmap(ctx, {
-          width: size.width,
-          height: size.height,
-          title: firstModel ? `${firstModel.circle.label} 2D NPS` : "2D NPS",
-          analysis: firstModel?.analysis,
-        })
-      )
-    );
+    const sharedNpsHeatmapColorMax = overviewHeatmapColorMax(models);
+    if (models.length) {
+      for (const [index, model] of models.entries()) {
+        const token = npsModelFigureToken(model, index);
+        const seriesNumber = seriesNumberForDataset(model.dataset);
+        const titlePrefix = seriesNumber ? `S${seriesNumber} · ` : "";
+        files.push(
+          await createCanvasFile(namedFigure("nps_2d_heatmap.png", token), 720, 720, (ctx, size) =>
+            drawNpsHeatmap(ctx, {
+              width: size.width,
+              height: size.height,
+              title: `${titlePrefix}${datasetLabel(model.dataset, model.datasetIndex)} · ${model.circle?.label || "NPS Set"} 2D NPS`,
+              analysis: model.analysis,
+              colorMax: sharedNpsHeatmapColorMax,
+            })
+          )
+        );
+      }
+    } else {
+      files.push(
+        await createCanvasFile(namedFigure("nps_2d_heatmap.png", firstModelToken), 680, 680, (ctx, size) =>
+          drawNpsHeatmap(ctx, {
+            width: size.width,
+            height: size.height,
+            title: "2D NPS",
+            analysis: null,
+          })
+        )
+      );
+    }
     files.push(
       await createCanvasFile(namedFigure("nps_1d_comparison_plot.png", modelSetToken), 980, 420, (ctx, size) =>
         drawLineSeries(ctx, {

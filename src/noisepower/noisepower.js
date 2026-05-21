@@ -75,6 +75,7 @@
     circleSequence: 1,
     npsSequence: 1,
     dragging: null,
+    seriesOrderDrag: null,
     circleDraft: null,
     pendingNpsSetRootId: "",
     suppressContextMenuUntil: 0,
@@ -2555,13 +2556,24 @@
     mirrorReconstructionPrefToSeries(datasetId);
   }
 
-  function syncReconstructionPrefsFromMap(prefs) {
-    Object.entries(prefs || {}).forEach(([key, pref]) => {
+  function syncReconstructionPrefsForModels(models, prefs, keyFn) {
+    const syncedDatasetIds = new Set();
+    sortModelsByPrefs(models, prefs, keyFn).forEach((model, index) => {
+      const key = keyFn(model);
+      if (!prefs[key]) {
+        return;
+      }
+      prefs[key].order = index;
+      const datasetId = datasetIdFromSeriesKey(key);
+      if (!datasetId || syncedDatasetIds.has(datasetId)) {
+        return;
+      }
+      syncedDatasetIds.add(datasetId);
       syncReconstructionPrefFromSeriesKey(key, {
-        label: pref.label,
-        color: pref.color,
-        visible: pref.visible !== false,
-        order: pref.order,
+        label: prefs[key].label,
+        color: prefs[key].color,
+        visible: prefs[key].visible !== false,
+        order: prefs[key].order,
       });
     });
   }
@@ -2655,22 +2667,114 @@
     return orderedKeys.find((key) => prefs[key]?.visible !== false) || orderedKeys[0] || "";
   }
 
-  function bindSeriesOrderControls(row, handle, models, prefs, keyFn, key, onMoved) {
-    const move = (delta) => {
+  function getSeriesControlRows(container, rowSelector) {
+    return Array.from(container?.querySelectorAll(rowSelector) || []);
+  }
+
+  function getSeriesDragAfterRow(container, rowSelector, clientY) {
+    return getSeriesControlRows(container, rowSelector)
+      .filter((row) => !row.classList.contains("is-dragging"))
+      .reduce(
+        (closest, row) => {
+          const box = row.getBoundingClientRect();
+          const offset = clientY - box.top - box.height / 2;
+          return offset < 0 && offset > closest.offset ? { offset, row } : closest;
+        },
+        { offset: Number.NEGATIVE_INFINITY, row: null }
+      ).row;
+  }
+
+  function syncSeriesOrderFromDom(container, rowSelector, datasetKeyName, models, prefs, keyFn, onMoved) {
+    const modelKeys = new Set((models || []).map(keyFn));
+    const orderedKeys = getSeriesControlRows(container, rowSelector)
+      .map((row) => safeString(row.dataset[datasetKeyName]))
+      .filter((key) => key && modelKeys.has(key));
+    if (!orderedKeys.length || orderedKeys.length !== modelKeys.size) {
+      return false;
+    }
+    let changed = false;
+    orderedKeys.forEach((key, index) => {
+      prefs[key] = prefs[key] || {};
+      changed = changed || prefs[key].order !== index;
+      prefs[key].order = index;
+    });
+    if (changed) {
+      syncReconstructionPrefsForModels(models, prefs, keyFn);
+      onMoved();
+    }
+    return changed;
+  }
+
+  function bindSeriesListOrderControls(container, rowSelector, datasetKeyName, models, prefs, keyFn, onMoved) {
+    const rows = getSeriesControlRows(container, rowSelector);
+    container._noisePowerSeriesOrderBinding = { rowSelector, datasetKeyName, models, prefs, keyFn, onMoved };
+    const move = (key, delta) => {
       if (moveSeriesByDelta(models, prefs, keyFn, key, delta)) {
-        syncReconstructionPrefsFromMap(prefs);
+        syncReconstructionPrefsForModels(models, prefs, keyFn);
         onMoved();
       }
     };
-    row.querySelector("[data-series-move='up']")?.addEventListener("click", () => move(-1));
-    row.querySelector("[data-series-move='down']")?.addEventListener("click", () => move(1));
-    handle.addEventListener("keydown", (event) => {
-      const direction = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
-      if (!direction) {
+    rows.forEach((row) => {
+      const key = safeString(row.dataset[datasetKeyName]);
+      const handle = row.querySelector(".series-sequence");
+      row.querySelector("[data-series-move='up']")?.addEventListener("click", () => move(key, -1));
+      row.querySelector("[data-series-move='down']")?.addEventListener("click", () => move(key, 1));
+      if (!handle) {
+        return;
+      }
+      handle.setAttribute("draggable", "true");
+      handle.title = "Drag to reorder, or use arrow keys";
+      handle.addEventListener("keydown", (event) => {
+        const direction = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+        if (!direction) {
+          return;
+        }
+        event.preventDefault();
+        move(key, direction);
+      });
+      handle.addEventListener("dragstart", (event) => {
+        state.seriesOrderDrag = { key, rowSelector, datasetKeyName };
+        row.classList.add("is-dragging");
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", key);
+      });
+      handle.addEventListener("dragend", () => {
+        rows.forEach((entry) => entry.classList.remove("is-dragging"));
+        state.seriesOrderDrag = null;
+      });
+    });
+    if (container._noisePowerSeriesOrderInstalled) {
+      return;
+    }
+    container._noisePowerSeriesOrderInstalled = true;
+    container.addEventListener("dragover", (event) => {
+      const binding = container._noisePowerSeriesOrderBinding;
+      if (!binding || !state.seriesOrderDrag || state.seriesOrderDrag.rowSelector !== binding.rowSelector) {
+        return;
+      }
+      const currentRows = getSeriesControlRows(container, binding.rowSelector);
+      const draggingRow = currentRows.find((row) => safeString(row.dataset[binding.datasetKeyName]) === state.seriesOrderDrag.key);
+      if (!draggingRow) {
         return;
       }
       event.preventDefault();
-      move(direction);
+      event.dataTransfer.dropEffect = "move";
+      const afterRow = getSeriesDragAfterRow(container, binding.rowSelector, event.clientY);
+      if (!afterRow) {
+        container.appendChild(draggingRow);
+      } else if (afterRow !== draggingRow) {
+        container.insertBefore(draggingRow, afterRow);
+      }
+    });
+    container.addEventListener("drop", (event) => {
+      const binding = container._noisePowerSeriesOrderBinding;
+      if (!binding || !state.seriesOrderDrag || state.seriesOrderDrag.rowSelector !== binding.rowSelector) {
+        return;
+      }
+      event.preventDefault();
+      syncSeriesOrderFromDom(container, binding.rowSelector, binding.datasetKeyName, binding.models, binding.prefs, binding.keyFn, binding.onMoved);
+      getSeriesControlRows(container, binding.rowSelector).forEach((row) => row.classList.remove("is-dragging"));
+      state.seriesOrderDrag = null;
     });
   }
 
@@ -2759,15 +2863,20 @@
           `;
         })
         .join("");
+      bindSeriesListOrderControls(
+        els.seriesControls,
+        ".series-control-row[data-series-key]",
+        "seriesKey",
+        safeModels,
+        state.seriesPrefs,
+        modelSeriesKey,
+        scheduleAnalysisRefresh
+      );
       els.seriesControls.querySelectorAll("[data-series-key]").forEach((row) => {
         const key = row.dataset.seriesKey;
         const visible = row.querySelector(".np-series-visible");
         const reference = row.querySelector(".np-series-reference");
         const label = row.querySelector(".np-series-label");
-        const handle = row.querySelector(".series-sequence");
-        if (handle) {
-          bindSeriesOrderControls(row, handle, safeModels, state.seriesPrefs, modelSeriesKey, key, scheduleAnalysisRefresh);
-        }
         visible?.addEventListener("change", () => {
           state.seriesPrefs[key] = state.seriesPrefs[key] || {};
           state.seriesPrefs[key].visible = visible.checked;
@@ -2971,15 +3080,20 @@
           `;
         })
         .join("");
+      bindSeriesListOrderControls(
+        els.profileSeriesControls,
+        ".series-control-row[data-profile-series-key]",
+        "profileSeriesKey",
+        safeModels,
+        state.squareProfilePrefs,
+        squareProfileSeriesKey,
+        scheduleAnalysisRefresh
+      );
       els.profileSeriesControls.querySelectorAll("[data-profile-series-key]").forEach((row) => {
         const key = row.dataset.profileSeriesKey;
         const visible = row.querySelector(".np-profile-visible");
         const reference = row.querySelector(".np-profile-reference");
         const label = row.querySelector(".np-profile-label");
-        const handle = row.querySelector(".series-sequence");
-        if (handle) {
-          bindSeriesOrderControls(row, handle, safeModels, state.squareProfilePrefs, squareProfileSeriesKey, key, scheduleAnalysisRefresh);
-        }
         visible?.addEventListener("change", () => {
           state.squareProfilePrefs[key] = state.squareProfilePrefs[key] || {};
           state.squareProfilePrefs[key].visible = visible.checked;

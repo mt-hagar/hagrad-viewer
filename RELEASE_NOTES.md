@@ -13,6 +13,8 @@ This build refreshes the HAGRad Viewer workflow shell and adds new research tool
 - Adds vessel profile and vascular diameter tools to the main HAGRad Viewer.
 - Adds blooming and stenosis diameter measurements for coronary research workflows.
 - Adds HAGRad Noise Power for CT phantom square ROI statistics, TTF metrics, circular NPS placement, multi-reconstruction NPS comparison, print-ready reporting, and reproducible ZIP export.
+- Improves HAGRad Noise Power reconstruction ordering with drag handles and synchronized display/export order.
+- Exports per-reconstruction 2D NPS heatmaps with shared color scaling and clearer figure names.
 - Adds a shared HAGRad workflow switcher across the main Viewer, Image Quality / CCTA IQ, EAT, and QCA pages.
 - Adds guard behavior before moving between workflows when a study appears to be open.
 - Tightens immersive focus-shell spacing across the viewer and companion workflows.

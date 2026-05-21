@@ -1044,6 +1044,20 @@ input[type="file"] {
   text-transform: uppercase;
 }
 
+.series-sequence[draggable="true"] {
+  cursor: grab;
+}
+
+.series-sequence[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.series-control-row.is-dragging {
+  opacity: 0.46;
+  outline: 1px dashed rgba(240, 197, 114, 0.62);
+  outline-offset: 2px;
+}
+
 .series-order-button {
   min-height: 18px;
   padding: 0 4px;

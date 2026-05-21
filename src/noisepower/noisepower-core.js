@@ -2421,7 +2421,7 @@ Files
   - NPS Metrics: one row per reconstruction and NPS circle or pooled circle set with noise magnitude and texture metrics.
 - nps_2d_matrix.json: 2D absolute and normalized NPS matrices plus metadata needed to reproduce radial curves.
 - analysis_metadata.json: DICOM metadata, app version, export timestamp, units, formulas, and warning definitions.
-- PNG figures: all-reconstructions ROI/metric overview panel, source overlay, ROI profile, ROI histogram, 2D NPS heatmap, absolute/normalized/cumulative comparison curves, and combined panel.
+- PNG figures: all-reconstructions ROI/metric overview panel, source overlay, ROI profile, ROI histogram, per-reconstruction 2D NPS heatmaps, absolute/normalized/cumulative comparison curves, and combined panel.
 
 Reconstruction identifiers
 Workbook sheets and JSON matrices include reconstruction, reconstruction_label, reconstruction_index, and DICOM series_number. PNG and ZIP names include DICOM series numbers when available.
