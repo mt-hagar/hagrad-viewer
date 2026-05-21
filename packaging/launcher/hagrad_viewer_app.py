@@ -28,9 +28,23 @@ from pathlib import Path
 
 
 APP_NAME = "HAGRad Viewer"
-PORT = 3020
+DEFAULT_PORT = 3020
+PORT_CANDIDATES = tuple(range(DEFAULT_PORT, DEFAULT_PORT + 6))
 HEALTH_PATH = "/api/export-studies"
 VIEWER_PATH = "/src/viewer.html"
+RUNTIME_COPY_ITEMS = (
+    "src",
+    "vendor",
+    "assets",
+    "scripts",
+    "README.md",
+    "DISCLAIMER.md",
+    "LICENSE",
+    "LICENSE.md",
+    "CITATION.cff",
+    "RELEASE_NOTES.md",
+    "help.html",
+)
 
 
 def is_truthy(value: str | None) -> bool:
@@ -117,7 +131,7 @@ def has_https_cert(cert_root: Path) -> bool:
     return (cert_root / "localhost.pem").exists() and (cert_root / "localhost-key.pem").exists()
 
 
-def server_environment(root: Path, dirs: dict[str, Path]) -> dict[str, str]:
+def server_environment(root: Path, dirs: dict[str, Path], port: int = DEFAULT_PORT) -> dict[str, str]:
     env = os.environ.copy()
     env.update(
         {
@@ -128,6 +142,7 @@ def server_environment(root: Path, dirs: dict[str, Path]) -> dict[str, str]:
             "HAGRAD_CERT_DIR": str(dirs["cert_root"]),
             "HAGRAD_BACKEND_ROOT": str(dirs["backend_root"]),
             "HAGRAD_TRAINING_ROOT": str(dirs["training_root"]),
+            "HAGRAD_PORT": str(port),
             "PYTHONUNBUFFERED": "1",
         }
     )
@@ -136,16 +151,45 @@ def server_environment(root: Path, dirs: dict[str, Path]) -> dict[str, str]:
     return env
 
 
-def child_server_environment(root: Path, dirs: dict[str, Path]) -> dict[str, str]:
-    env = server_environment(root, dirs)
+def same_path(left: Path, right: str | Path) -> bool:
+    try:
+        return left.resolve() == Path(right).resolve()
+    except Exception:
+        return str(left) == str(right)
 
-    if os.name == "nt" and getattr(sys, "frozen", False) and getattr(sys, "_MEIPASS", None):
+
+def child_server_environment(root: Path, dirs: dict[str, Path], port: int = DEFAULT_PORT) -> dict[str, str]:
+    env = server_environment(root, dirs, port=port)
+
+    meipass = getattr(sys, "_MEIPASS", None)
+    if os.name == "nt" and getattr(sys, "frozen", False) and meipass and same_path(root, meipass):
         # A Windows one-file build extracts again for the --server child. Let the
         # child use its own live extraction dir instead of the launcher's temp dir.
         for key in ["HAGRAD_RUNTIME_ROOT", "HAGRAD_APP_ROOT", "HAGRAD_ROOT"]:
             env.pop(key, None)
 
     return env
+
+
+def durable_runtime_root(root: Path, dirs: dict[str, Path]) -> Path:
+    if os.name != "nt" or not getattr(sys, "frozen", False) or not getattr(sys, "_MEIPASS", None):
+        return root
+
+    target = dirs["state_root"] / f"runtime-{int(time.time())}-{os.getpid()}"
+    target.mkdir(parents=True, exist_ok=True)
+    for item_name in RUNTIME_COPY_ITEMS:
+        source = root / item_name
+        if not source.exists():
+            continue
+        destination = target / item_name
+        if source.is_dir():
+            shutil.copytree(source, destination, dirs_exist_ok=True)
+        else:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+    if not is_runtime_root(target):
+        raise FileNotFoundError(f"Durable HAGRad runtime copy is incomplete: {target}")
+    return target
 
 
 def launcher_log_path(dirs: dict[str, Path]) -> Path:
@@ -185,8 +229,8 @@ def show_error(title: str, message: str) -> None:
     print(f"{title}: {message}", file=sys.stderr)
 
 
-def url_for(scheme: str, path: str) -> str:
-    return f"{scheme}://localhost:{PORT}{path}"
+def url_for(scheme: str, path: str, port: int = DEFAULT_PORT) -> str:
+    return f"{scheme}://localhost:{port}{path}"
 
 
 def candidate_schemes(cert_root: Path) -> list[str]:
@@ -195,30 +239,30 @@ def candidate_schemes(cert_root: Path) -> list[str]:
     return [preferred, alternate]
 
 
-def is_port_open() -> bool:
+def is_port_open(port: int = DEFAULT_PORT) -> bool:
     try:
-        with socket.create_connection(("127.0.0.1", PORT), timeout=0.5):
+        with socket.create_connection(("127.0.0.1", port), timeout=0.5):
             return True
     except OSError:
         return False
 
 
-def url_available(scheme: str, path: str) -> bool:
+def url_available(scheme: str, path: str, port: int = DEFAULT_PORT) -> bool:
     context = ssl._create_unverified_context()
     try:
-        with urllib.request.urlopen(url_for(scheme, path), timeout=2, context=context) as response:
+        with urllib.request.urlopen(url_for(scheme, path, port=port), timeout=2, context=context) as response:
             return 200 <= response.status < 400
     except Exception:
         return False
 
 
-def server_ready(scheme: str) -> bool:
-    return url_available(scheme, HEALTH_PATH) and url_available(scheme, VIEWER_PATH)
+def server_ready(scheme: str, port: int = DEFAULT_PORT) -> bool:
+    return url_available(scheme, HEALTH_PATH, port=port) and url_available(scheme, VIEWER_PATH, port=port)
 
 
-def ready_scheme(cert_root: Path) -> str | None:
+def ready_scheme(cert_root: Path, port: int = DEFAULT_PORT) -> str | None:
     for scheme in candidate_schemes(cert_root):
-        if server_ready(scheme):
+        if server_ready(scheme, port=port):
             return scheme
     return None
 
@@ -237,10 +281,10 @@ def popen_flags() -> int:
     return flags
 
 
-def start_server(root: Path, dirs: dict[str, Path], env: dict[str, str]) -> subprocess.Popen[bytes]:
+def start_server(root: Path, dirs: dict[str, Path], env: dict[str, str], port: int = DEFAULT_PORT) -> subprocess.Popen[bytes]:
     log_path = server_log_path(dirs)
     append_log(log_path, "")
-    append_log(log_path, f"{APP_NAME} server start")
+    append_log(log_path, f"{APP_NAME} server start on port {port}")
     append_log(log_path, f"Runtime root: {root}")
     append_log(log_path, f"State root: {dirs['state_root']}")
     append_log(log_path, f"Exports root: {dirs['exports_root']}")
@@ -261,10 +305,15 @@ def start_server(root: Path, dirs: dict[str, Path], env: dict[str, str]) -> subp
         log_handle.close()
 
 
-def wait_for_ready(cert_root: Path, process: subprocess.Popen[bytes] | None, seconds: int = 45) -> str | None:
+def wait_for_ready(
+    cert_root: Path,
+    process: subprocess.Popen[bytes] | None,
+    port: int = DEFAULT_PORT,
+    seconds: int = 45,
+) -> str | None:
     deadline = time.time() + seconds
     while time.time() < deadline:
-        scheme = ready_scheme(cert_root)
+        scheme = ready_scheme(cert_root, port=port)
         if scheme:
             return scheme
         if process is not None and process.poll() is not None:
@@ -273,14 +322,15 @@ def wait_for_ready(cert_root: Path, process: subprocess.Popen[bytes] | None, sec
     return None
 
 
-def open_viewer(scheme: str) -> None:
-    webbrowser.open(url_for(scheme, VIEWER_PATH))
+def open_viewer(scheme: str, port: int = DEFAULT_PORT) -> None:
+    webbrowser.open(url_for(scheme, VIEWER_PATH, port=port))
 
 
 def run_server_mode() -> int:
     root = runtime_root()
     dirs = platform_dirs()
-    env = server_environment(root, dirs)
+    port = int(os.environ.get("HAGRAD_PORT") or str(DEFAULT_PORT))
+    env = server_environment(root, dirs, port=port)
     os.environ.update(env)
     os.chdir(root)
     runpy.run_path(str(root / "scripts" / "serve_https.py"), run_name="__main__")
@@ -290,47 +340,63 @@ def run_server_mode() -> int:
 def run_launcher() -> int:
     root = runtime_root()
     dirs = platform_dirs()
-    env = child_server_environment(root, dirs)
     launch_log = launcher_log_path(dirs)
 
     append_log(launch_log, "")
     append_log(launch_log, f"{APP_NAME} launch")
-    append_log(launch_log, f"Runtime root: {root}")
+    append_log(launch_log, f"Bundled runtime root: {root}")
     append_log(launch_log, f"State root: {dirs['state_root']}")
     append_log(launch_log, f"Exports root: {dirs['exports_root']}")
     append_log(launch_log, f"Server log: {server_log_path(dirs)}")
 
-    scheme = ready_scheme(dirs["cert_root"])
-    if scheme:
-        append_log(launch_log, f"Existing server is ready at {url_for(scheme, VIEWER_PATH)}")
-        open_viewer(scheme)
-        return 0
+    for port in PORT_CANDIDATES:
+        scheme = ready_scheme(dirs["cert_root"], port=port)
+        if scheme:
+            append_log(launch_log, f"Existing server is ready at {url_for(scheme, VIEWER_PATH, port=port)}")
+            open_viewer(scheme, port=port)
+            return 0
 
-    if is_port_open():
-        message = (
-            "Something is already using localhost port 3020, but it did not answer like HAGRad.\n\n"
-            "Close the other local server using port 3020, then open HAGRad Viewer again.\n\n"
-            f"Launcher log:\n{launch_log}"
+    root = durable_runtime_root(root, dirs)
+    append_log(launch_log, f"Server runtime root: {root}")
+
+    blocked_ports: list[int] = []
+    for port in PORT_CANDIDATES:
+        if is_port_open(port):
+            blocked_ports.append(port)
+            append_log(launch_log, f"Port {port} is occupied but did not pass HAGRad readiness checks.")
+            continue
+
+        env = child_server_environment(root, dirs, port=port)
+        process = start_server(root, dirs, env, port=port)
+        scheme = wait_for_ready(dirs["cert_root"], process, port=port)
+        if scheme:
+            append_log(launch_log, f"Server became ready at {url_for(scheme, VIEWER_PATH, port=port)}")
+            open_viewer(scheme, port=port)
+            return 0
+
+        exit_code = process.poll()
+        detail = (
+            f"The local server on port {port} exited with code {exit_code}."
+            if exit_code is not None
+            else f"The local server on port {port} did not become ready in time."
         )
-        append_log(launch_log, "ERROR: Port 3020 is open, but HAGRad health checks failed.")
+        append_log(launch_log, f"ERROR: {detail}")
+        message = (
+            f"{detail}\n\n"
+            "HAGRad Viewer could not finish starting. No DICOM files were uploaded or sent anywhere.\n\n"
+            f"Launcher log:\n{launch_log}\n\n"
+            f"Server log:\n{server_log_path(dirs)}"
+        )
         show_error(APP_NAME, message)
         return 1
 
-    process = start_server(root, dirs, env)
-    scheme = wait_for_ready(dirs["cert_root"], process)
-    if scheme:
-        append_log(launch_log, f"Server became ready at {url_for(scheme, VIEWER_PATH)}")
-        open_viewer(scheme)
-        return 0
-
-    exit_code = process.poll()
-    detail = f"The local server exited with code {exit_code}." if exit_code is not None else "The local server did not become ready in time."
+    ports = ", ".join(str(port) for port in blocked_ports)
+    detail = f"Local ports {ports} are already in use, but none answered like HAGRad."
     append_log(launch_log, f"ERROR: {detail}")
     message = (
         f"{detail}\n\n"
-        "HAGRad Viewer could not finish starting. No DICOM files were uploaded or sent anywhere.\n\n"
-        f"Launcher log:\n{launch_log}\n\n"
-        f"Server log:\n{server_log_path(dirs)}"
+        "Close old HAGRad browser/server windows or restart Windows, then open HAGRad Viewer again.\n\n"
+        f"Launcher log:\n{launch_log}"
     )
     show_error(APP_NAME, message)
     return 1

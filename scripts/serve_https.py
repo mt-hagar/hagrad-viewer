@@ -49,7 +49,7 @@ STATE_ROOT = resolve_path_env("HAGRAD_STATE_ROOT", ROOT)
 CERT_DIR = resolve_path_env("HAGRAD_CERT_DIR", ROOT / ".cert")
 CERT_FILE = CERT_DIR / "localhost.pem"
 KEY_FILE = CERT_DIR / "localhost-key.pem"
-PORT = 3020
+PORT = int(os.environ.get("HAGRAD_PORT") or "3020")
 
 BACKEND_ROOT = resolve_path_env(
     "HAGRAD_BACKEND_ROOT",
