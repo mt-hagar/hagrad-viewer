@@ -685,7 +685,7 @@
       id: "custom_blank",
       label: "Model 6: Custom blank",
       shortLabel: "Custom",
-      description: "A blank objective protocol with no predefined ROI targets or computed metric groups.",
+      description: "A blank objective protocol with no predefined ROI targets. Signal, background, noise, SNR, and CNR outputs are generated from custom targets.",
       helpText: "Start from zero when your study needs a fully custom signal, background, noise, SNR, and CNR definition.",
       summaryKind: "custom",
       defaultTargets: DEFAULT_IQ_ROI_TARGETS_CUSTOM,
@@ -923,17 +923,10 @@
     if (model.summaryKind === "custom") {
       return {
         ...BASE_IQ_OBJECTIVE_METRIC_RULES,
-        signalEnabled: false,
-        backgroundEnabled: false,
-        noiseEnabled: false,
-        snrEnabled: false,
-        cnrEnabled: false,
-        totalEnabled: false,
         perVesselEnabled: false,
         proximalEnabled: false,
         distalEnabled: false,
         customGroupEnabled: false,
-        backgroundSource: "none",
         formulaMetrics: [],
       };
     }
@@ -944,19 +937,33 @@
     const defaults = getDefaultIqMetricRulesForModel(modelId);
     const allowedBackgroundSources = new Set(["all_background", "none"]);
     const allowedNoiseSources = new Set(["all_noise", "signal_sd"]);
-    const backgroundSource = cleanIqTargetString(rules?.backgroundSource) || defaults.backgroundSource;
+    let backgroundSource = cleanIqTargetString(rules?.backgroundSource) || defaults.backgroundSource;
     const noiseSource = cleanIqTargetString(rules?.noiseSource) || defaults.noiseSource;
+    const cnrEnabled = rules?.cnrEnabled ?? defaults.cnrEnabled;
+    const snrEnabled = rules?.snrEnabled ?? defaults.snrEnabled;
+    const signalEnabled = rules?.signalEnabled ?? defaults.signalEnabled;
+    let totalEnabled = rules?.totalEnabled ?? defaults.totalEnabled;
+    const perVesselEnabled = rules?.perVesselEnabled ?? defaults.perVesselEnabled;
+    const proximalEnabled = rules?.proximalEnabled ?? defaults.proximalEnabled;
+    const distalEnabled = rules?.distalEnabled ?? defaults.distalEnabled;
+    const customGroupEnabled = Boolean(rules?.customGroupEnabled ?? defaults.customGroupEnabled);
+    if ((signalEnabled || snrEnabled || cnrEnabled) && !totalEnabled && !perVesselEnabled && !proximalEnabled && !distalEnabled && !customGroupEnabled) {
+      totalEnabled = true;
+    }
+    if (cnrEnabled && backgroundSource === "none") {
+      backgroundSource = defaults.backgroundSource !== "none" ? defaults.backgroundSource : "all_background";
+    }
     return {
-      signalEnabled: rules?.signalEnabled ?? defaults.signalEnabled,
+      signalEnabled,
       backgroundEnabled: rules?.backgroundEnabled ?? defaults.backgroundEnabled,
       noiseEnabled: rules?.noiseEnabled ?? defaults.noiseEnabled,
-      snrEnabled: rules?.snrEnabled ?? defaults.snrEnabled,
-      cnrEnabled: rules?.cnrEnabled ?? defaults.cnrEnabled,
-      totalEnabled: rules?.totalEnabled ?? defaults.totalEnabled,
-      perVesselEnabled: rules?.perVesselEnabled ?? defaults.perVesselEnabled,
-      proximalEnabled: rules?.proximalEnabled ?? defaults.proximalEnabled,
-      distalEnabled: rules?.distalEnabled ?? defaults.distalEnabled,
-      customGroupEnabled: Boolean(rules?.customGroupEnabled ?? defaults.customGroupEnabled),
+      snrEnabled,
+      cnrEnabled,
+      totalEnabled,
+      perVesselEnabled,
+      proximalEnabled,
+      distalEnabled,
+      customGroupEnabled,
       backgroundSource:
         allowedBackgroundSources.has(backgroundSource) || backgroundSource.startsWith("target:")
           ? backgroundSource
@@ -1043,10 +1050,43 @@
     return true;
   }
 
+  function getIqMetricFormulaSourceSelector(source, fallbackSelector) {
+    const cleanSource = cleanIqTargetString(source);
+    if (cleanSource.startsWith("target:")) {
+      return cleanSource;
+    }
+    if (cleanSource === "signal_sd") {
+      return "signal";
+    }
+    if (cleanSource === "none") {
+      return "";
+    }
+    return fallbackSelector;
+  }
+
+  function getIqBackgroundFormulaSelector(rules) {
+    return getIqMetricFormulaSourceSelector(rules?.backgroundSource, "background");
+  }
+
+  function getIqNoiseFormulaSelector(rules) {
+    return getIqMetricFormulaSourceSelector(rules?.noiseSource, "noise");
+  }
+
+  function buildIqSnrFormula(signalSelector, rules) {
+    const noiseSelector = getIqNoiseFormulaSelector(rules);
+    return `avg(${signalSelector}.mean) / avg(${noiseSelector}.sd)`;
+  }
+
+  function buildIqCnrFormula(signalSelector, backgroundSelector, rules) {
+    const noiseSelector = getIqNoiseFormulaSelector(rules);
+    return `(avg(${signalSelector}.mean) - avg(${backgroundSelector}.mean)) / avg(${noiseSelector}.sd)`;
+  }
+
   function makeIqSignalFormulaMetricsForScope(scopeKind, labelSuffix, selector, rules) {
     const cleanLabelSuffix = cleanIqTargetString(labelSuffix);
     const suffixSlug = slugifyIqTarget(cleanLabelSuffix, scopeKind);
     const metrics = [];
+    const backgroundSelector = getIqBackgroundFormulaSelector(rules);
     if (rules?.signalEnabled) {
       metrics.push(
         makeIqFormulaMetric(
@@ -1063,18 +1103,18 @@
         makeIqFormulaMetric(
           `snr_${suffixSlug}`,
           `SNR_${cleanLabelSuffix}`,
-          `avg(${selector}.mean) / avg(noise.sd)`,
+          buildIqSnrFormula(selector, rules),
           "",
           { metricKind: "snr", scopeKind }
         )
       );
     }
-    if (rules?.cnrEnabled && rules?.backgroundSource !== "none") {
+    if (rules?.cnrEnabled && backgroundSelector) {
       metrics.push(
         makeIqFormulaMetric(
           `cnr_${suffixSlug}`,
           `CNR_${cleanLabelSuffix}`,
-          `(avg(${selector}.mean) - avg(background.mean)) / avg(noise.sd)`,
+          buildIqCnrFormula(selector, backgroundSelector, rules),
           "",
           { metricKind: "cnr", scopeKind }
         )
@@ -1114,7 +1154,7 @@
         makeIqFormulaMetric(
           `snr_${suffixSlug}`,
           `SNR_${cleanLabelSuffix}`,
-          `avg(${signalSelector}.mean) / avg(noise.sd)`,
+          buildIqSnrFormula(signalSelector, rules),
           "",
           { metricKind: "snr", scopeKind }
         )
@@ -1125,7 +1165,7 @@
         makeIqFormulaMetric(
           `cnr_${suffixSlug}`,
           `CNR_${cleanLabelSuffix}`,
-          `(avg(${signalSelector}.mean) - avg(${backgroundSelector}.mean)) / avg(noise.sd)`,
+          buildIqCnrFormula(signalSelector, backgroundSelector, rules),
           "",
           { metricKind: "cnr", scopeKind }
         )
@@ -1148,11 +1188,13 @@
     const pushMetrics = (metrics) => {
       metrics.forEach((metric) => expectedMetrics.push(metric));
     };
+    const backgroundSelector = getIqBackgroundFormulaSelector(rules);
+    const noiseSelector = getIqNoiseFormulaSelector(rules);
     if (rules?.backgroundEnabled) {
-      expectedMetrics.push(makeIqFormulaMetric("background", "Background", "avg(background.mean)", "HU", { metricKind: "background", scopeKind: "reference" }));
+      expectedMetrics.push(makeIqFormulaMetric("background", "Background", `avg(${backgroundSelector || "background"}.mean)`, "HU", { metricKind: "background", scopeKind: "reference" }));
     }
     if (rules?.noiseEnabled) {
-      expectedMetrics.push(makeIqFormulaMetric("noise", "Noise", "avg(noise.sd)", "HU", { metricKind: "noise", scopeKind: "reference" }));
+      expectedMetrics.push(makeIqFormulaMetric("noise", "Noise", `avg(${noiseSelector}.sd)`, "HU", { metricKind: "noise", scopeKind: "reference" }));
     }
     if (rules?.totalEnabled) {
       pushMetrics(makeIqSignalFormulaMetricsForScope("total", "total", "signal", rules));
