@@ -2465,6 +2465,7 @@
     if (!els.roiToolMenu || !els.roiToolTrigger) {
       return;
     }
+    closeInterfaceToolMenu();
     els.roiToolMenu.classList.remove("is-hidden");
     els.roiToolTrigger.setAttribute("aria-expanded", "true");
     updateToolButtons();
@@ -2491,6 +2492,7 @@
     if (!els.interfaceToolMenu || !els.interfaceToolTrigger) {
       return;
     }
+    closeRoiToolMenu();
     els.interfaceToolMenu.classList.remove("is-hidden");
     els.interfaceToolTrigger.setAttribute("aria-expanded", "true");
     updateToolButtons();
