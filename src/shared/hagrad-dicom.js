@@ -19,6 +19,7 @@
     addVectors,
     scaleVector,
     waitForAnimationFrame,
+    appendSourceDirectoryToKey,
   } = sharedCore;
 
   const SUPPORTED_TRANSFER_SYNTAXES = new Set([
@@ -207,13 +208,16 @@
         return;
       }
       const key =
-        record.seriesInstanceUID ||
-        [
-          record.studyInstanceUID || "study",
-          record.seriesDescription || "series",
-          record.protocolName || "protocol",
-          record.frameOfReferenceUID || "for",
-        ].join("::");
+        appendSourceDirectoryToKey(
+          record.seriesInstanceUID ||
+            [
+              record.studyInstanceUID || "study",
+              record.seriesDescription || "series",
+              record.protocolName || "protocol",
+              record.frameOfReferenceUID || "for",
+            ].join("::"),
+          record
+        );
       if (!grouped.has(key)) {
         grouped.set(key, []);
       }

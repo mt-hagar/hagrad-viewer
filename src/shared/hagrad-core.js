@@ -67,6 +67,21 @@
     return true;
   }
 
+  function getFileRelativePath(file) {
+    return safeString(file?.webkitRelativePath) || safeString(file?.relativePath) || safeString(file?.name) || "";
+  }
+
+  function getFileDirectoryPath(file) {
+    const normalized = getFileRelativePath(file).replace(/\\/g, "/");
+    const slashIndex = normalized.lastIndexOf("/");
+    return slashIndex > 0 ? normalized.slice(0, slashIndex) : "";
+  }
+
+  function appendSourceDirectoryToKey(baseKey, record) {
+    const sourceDirectory = getFileDirectoryPath(record?.file);
+    return sourceDirectory ? `${baseKey}::source-folder:${sourceDirectory}` : baseKey;
+  }
+
   function cross(a, b) {
     return [
       a[1] * b[2] - a[2] * b[1],
@@ -361,6 +376,9 @@
     parseFirstNumber,
     prettifyPatientName,
     isSamePatientStudy,
+    getFileRelativePath,
+    getFileDirectoryPath,
+    appendSourceDirectoryToKey,
     cross,
     dot,
     vectorLength,

@@ -3780,9 +3780,11 @@
       if (!record.hasPixelData) {
         return;
       }
-      const key =
+      const baseKey =
         record.seriesInstanceUID ||
         `${record.seriesDescription || "series"}::${record.patientId || "unknown"}::${record.studyDate || ""}`;
+      const key =
+        window.HAGRadCore?.appendSourceDirectoryToKey?.(baseKey, record) || baseKey;
       if (!grouped.has(key)) {
         grouped.set(key, []);
       }

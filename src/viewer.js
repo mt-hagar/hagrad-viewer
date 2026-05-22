@@ -412,6 +412,7 @@
     parseFirstNumber,
     prettifyPatientName,
     isSamePatientStudy,
+    appendSourceDirectoryToKey,
     cross,
     dot,
     vectorLength,
@@ -10748,8 +10749,11 @@
     const grouped = new Map();
     records.forEach((record) => {
       const key =
-        record.seriesInstanceUID ||
-        `${record.seriesDescription || "unnamed-series"}::${record.frameOfReferenceUID || "unknown-for"}`;
+        appendSourceDirectoryToKey(
+          record.seriesInstanceUID ||
+            `${record.seriesDescription || "unnamed-series"}::${record.frameOfReferenceUID || "unknown-for"}`,
+          record
+        );
       if (!grouped.has(key)) {
         grouped.set(key, []);
       }

@@ -1685,9 +1685,11 @@
   function groupSeries(records) {
     const grouped = new Map();
     records.forEach((record) => {
-      const key =
+      const baseKey =
         record.seriesInstanceUID ||
         `${record.seriesDescription || "unnamed-series"}::${record.frameOfReferenceUID || "unknown-for"}`;
+      const key =
+        window.HAGRadCore?.appendSourceDirectoryToKey?.(baseKey, record) || baseKey;
       if (!grouped.has(key)) {
         grouped.set(key, []);
       }
