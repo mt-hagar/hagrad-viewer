@@ -339,6 +339,8 @@
     els.dicomAddFolderInput = document.getElementById("dicom-add-folder-input");
     els.loadDicomButton = document.getElementById("load-dicom-button");
     els.loadDicomFolderButton = document.getElementById("load-dicom-folder-button");
+    els.addDicomButton = document.getElementById("add-dicom-button");
+    els.addDicomFolderButton = document.getElementById("add-dicom-folder-button");
     els.clearButton = document.getElementById("clear-button");
     els.statusPill = document.getElementById("status-pill");
     els.workflowNote = document.getElementById("workflow-note");
@@ -4120,6 +4122,12 @@
     setStatus("Ready for an XA cine or frame series");
   }
 
+  function isSameStudyAsLoadedSeries(record) {
+    const existing = state.series[0]?.frames?.[0]?.record || state.series[0];
+    const compare = window.HAGRadCore?.isSamePatientStudy;
+    return typeof compare === "function" ? compare(existing, record) : true;
+  }
+
   async function loadStudyFromFiles(fileList, options) {
     const append = Boolean(options?.append);
     const files = Array.from(fileList || []).filter((file) => file.size > 0);
@@ -4157,9 +4165,37 @@
     if (!groups.length) {
       throw new Error("No pixel data was found in the selected DICOM files.");
     }
+    let importGroups = groups;
+    let skippedDifferentStudy = 0;
+    let skippedDuplicateSeries = 0;
+    if (append) {
+      const existingKeys = new Set(state.series.map((series) => series.key || series.seriesInstanceUID || series.id));
+      importGroups = groups.filter((group) => {
+        const firstRecord = group.records[0];
+        if (!isSameStudyAsLoadedSeries(firstRecord)) {
+          skippedDifferentStudy += 1;
+          return false;
+        }
+        if (existingKeys.has(group.key)) {
+          skippedDuplicateSeries += 1;
+          return false;
+        }
+        existingKeys.add(group.key);
+        return true;
+      });
+      if (!importGroups.length) {
+        if (skippedDifferentStudy) {
+          throw new Error("The added reconstruction files belong to a different study or patient. Clear the study first if you want to switch patients.");
+        }
+        if (skippedDuplicateSeries) {
+          throw new Error("Those angiography series are already loaded.");
+        }
+        throw new Error("No new pixel data was found in the selected DICOM files.");
+      }
+    }
 
     const seriesOffset = append ? state.series.length : 0;
-    const nextSeries = groups.map((group, index) => buildSeriesFromGroup(group, seriesOffset + index));
+    const nextSeries = importGroups.map((group, index) => buildSeriesFromGroup(group, seriesOffset + index));
 
     if (append) {
       state.series.push(...nextSeries);
@@ -9285,18 +9321,16 @@
 
   function bindEvents() {
     els.loadDicomButton.addEventListener("click", () => {
-      if (state.series.length) {
-        els.dicomAddInput.click();
-      } else {
-        els.dicomInput.click();
-      }
+      els.dicomInput.click();
     });
     els.loadDicomFolderButton.addEventListener("click", () => {
-      if (state.series.length) {
-        els.dicomAddFolderInput.click();
-      } else {
-        els.dicomFolderInput.click();
-      }
+      els.dicomFolderInput.click();
+    });
+    els.addDicomButton?.addEventListener("click", () => {
+      els.dicomAddInput.click();
+    });
+    els.addDicomFolderButton?.addEventListener("click", () => {
+      els.dicomAddFolderInput.click();
     });
 
     els.dicomInput.addEventListener("change", async (event) => {
@@ -9722,7 +9756,7 @@
         const droppedFiles =
           (await window.HAGRadCore?.collectDroppedFiles?.(event.dataTransfer)) ||
           Array.from(event.dataTransfer?.files || []);
-        await loadStudyFromFiles(droppedFiles);
+        await loadStudyFromFiles(droppedFiles, { append: state.series.length > 0 });
       } catch (error) {
         console.error(error);
         setStatus(error.message || "Dropped DICOM files failed to load.", "error");

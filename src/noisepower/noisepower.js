@@ -39,7 +39,7 @@
     roundForDisplay,
     sanitizeFilePart,
   } = core;
-  const { clamp, collectDroppedFiles, formatSpacing, formatDimension, safeString } = sharedCore;
+  const { clamp, collectDroppedFiles, formatSpacing, formatDimension, isSamePatientStudy, safeString } = sharedCore;
   const PLOT_PALETTE = [
     "#ffe0cf", "#ffd7e1", "#d8f1d2", "#d9ecff", "#eadfff",
     "#fdba90", "#ffb2c1", "#bdeab8", "#b7dcff", "#d3b8ff",
@@ -1652,6 +1652,12 @@
     state.viewport.panY += pointer.canvasY - projectedY;
   }
 
+  function isSameStudyAsLoadedDataset(candidate) {
+    const existing = state.datasets[0]?.meta || state.datasets[0]?.records?.[0];
+    const incoming = candidate?.meta || candidate?.records?.[0];
+    return isSamePatientStudy(existing, incoming);
+  }
+
   async function loadFiles(files, options = {}) {
     const list = Array.from(files || []);
     if (!list.length) {
@@ -1667,6 +1673,32 @@
     if (!candidates.length) {
       throw new Error("No image series with DICOM pixel data were found.");
     }
+    const importCandidates = [];
+    const existingKeys = new Set(state.datasets.map((dataset) => dataset.key || dataset.id));
+    let skippedDifferentStudy = 0;
+    let skippedDuplicateSeries = 0;
+    candidates.forEach((candidate) => {
+      const key = candidate.key || candidate.id;
+      if (options.add && !isSameStudyAsLoadedDataset(candidate)) {
+        skippedDifferentStudy += 1;
+        return;
+      }
+      if (options.add && existingKeys.has(key)) {
+        skippedDuplicateSeries += 1;
+        return;
+      }
+      existingKeys.add(key);
+      importCandidates.push(candidate);
+    });
+    if (!importCandidates.length) {
+      if (options.add && skippedDifferentStudy) {
+        throw new Error("The added reconstruction files belong to a different study or patient. Clear the study first if you want to switch patients.");
+      }
+      if (options.add && skippedDuplicateSeries) {
+        throw new Error("Those reconstruction series are already loaded.");
+      }
+      throw new Error("No image series with DICOM pixel data were found.");
+    }
     if (!options.add) {
       state.datasets = [];
       state.rois = [];
@@ -1678,9 +1710,9 @@
       state.history.undoStack = [];
       state.history.redoStack = [];
     }
-    for (let index = 0; index < candidates.length; index += 1) {
-      const candidate = candidates[index];
-      setStatus(`Building ${candidate.label}: ${index + 1} / ${candidates.length}`);
+    for (let index = 0; index < importCandidates.length; index += 1) {
+      const candidate = importCandidates[index];
+      setStatus(`Building ${candidate.label}: ${index + 1} / ${importCandidates.length}`);
       candidate.volume = await dicomApi.buildVolume(candidate.records, {
         statusCallback(current, total) {
           if (current === 1 || current === total || current % 10 === 0) {
@@ -4326,6 +4358,13 @@
         setStatus(error.message || "Could not add reconstructions.", "error");
       }
     });
+    document.getElementById("np-add-folder-input")?.addEventListener("change", async (event) => {
+      try {
+        await loadFiles(event.target.files, { add: true });
+      } catch (error) {
+        setStatus(error.message || "Could not add reconstruction folder.", "error");
+      }
+    });
     document.getElementById("np-clear-button").addEventListener("click", clearStudy);
     document.getElementById("np-fit-button").addEventListener("click", () => fitViewport(true));
     document.getElementById("np-reset-wl-button").addEventListener("click", () => {
@@ -4458,7 +4497,7 @@
       event.preventDefault();
       try {
         const files = await collectDroppedFiles(event.dataTransfer);
-        await loadFiles(files);
+        await loadFiles(files, { add: state.datasets.length > 0 });
       } catch (error) {
         setStatus(error.message || "Could not load dropped files.", "error");
       }

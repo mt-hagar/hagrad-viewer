@@ -411,6 +411,7 @@
     parseNumericArray,
     parseFirstNumber,
     prettifyPatientName,
+    isSamePatientStudy,
     cross,
     dot,
     vectorLength,
@@ -449,6 +450,7 @@
     els.dicomInput = document.getElementById("dicom-input");
     els.dicomFolderInput = document.getElementById("dicom-folder-input");
     els.dicomAddInput = document.getElementById("dicom-add-input");
+    els.dicomAddFolderInput = document.getElementById("dicom-add-folder-input");
     els.clearButton = document.getElementById("clear-button");
     els.statusPill = document.getElementById("status-pill");
     els.uiModeButtons = Array.from(document.querySelectorAll("[data-ui-mode]"));
@@ -10977,6 +10979,11 @@
     return base;
   }
 
+  function isSameStudyAsLoadedStudy(record) {
+    const existing = state.reconstructions[0]?.records?.[0];
+    return isSamePatientStudy(existing, record);
+  }
+
   async function loadReconstructionsFromFiles(fileList, options) {
     const files = Array.from(fileList || []).filter((file) => file.size > 0);
     if (!files.length) {
@@ -10998,6 +11005,8 @@
     const groups = groupSeries(records);
     const existingKeys = new Set(state.reconstructions.map((reconstruction) => reconstruction.seriesKey));
     const nextReconstructions = [];
+    let skippedDifferentStudy = 0;
+    let skippedDuplicateSeries = 0;
 
     for (let index = 0; index < groups.length; index += 1) {
       const group = groups[index];
@@ -11005,11 +11014,21 @@
         continue;
       }
 
-      if (options?.append && existingKeys.has(group.key)) {
+      const imageRecords = group.records.filter((record) => record.hasPixelData);
+      if (!imageRecords.length) {
         continue;
       }
 
-      const imageRecords = group.records.filter((record) => record.hasPixelData);
+      if (options?.append && !isSameStudyAsLoadedStudy(imageRecords[0])) {
+        skippedDifferentStudy += 1;
+        continue;
+      }
+
+      if (options?.append && existingKeys.has(group.key)) {
+        skippedDuplicateSeries += 1;
+        continue;
+      }
+
       const volume = await buildVolume(imageRecords);
       nextReconstructions.push({
         id: makeReconstructionId(group.key, state.reconstructions.length + index),
@@ -11022,6 +11041,12 @@
     }
 
     if (!nextReconstructions.length) {
+      if (options?.append && skippedDifferentStudy) {
+        throw new Error("The added reconstruction files belong to a different study or patient. Clear the study first if you want to switch patients.");
+      }
+      if (options?.append && skippedDuplicateSeries) {
+        throw new Error("Those reconstruction series are already loaded.");
+      }
       throw new Error("No usable reconstructions were found in the selected files.");
     }
 
@@ -12406,6 +12431,17 @@
       }
     });
 
+    els.dicomAddFolderInput?.addEventListener("change", async (event) => {
+      try {
+        await loadReconstructionsFromFiles(event.target.files, { append: true });
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message || "Failed to add reconstruction folder.", "error");
+      } finally {
+        event.target.value = "";
+      }
+    });
+
     els.clearButton.addEventListener("click", clearStudy);
     els.metadataOverlayToggleButton?.addEventListener("click", () => {
       state.showDicomMetadataOverlay = !state.showDicomMetadataOverlay;
@@ -12974,7 +13010,7 @@
         const droppedFiles =
           (await window.HAGRadCore?.collectDroppedFiles?.(event.dataTransfer)) ||
           Array.from(event.dataTransfer?.files || []);
-        await loadReconstructionsFromFiles(droppedFiles, { append: false });
+        await loadReconstructionsFromFiles(droppedFiles, { append: state.reconstructions.length > 0 });
       } catch (error) {
         console.error(error);
         setStatus(error.message || "Failed to load dropped DICOM files.", "error");

@@ -64,8 +64,12 @@
             </div>
             <input id="np-dicom-input" type="file" multiple accept=".dcm,.dicom,application/dicom" />
             <input id="np-folder-input" type="file" multiple webkitdirectory directory accept=".dcm,.dicom,application/dicom" />
-            <label class="button secondary" for="np-add-input">Add Recon Files</label>
+            <div class="hero-load-row">
+              <label class="button secondary" for="np-add-input">Add Recon Files</label>
+              <label class="button secondary" for="np-add-folder-input">Add Recon Folder</label>
+            </div>
             <input id="np-add-input" type="file" multiple accept=".dcm,.dicom,application/dicom" />
+            <input id="np-add-folder-input" type="file" multiple webkitdirectory directory accept=".dcm,.dicom,application/dicom" />
             <button id="np-clear-button" class="button secondary" type="button">Clear Study</button>
           </div>
         </div>

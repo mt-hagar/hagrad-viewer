@@ -51,6 +51,22 @@
     return safeString(value)?.replace(/\^+/g, " ") ?? null;
   }
 
+  function isSamePatientStudy(left, right) {
+    if (!left || !right) {
+      return true;
+    }
+
+    if (left.studyInstanceUID && right.studyInstanceUID) {
+      return left.studyInstanceUID === right.studyInstanceUID;
+    }
+
+    if (left.patientId && right.patientId) {
+      return left.patientId === right.patientId;
+    }
+
+    return true;
+  }
+
   function cross(a, b) {
     return [
       a[1] * b[2] - a[2] * b[1],
@@ -344,6 +360,7 @@
     parseNumericArray,
     parseFirstNumber,
     prettifyPatientName,
+    isSamePatientStudy,
     cross,
     dot,
     vectorLength,

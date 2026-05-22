@@ -8020,7 +8020,9 @@
         const droppedFiles =
           (await window.HAGRadCore?.collectDroppedFiles?.(event.dataTransfer)) ||
           Array.from(event.dataTransfer?.files || []);
-        await importReconstructionsFromFiles(droppedFiles, { mode: "replace" });
+        await importReconstructionsFromFiles(droppedFiles, {
+          mode: state.reconstructions.length ? "append" : "replace",
+        });
       } catch (error) {
         console.error(error);
         setStatus(error.message || "Failed to load dropped DICOM files.", "error");

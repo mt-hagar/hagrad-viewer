@@ -73,11 +73,22 @@
               directory
               accept=".dcm,.dicom,application/dicom"
             />
-            <label class="button secondary" for="dicom-add-input">Add Recon Files</label>
+            <div class="hero-load-row">
+              <label class="button secondary" for="dicom-add-input">Add Recon Files</label>
+              <label class="button secondary" for="dicom-add-folder-input">Add Recon Folder</label>
+            </div>
             <input
               id="dicom-add-input"
               type="file"
               multiple
+              accept=".dcm,.dicom,application/dicom"
+            />
+            <input
+              id="dicom-add-folder-input"
+              type="file"
+              multiple
+              webkitdirectory
+              directory
               accept=".dcm,.dicom,application/dicom"
             />
             <button id="clear-button" class="button secondary" type="button">Clear Study</button>

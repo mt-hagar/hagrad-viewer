@@ -383,7 +383,8 @@ button {
 
 #dicom-input,
 #dicom-folder-input,
-#dicom-add-input {
+#dicom-add-input,
+#dicom-add-folder-input {
   display: none;
 }
 
