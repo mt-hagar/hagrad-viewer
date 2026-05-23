@@ -840,18 +840,7 @@
       };
     }
     if (Number.isFinite(cnr) && cnr < 15) {
-      return {
-        valid: false,
-        error: "TTFxy CNR is below the TG-233 threshold; rho10 is not reported.",
-        warnings: warnings.concat(["ttf-low-cnr-tg233"]),
-        units: extraction?.units || "HU",
-        contrastHu: contrast,
-        noiseHu: noiseEstimate,
-        cnr,
-        lowLevelHu: lowLevel,
-        highLevelHu: highLevel,
-        ...resolutionLimit,
-      };
+      warnings.push("ttf-low-cnr-tg233");
     }
 
     const normalX = slopeXPerMm / gradientMagnitude;
@@ -993,6 +982,7 @@
       contrastHu: contrast,
       noiseHu: noiseEstimate,
       cnr,
+      tg233CnrAdequate: Number.isFinite(cnr) ? cnr >= 15 : null,
       lowLevelHu: lowLevel,
       highLevelHu: highLevel,
       edgeAngleDegrees: (Math.atan2(normalY, normalX) * 180) / Math.PI,

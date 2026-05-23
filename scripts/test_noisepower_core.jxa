@@ -123,10 +123,27 @@ const lowCnrVolume = {
   slices: [{ pixels: lowCnrPixels, slope: 1, intercept: 0, units: "HU", record: makeRecord(0, [0.5, 0.5]) }],
 };
 const lowCnrExtraction = core.extractSquareRoiPixels(lowCnrVolume, 0, edgeRoi);
-assert(!lowCnrExtraction.ttfAnalysis.valid, "Low-CNR homogeneous ROI should not report valid TTFxy.");
+assert(lowCnrExtraction.ttfAnalysis.valid, "Low-CNR edge ROI should still report TTFxy when an edge response can be built.");
 assert(lowCnrExtraction.ttfAnalysis.warnings.includes("ttf-low-cnr-tg233"), "Low-CNR TTFxy should carry TG-233 warning.");
-assert(!Number.isFinite(lowCnrExtraction.ttfAnalysis.rho10LpCm), "Low-CNR TTFxy should not report rho10.");
+assert(Number.isFinite(lowCnrExtraction.ttfAnalysis.f50Frequency), "Low-CNR edge TTFxy should still report f50 when available.");
 assert(Number.isFinite(lowCnrExtraction.ttfAnalysis.rhoMaxLpCm), "Low-CNR TTFxy should still report rhoMax.");
+
+const noEdgePixels = Int16Array.from(Array.from({ length: 32 * 32 }, (_, index) => {
+  const column = index % 32;
+  const row = Math.floor(index / 32);
+  return 12 + (((row * 5 + column * 7) % 5) - 2);
+}));
+const noEdgeVolume = {
+  rows: 32,
+  columns: 32,
+  depth: 1,
+  rowSpacing: 0.5,
+  columnSpacing: 0.5,
+  slices: [{ pixels: noEdgePixels, slope: 1, intercept: 0, units: "HU", record: makeRecord(0, [0.5, 0.5]) }],
+};
+const noEdgeExtraction = core.extractSquareRoiPixels(noEdgeVolume, 0, edgeRoi);
+assert(!noEdgeExtraction.ttfAnalysis.valid, "Homogeneous ROI should not report valid TTFxy.");
+assert(noEdgeExtraction.ttfAnalysis.warnings.includes("ttf-no-edge-detected"), "Homogeneous ROI should carry no-edge warning.");
 
 const circle = core.createNoisePowerCircle({
   id: "circle_001",

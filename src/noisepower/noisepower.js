@@ -90,6 +90,29 @@
     },
   };
 
+  let allowGuardedUnload = false;
+
+  function hasOpenStudyOrAnalysis() {
+    return state.datasets.length > 0 || state.rois.length > 0 || state.circles.length > 0;
+  }
+
+  window.HAGRadWorkflowGuardState = {
+    hasOpenStudy() {
+      return hasOpenStudyOrAnalysis();
+    },
+    allowWorkflowSwitch() {
+      allowGuardedUnload = true;
+    },
+  };
+
+  window.addEventListener("beforeunload", (event) => {
+    if (allowGuardedUnload || !hasOpenStudyOrAnalysis()) {
+      return;
+    }
+    event.preventDefault();
+    event.returnValue = "";
+  });
+
   const els = {};
 
   function syncCanvasSize(canvas) {
@@ -1573,13 +1596,14 @@
             ? ` Analysis warning: ${analysis.error}.`
             : "";
       const ttf = analysis?.ttfAnalysis || {};
+      const ttfLowCnr = Array.isArray(ttf.warnings) && ttf.warnings.includes("ttf-low-cnr-tg233");
       const ttfText =
         drag.roi.type === ROI_TYPE && ttf.valid
-          ? ` TTFxy f50 ${roundForDisplay(ttf.f50Frequency, 4)} mm^-1.`
+          ? ` TTFxy ${Number.isFinite(ttf.f50Frequency) ? `f50 ${roundForDisplay(ttf.f50Frequency, 4)} mm^-1` : "computed"}.${ttfLowCnr ? " Low CNR caution." : ""}`
           : drag.roi.type === ROI_TYPE && ttf.error
             ? ` TTFxy not valid for this square: ${ttf.error}`
             : "";
-      setStatus(`${drag.roi.label} placed.${statText}${ttfText}`, ttf.valid || !ttf.error ? "" : "warning");
+      setStatus(`${drag.roi.label} placed.${statText}${ttfText}`, ttfLowCnr || (!ttf.valid && ttf.error) ? "warning" : "");
       return;
     }
     if (drag?.type && drag.hasMoved) {

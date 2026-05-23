@@ -15,6 +15,8 @@ This build refreshes the HAGRad Viewer workflow shell and adds new research tool
 - Adds HAGRad Noise Power for CT phantom square ROI statistics, TTF metrics, circular NPS placement, multi-reconstruction NPS comparison, print-ready reporting, and reproducible ZIP export.
 - Improves HAGRad Noise Power reconstruction ordering with drag handles and synchronized display/export order.
 - Exports per-reconstruction 2D NPS heatmaps with shared color scaling and clearer figure names.
+- Adds a Noise Power workflow-switch/unload guard so users are warned before leaving an open Noise Power study.
+- Refines low-CNR TTFxy handling so measurable edge responses can still report available TTF metrics while carrying the TG-233 caution.
 - Adds a shared HAGRad workflow switcher across the main Viewer, Image Quality / CCTA IQ, EAT, and QCA pages.
 - Adds guard behavior before moving between workflows when a study appears to be open.
 - Tightens immersive focus-shell spacing across the viewer and companion workflows.

@@ -110,10 +110,23 @@
       }
     }
 
+    function markConfirmedWorkflowSwitch() {
+      const stateApi = window.HAGRadWorkflowGuardState;
+      if (stateApi && typeof stateApi.allowWorkflowSwitch === "function") {
+        try {
+          stateApi.allowWorkflowSwitch();
+        } catch {
+          // The navigation is already user-confirmed; do not let a guard API error trap the user.
+        }
+      }
+      window.HAGRadWorkflowSwitchGuardConfirmed = true;
+    }
+
     confirmButton.addEventListener("click", () => {
       const href = pendingHref;
       close();
       if (href) {
+        markConfirmedWorkflowSwitch();
         window.location.href = href;
       }
     });
