@@ -1,7 +1,7 @@
 {
   "name": "HAGRad",
   "short_name": "HAGRad",
-  "description": "Harmonized Analysis Gateway in Radiology: open-source framework for radiology research workflows.",
+  "description": "Heart Analysis Gateway for Radiologic Research and Development: open-source framework for radiology research workflows.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
