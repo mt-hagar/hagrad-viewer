@@ -46,15 +46,7 @@
       comparison: false,
       cssClass: "comparison-layout-single",
     },
-    mprSplit2: {
-      label: "MPR 1:1",
-      mode: "mpr",
-      tileCount: 2,
-      comparison: true,
-      cssClass: "comparison-layout-mprSplit2",
-    },
   };
-  const COMPARISON_MPR_VIEWPORT_IDS = ["presentation", "sagittal", "axial", "coronal"];
   const PROFILE_TYPES = new Set(["lineProfile", "squareProfile", "plaqueLineProfile", "plaqueNoncalcifiedLineProfile", "vascularLineProfile"]);
   const LINE_PROFILE_TYPES = new Set(["lineProfile", "plaqueLineProfile", "plaqueNoncalcifiedLineProfile", "vascularLineProfile"]);
   const STENT_INTERFACE_PROFILE_TYPES = new Set(["lineProfile", "squareProfile"]);
@@ -419,6 +411,7 @@
       syncEnabled: false,
       activeTileId: "comparison-tile-1",
       layoutMenuOpen: false,
+      viewportOverrideActive: false,
       tiles: [],
     },
     maximizedViewportId: null,
@@ -1736,6 +1729,31 @@
     return getComparisonTile(state.comparison.activeTileId);
   }
 
+  function withComparisonViewportOverride(tile, viewportId, callback) {
+    const viewportState = tile?.viewports?.[viewportId];
+    if (!tile || !viewportState || !VIEWPORT_IDS.includes(viewportId)) {
+      return callback();
+    }
+    const previousViewportState = state.viewports[viewportId];
+    const previousOverrideActive = state.comparison.viewportOverrideActive;
+    state.viewports[viewportId] = viewportState;
+    state.comparison.viewportOverrideActive = true;
+    try {
+      return callback();
+    } finally {
+      state.viewports[viewportId] = previousViewportState;
+      state.comparison.viewportOverrideActive = previousOverrideActive;
+    }
+  }
+
+  function tagComparisonDragging(tile, pointerElement) {
+    if (!tile || !state.dragging || state.dragging.comparisonTileId) {
+      return;
+    }
+    state.dragging.comparisonTileId = tile.id;
+    state.dragging.pointerElement = pointerElement;
+  }
+
   function cloneVoi(voi) {
     return {
       width: clamp(Math.round(Number(voi?.width) || state.currentVOI.width), 1, 4000),
@@ -2442,7 +2460,6 @@
       const syncIsActive = canSync && state.comparison.syncEnabled;
       els.comparisonSyncButton.disabled = !canSync;
       els.comparisonSyncButton.classList.toggle("is-active", syncIsActive);
-      els.comparisonSyncButton.textContent = syncIsActive ? "Sync On" : "Sync Off";
       els.comparisonSyncButton.title = canSync
         ? syncIsActive
           ? "Comparison sync on"
@@ -2506,8 +2523,7 @@
         "comparison-layout-single",
         "comparison-layout-stacked2",
         "comparison-layout-columns2",
-        "comparison-layout-grid2x2",
-        "comparison-layout-mprSplit2"
+        "comparison-layout-grid2x2"
       );
       els.comparisonLayer.classList.add(definition.cssClass || "comparison-layout-single");
       els.comparisonLayer.classList.toggle("hide-viewport-overlays", state.showViewportOverlays === false);
@@ -9245,8 +9261,8 @@
     } else {
       updateComparisonUi();
     }
-    state.uiCache.comparisonLayer = "";
     updateComparisonUi();
+    updateComparisonTileActiveClasses();
     requestRenderAll();
   }
 
@@ -9302,9 +9318,6 @@
       return null;
     }
     const plane = getViewportPlane(viewportId);
-    if (state.comparison.layout === "mprSplit2") {
-      return getCurrentPlaneFrameAtCenter(plane, reconstruction, tile.centerWorld || reconstruction.volume.centerWorld);
-    }
     return getCanonicalPlaneFrameAtCenter(plane, reconstruction, tile.centerWorld || reconstruction.volume.centerWorld);
   }
 
@@ -9357,9 +9370,12 @@
     }
     drawPlaneScene(viewportState.ctx, reconstruction, frame, size.width, size.height, viewportState, {
       includeAnnotations: true,
-      showMprOverlay: state.mpr.overlayVisible !== false && state.comparison.layout === "mprSplit2",
       voi: tile.voi,
-      previewAnnotation: null,
+      previewAnnotation: state.dragging?.type === "annotation" &&
+        state.dragging.comparisonTileId === tile.id &&
+        state.dragging.viewportId === viewportId
+          ? state.dragging.annotation
+          : null,
     });
   }
 
@@ -9479,35 +9495,32 @@
   function handleComparisonPointerDown(event) {
     const tile = getComparisonTile(event.currentTarget.dataset.comparisonTileId);
     const viewportId = event.currentTarget.dataset.comparisonViewportId || "presentation";
-    const viewportState = tile?.viewports?.[viewportId];
-    if (!tile || !viewportState) {
+    if (!tile?.viewports?.[viewportId]) {
       return;
     }
     setActiveComparisonTile(tile.id);
-    if (event.button !== 0 && event.button !== 1) {
+    withComparisonViewportOverride(tile, viewportId, () => handleViewportPointerDown(event));
+    tagComparisonDragging(tile, event.currentTarget);
+  }
+
+  function handleComparisonClick(event) {
+    const tile = getComparisonTile(event.currentTarget.dataset.comparisonTileId);
+    const viewportId = event.currentTarget.dataset.comparisonViewportId || "presentation";
+    if (!tile?.viewports?.[viewportId]) {
       return;
     }
-    const shouldPan = event.button === 1 || state.activeToolKey === "pan";
-    const shouldZoom = state.activeToolKey === "zoom";
-    const shouldWindow = state.activeToolKey === "windowLevel";
-    if (!shouldPan && !shouldZoom && !shouldWindow) {
+    setActiveComparisonTile(tile.id);
+    withComparisonViewportOverride(tile, viewportId, () => handleViewportClick(event));
+  }
+
+  function handleComparisonDoubleClick(event) {
+    const tile = getComparisonTile(event.currentTarget.dataset.comparisonTileId);
+    const viewportId = event.currentTarget.dataset.comparisonViewportId || "presentation";
+    if (!tile?.viewports?.[viewportId]) {
       return;
     }
-    event.preventDefault();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    state.dragging = {
-      type: shouldWindow ? "comparisonWindowLevel" : shouldZoom ? "comparisonZoom" : "comparisonPan",
-      tileId: tile.id,
-      viewportId,
-      pointerElement: event.currentTarget,
-      pointerId: event.pointerId,
-      startClientX: event.clientX,
-      startClientY: event.clientY,
-      startPanX: viewportState.panX,
-      startPanY: viewportState.panY,
-      startZoom: viewportState.zoom,
-      startVOI: cloneVoi(tile.voi),
-    };
+    setActiveComparisonTile(tile.id);
+    withComparisonViewportOverride(tile, viewportId, () => handleViewportDoubleClick(event));
   }
 
   function handleComparisonDragMove(event) {
@@ -9550,7 +9563,6 @@
   function getComparisonLayoutSignature() {
     return JSON.stringify({
       layout: state.comparison.layout,
-      activeTileId: state.comparison.activeTileId,
       tiles: getVisibleComparisonTiles().map((tile) => ({
         id: tile.id,
         reconstructionId: tile.reconstructionId,
@@ -9566,11 +9578,26 @@
     canvas.dataset.comparisonViewportId = viewportId;
     canvas.setAttribute("aria-label", `${getReconstructionById(tile.reconstructionId)?.label || "Comparison tile"} ${VIEWPORT_CONFIG[viewportId].title}`);
     canvas.addEventListener("pointerdown", handleComparisonPointerDown);
+    canvas.addEventListener("click", handleComparisonClick);
+    canvas.addEventListener("dblclick", handleComparisonDoubleClick);
+    canvas.addEventListener("contextmenu", (event) => event.preventDefault());
     canvas.addEventListener("wheel", handleComparisonWheel, { passive: false });
     const viewportState = tile.viewports[viewportId];
     viewportState.canvas = canvas;
     viewportState.ctx = canvas.getContext("2d");
     return canvas;
+  }
+
+  function updateComparisonTileActiveClasses() {
+    if (!els.comparisonLayer) {
+      return;
+    }
+    els.comparisonLayer.querySelectorAll(".comparison-tile").forEach((tileElement) => {
+      tileElement.classList.toggle(
+        "is-active",
+        tileElement.dataset.comparisonTileId === state.comparison.activeTileId
+      );
+    });
   }
 
   function renderComparisonLayerShell() {
@@ -9579,6 +9606,7 @@
     }
     const signature = getComparisonLayoutSignature();
     if (state.uiCache.comparisonLayer === signature) {
+      updateComparisonTileActiveClasses();
       return;
     }
     state.uiCache.comparisonLayer = signature;
@@ -9613,27 +9641,6 @@
         empty.className = "comparison-empty";
         empty.innerHTML = "<strong>Drop series here</strong><span>Drag a reconstruction from Patient & Series.</span>";
         tileElement.appendChild(empty);
-      } else if (state.comparison.layout === "mprSplit2") {
-        const group = document.createElement("div");
-        group.className = "comparison-mpr-group";
-        COMPARISON_MPR_VIEWPORT_IDS.forEach((viewportId) => {
-          const subview = document.createElement("section");
-          subview.className = "comparison-subview";
-          subview.dataset.comparisonTileId = tile.id;
-          subview.dataset.comparisonViewportId = viewportId;
-          const subHeader = document.createElement("header");
-          subHeader.className = "comparison-subview-header";
-          const title = document.createElement("span");
-          title.textContent = VIEWPORT_CONFIG[viewportId].title;
-          const subReadout = document.createElement("span");
-          subReadout.className = "viewport-readout";
-          subReadout.dataset.comparisonReadout = `${tile.id}-${viewportId}`;
-          subReadout.textContent = getComparisonReadout(tile, viewportId);
-          subHeader.append(title, subReadout);
-          subview.append(subHeader, buildComparisonCanvas(tile, viewportId, "comparison-subview-canvas"));
-          group.appendChild(subview);
-        });
-        tileElement.appendChild(group);
       } else {
         tileElement.appendChild(buildComparisonCanvas(tile, "presentation", "comparison-tile-canvas"));
       }
@@ -9647,13 +9654,10 @@
       return;
     }
     getVisibleComparisonTiles().forEach((tile) => {
-      const viewportIds = state.comparison.layout === "mprSplit2" ? COMPARISON_MPR_VIEWPORT_IDS : ["presentation"];
-      viewportIds.forEach((viewportId) => {
-        const readout = els.comparisonLayer.querySelector(`[data-comparison-readout="${tile.id}-${viewportId}"]`);
-        if (readout) {
-          readout.textContent = getComparisonReadout(tile, viewportId);
-        }
-      });
+      const readout = els.comparisonLayer.querySelector(`[data-comparison-readout="${tile.id}-presentation"]`);
+      if (readout) {
+        readout.textContent = getComparisonReadout(tile, "presentation");
+      }
     });
   }
 
@@ -9663,11 +9667,7 @@
     }
     renderComparisonLayerShell();
     getVisibleComparisonTiles().forEach((tile) => {
-      if (state.comparison.layout === "mprSplit2") {
-        COMPARISON_MPR_VIEWPORT_IDS.forEach((viewportId) => renderComparisonViewport(tile, viewportId));
-      } else {
-        renderComparisonViewport(tile, "presentation");
-      }
+      renderComparisonViewport(tile, "presentation");
     });
     updateComparisonReadouts();
   }
@@ -13059,6 +13059,17 @@
       return;
     }
 
+    if (
+      state.dragging.comparisonTileId &&
+      !state.comparison.viewportOverrideActive &&
+      !String(state.dragging.type || "").startsWith("comparison")
+    ) {
+      const tile = getComparisonTile(state.dragging.comparisonTileId);
+      const viewportId = state.dragging.viewportId || "presentation";
+      withComparisonViewportOverride(tile, viewportId, () => handleGlobalPointerMove(event));
+      return;
+    }
+
     if (String(state.dragging.type || "").startsWith("comparison")) {
       if (handleComparisonDragMove(event)) {
         event.preventDefault();
@@ -13420,7 +13431,8 @@
     if (!viewportState?.pointerId) {
       return;
     }
-    els.viewports[viewportId].releasePointerCapture?.(viewportState.pointerId);
+    const pointerElement = state.dragging?.viewportId === viewportId ? state.dragging.pointerElement : null;
+    (pointerElement || viewportState.canvas || els.viewports[viewportId])?.releasePointerCapture?.(viewportState.pointerId);
     viewportState.pointerId = null;
   }
 
@@ -13430,6 +13442,17 @@
     }
 
     const dragging = state.dragging;
+    if (
+      dragging.comparisonTileId &&
+      !state.comparison.viewportOverrideActive &&
+      !String(dragging.type || "").startsWith("comparison")
+    ) {
+      const tile = getComparisonTile(dragging.comparisonTileId);
+      const viewportId = dragging.viewportId || "presentation";
+      withComparisonViewportOverride(tile, viewportId, () => handleGlobalPointerUp());
+      return;
+    }
+
     if (String(dragging.type || "").startsWith("comparison")) {
       dragging.pointerElement?.releasePointerCapture?.(dragging.pointerId);
       state.dragging = null;
