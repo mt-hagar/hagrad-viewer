@@ -1,7 +1,7 @@
 {
   "name": "HAGRad",
   "short_name": "HAGRad",
-  "description": "Open-source framework for advanced cardiac CT research.",
+  "description": "Harmonized Analysis Gateway in Radiology: open-source framework for radiology research workflows.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
