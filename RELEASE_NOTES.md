@@ -23,6 +23,7 @@ This build refreshes the HAGRad Viewer workflow shell and adds new research tool
 - Tightens immersive focus-shell spacing across the viewer and companion workflows.
 - Hides native browser DICOM file inputs behind the polished HAGRad load buttons for a cleaner user-facing app.
 - Refines the QCA presentation viewport for a cleaner, more balanced analysis workspace.
+- Adds compact in-viewport controls for reset, focus, overlay labels, grid overlays, and applicable Presentation / 4-up MPR switching across the HAGRad workflows.
 - Updates the public website positioning, support, and credits content.
 - Updates public download guidance for macOS Gatekeeper and Windows SmartScreen prompts while the research-preview builds remain unsigned.
 

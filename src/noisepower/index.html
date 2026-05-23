@@ -272,10 +272,11 @@
             <div id="np-dropzone" class="viewport-stage">
               <canvas id="np-canvas" width="1200" height="900"></canvas>
               <div class="viewport-mini-actions">
-                <button id="np-fit-button" class="viewport-mini-button" type="button" title="Reset zoom and center">Fit</button>
-                <button id="np-reset-wl-button" class="viewport-mini-button" type="button" title="Reset window/level">WL</button>
-                <button id="np-dicom-toggle-button" class="viewport-mini-button" type="button" title="Toggle DICOM information">DICOM</button>
-                <button id="np-grid-toggle-button" class="viewport-mini-button grid-toggle" type="button" title="Toggle source-image grid overlay">Grid</button>
+                <button id="np-reset-wl-button" class="viewport-mini-button" type="button" aria-label="Reset window/level" title="Reset window/level">↺</button>
+                <button id="np-fit-button" class="viewport-mini-button" type="button" aria-label="Reset zoom and center" title="Reset zoom and center">⛶</button>
+                <button id="np-label-toggle-button" class="viewport-mini-button" type="button" aria-label="Show ROI labels" title="Show ROI labels">Aa</button>
+                <button id="np-dicom-toggle-button" class="viewport-mini-button" type="button" aria-label="Toggle DICOM information" title="Toggle DICOM information">i</button>
+                <button id="np-grid-toggle-button" class="viewport-mini-button grid-toggle" type="button" aria-label="Toggle source-image grid overlay" title="Toggle source-image grid overlay">#</button>
               </div>
               <div id="np-dicom-overlay" class="dicom-info-overlay" hidden></div>
               <div id="np-overlay-note" class="overlay-note">Drop CT phantom DICOM files or folders here.</div>

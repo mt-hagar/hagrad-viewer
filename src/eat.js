@@ -110,6 +110,8 @@
     activeFocusGroupId: "sidebar-group-workflow",
     huThreshold: { ...DEFAULT_HU_THRESHOLD },
     showThresholdOverlay: true,
+    showViewportOverlays: true,
+    showViewportGrid: false,
     compareMode: false,
     compareReconstructionId: null,
     contours: new Map(),
@@ -228,6 +230,8 @@
     els.resetViewButton = document.getElementById("reset-view-button");
     els.presentationResetWindowButton = document.getElementById("presentation-reset-window-button");
     els.presentationResetFitButton = document.getElementById("presentation-reset-fit-button");
+    els.presentationOverlayToggleButton = document.getElementById("presentation-overlay-toggle-button");
+    els.presentationGridToggleButton = document.getElementById("presentation-grid-toggle-button");
     els.presentationFocusToggleButton = document.getElementById("presentation-focus-toggle-button");
     els.presentationFocusExitButton = document.getElementById("presentation-focus-exit-button");
     els.focusWorkflowButtons = Array.from(document.querySelectorAll("[data-focus-sidebar-group]"));
@@ -2606,6 +2610,31 @@
 
   function updateZoomUi() {
     els.zoomReadout.textContent = `Zoom ${Math.round(state.view.zoom * 100)}%`;
+  }
+
+  function updateViewportChromeUi() {
+    [els.canvasShell, els.compareShell].forEach((shell) => {
+      shell?.classList.toggle("hide-viewport-overlays", state.showViewportOverlays === false);
+      shell?.classList.toggle("has-grid-overlay", Boolean(state.showViewportGrid));
+    });
+    if (els.presentationOverlayToggleButton) {
+      const visible = state.showViewportOverlays !== false;
+      els.presentationOverlayToggleButton.classList.toggle("is-active", visible);
+      els.presentationOverlayToggleButton.title = visible ? "Hide viewport labels" : "Show viewport labels";
+      els.presentationOverlayToggleButton.setAttribute(
+        "aria-label",
+        visible ? "Hide viewport labels" : "Show viewport labels"
+      );
+    }
+    if (els.presentationGridToggleButton) {
+      const visible = Boolean(state.showViewportGrid);
+      els.presentationGridToggleButton.classList.toggle("is-active", visible);
+      els.presentationGridToggleButton.title = visible ? "Hide viewport grid" : "Show viewport grid";
+      els.presentationGridToggleButton.setAttribute(
+        "aria-label",
+        visible ? "Hide viewport grid" : "Show viewport grid"
+      );
+    }
   }
 
   function getCompareCandidates() {
@@ -5210,6 +5239,7 @@
     updateThresholdUi();
     updateEraseUi();
     updateZoomUi();
+    updateViewportChromeUi();
     updateRangeUi();
     updateSliceNavigationUi();
     updateCurrentSliceUi();
@@ -5490,7 +5520,7 @@
   }
 
   function drawCanvasOverlayLabels(ctx, viewportSize, reconstruction, sliceIndex) {
-    if (!reconstruction?.volume) {
+    if (state.showViewportOverlays === false || !reconstruction?.volume) {
       return;
     }
 
@@ -8152,6 +8182,19 @@
       event.preventDefault();
       event.stopPropagation();
       resetView();
+    });
+    els.presentationOverlayToggleButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      state.showViewportOverlays = state.showViewportOverlays === false;
+      updateViewportChromeUi();
+      requestRender();
+    });
+    els.presentationGridToggleButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      state.showViewportGrid = !state.showViewportGrid;
+      updateViewportChromeUi();
     });
     els.presentationFocusToggleButton?.addEventListener("click", (event) => {
       event.preventDefault();

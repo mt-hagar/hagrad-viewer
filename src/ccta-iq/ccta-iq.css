@@ -3043,6 +3043,27 @@ input[type="range"] {
   overflow: hidden;
 }
 
+.viewport-grid.has-grid-overlay .viewport-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(190, 215, 226, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(190, 215, 226, 0.12) 1px, transparent 1px),
+    linear-gradient(rgba(255, 210, 127, 0.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 210, 127, 0.16) 1px, transparent 1px);
+  background-size: 24px 24px, 24px 24px, 120px 120px, 120px 120px;
+  opacity: 0.8;
+}
+
+.viewport-grid.hide-viewport-overlays .orientation-overlay,
+.viewport-grid.hide-viewport-overlays .viewport-tool-hud {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .viewport-mini-actions {
   position: absolute;
   top: 14px;

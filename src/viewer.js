@@ -331,6 +331,8 @@
     voiPreferenceLoaded: false,
     showDicomMetadataOverlay: false,
     showPresentationSeriesLabel: true,
+    showViewportOverlays: true,
+    showViewportGrid: false,
     syncMprTransforms: true,
     cineFps: 8,
     cineTimerId: null,
@@ -534,6 +536,9 @@
     els.resetButton = document.getElementById("reset-button");
     els.presentationResetWindowButton = document.getElementById("presentation-reset-window-button");
     els.presentationResetFitButton = document.getElementById("presentation-reset-fit-button");
+    els.presentationLayoutToggleButton = document.getElementById("presentation-layout-toggle-button");
+    els.presentationOverlayToggleButton = document.getElementById("presentation-overlay-toggle-button");
+    els.presentationGridToggleButton = document.getElementById("presentation-grid-toggle-button");
     els.presentationFocusToggleButton = document.getElementById("presentation-focus-toggle-button");
     els.presentationFocusExitButton = document.getElementById("presentation-focus-exit-button");
     els.focusWorkflowButtons = Array.from(document.querySelectorAll("[data-focus-workflow-tab]"));
@@ -2209,6 +2214,38 @@
     els.layoutButtons.forEach((button) => {
       button.classList.toggle("is-active", button.dataset.layout === state.layout);
     });
+    if (els.presentationLayoutToggleButton) {
+      const nextLayout = state.layout === "mpr" ? "presentation" : "mpr";
+      const label = nextLayout === "mpr" ? "Switch to 4-up MPR" : "Switch to presentation";
+      els.presentationLayoutToggleButton.classList.toggle("is-active", state.layout === "mpr");
+      els.presentationLayoutToggleButton.title = label;
+      els.presentationLayoutToggleButton.setAttribute("aria-label", label);
+    }
+  }
+
+  function updateViewportChromeUi() {
+    if (els.viewportGrid) {
+      els.viewportGrid.classList.toggle("hide-viewport-overlays", state.showViewportOverlays === false);
+      els.viewportGrid.classList.toggle("has-grid-overlay", Boolean(state.showViewportGrid));
+    }
+    if (els.presentationOverlayToggleButton) {
+      const visible = state.showViewportOverlays !== false;
+      els.presentationOverlayToggleButton.classList.toggle("is-active", visible);
+      els.presentationOverlayToggleButton.title = visible ? "Hide viewport labels" : "Show viewport labels";
+      els.presentationOverlayToggleButton.setAttribute(
+        "aria-label",
+        visible ? "Hide viewport labels" : "Show viewport labels"
+      );
+    }
+    if (els.presentationGridToggleButton) {
+      const visible = Boolean(state.showViewportGrid);
+      els.presentationGridToggleButton.classList.toggle("is-active", visible);
+      els.presentationGridToggleButton.title = visible ? "Hide viewport grid" : "Show viewport grid";
+      els.presentationGridToggleButton.setAttribute(
+        "aria-label",
+        visible ? "Hide viewport grid" : "Show viewport grid"
+      );
+    }
   }
 
   function isRoiAnnotationType(type) {
@@ -3575,6 +3612,7 @@
     updateVoiUi();
     updateMprUi();
     updateSyncButton();
+    updateViewportChromeUi();
     updateMeasurementCount();
     renderProjectUi();
     renderProjectCases();
@@ -12786,6 +12824,24 @@
       } else {
         resetPresentationViewportTransform();
       }
+    });
+    els.presentationLayoutToggleButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setLayout(state.layout === "mpr" ? "presentation" : "mpr");
+    });
+    els.presentationOverlayToggleButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      state.showViewportOverlays = state.showViewportOverlays === false;
+      updateViewportChromeUi();
+      requestRenderAll();
+    });
+    els.presentationGridToggleButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      state.showViewportGrid = !state.showViewportGrid;
+      updateViewportChromeUi();
     });
     els.presentationFocusToggleButton?.addEventListener("click", (event) => {
       event.preventDefault();

@@ -3760,6 +3760,15 @@
     if (els.showNpsLabelsInput) {
       els.showNpsLabelsInput.checked = state.showNpsLabels;
     }
+    if (els.labelToggleButton) {
+      els.labelToggleButton.classList.toggle("is-active", Boolean(state.showNpsLabels));
+      els.labelToggleButton.setAttribute("aria-pressed", state.showNpsLabels ? "true" : "false");
+      els.labelToggleButton.title = state.showNpsLabels ? "Hide ROI labels" : "Show ROI labels";
+      els.labelToggleButton.setAttribute(
+        "aria-label",
+        state.showNpsLabels ? "Hide ROI labels" : "Show ROI labels"
+      );
+    }
     updateDicomOverlay();
     updateAnalysisCanvases();
     els.overlayNote.style.display = getActiveVolume() ? "none" : "grid";
@@ -4368,6 +4377,7 @@
     els.dicomOverlay = document.getElementById("np-dicom-overlay");
     els.dicomToggleButton = document.getElementById("np-dicom-toggle-button");
     els.gridToggleButton = document.getElementById("np-grid-toggle-button");
+    els.labelToggleButton = document.getElementById("np-label-toggle-button");
     els.sliceSlider = document.getElementById("np-slice-slider");
     els.readout = document.getElementById("np-readout");
     els.windowWidthInput = document.getElementById("np-window-width");
@@ -4494,6 +4504,12 @@
     });
     els.showNpsLabelsInput.addEventListener("change", () => {
       state.showNpsLabels = els.showNpsLabelsInput.checked;
+      updateUi();
+      render();
+    });
+    els.labelToggleButton?.addEventListener("click", () => {
+      state.showNpsLabels = !state.showNpsLabels;
+      updateUi();
       render();
     });
     document.getElementById("np-add-nps-set-circle-button").addEventListener("click", addCircleToSameNpsSet);

@@ -291,6 +291,8 @@
       lesion: true,
       lumen: false,
     },
+    showViewportOverlays: true,
+    showViewportGrid: false,
     projectionHelpOpen: false,
     projectionHelpIndex: 0,
     localizationPromptOpen: false,
@@ -419,6 +421,8 @@
     els.projectionHelpButton = document.getElementById("projection-help-button");
     els.canvasResetWindowButton = document.getElementById("canvas-reset-window-button");
     els.canvasResetViewButton = document.getElementById("canvas-reset-view-button");
+    els.canvasOverlayToggleButton = document.getElementById("canvas-overlay-toggle-button");
+    els.canvasGridToggleButton = document.getElementById("canvas-grid-toggle-button");
     els.canvasFocusToggleButton = document.getElementById("canvas-focus-toggle-button");
     els.canvasFocusExitButton = document.getElementById("canvas-focus-exit-button");
     els.focusWorkflowButtons = Array.from(document.querySelectorAll("[data-focus-sidebar-section]"));
@@ -3763,6 +3767,27 @@
       els.canvasResetViewButton.disabled = false;
       els.canvasResetViewButton.classList.toggle("is-muted", !canResetView);
     }
+    if (els.canvasWrap) {
+      els.canvasWrap.classList.toggle("has-grid-overlay", Boolean(state.showViewportGrid));
+    }
+    if (els.canvasOverlayToggleButton) {
+      const visible = state.showViewportOverlays !== false;
+      els.canvasOverlayToggleButton.classList.toggle("is-active", visible);
+      els.canvasOverlayToggleButton.title = visible ? "Hide QCA overlays" : "Show QCA overlays";
+      els.canvasOverlayToggleButton.setAttribute(
+        "aria-label",
+        visible ? "Hide QCA overlays" : "Show QCA overlays"
+      );
+    }
+    if (els.canvasGridToggleButton) {
+      const visible = Boolean(state.showViewportGrid);
+      els.canvasGridToggleButton.classList.toggle("is-active", visible);
+      els.canvasGridToggleButton.title = visible ? "Hide viewport grid" : "Show viewport grid";
+      els.canvasGridToggleButton.setAttribute(
+        "aria-label",
+        visible ? "Hide viewport grid" : "Show viewport grid"
+      );
+    }
   }
 
   function escapeHtml(value) {
@@ -6267,6 +6292,9 @@
     const analysis = options?.analysis || state.analysis;
     const showHandles = options?.showHandles !== false;
     const forceAnalysisVisible = options?.forceAnalysisVisible === true;
+    if (options?.respectViewportToggle && state.showViewportOverlays === false) {
+      return;
+    }
     const overlayVisibility = options?.overlayVisibility || state.overlayVisibility;
     const showCenterline = overlayVisibility.centerline;
     const showBorders = overlayVisibility.borders;
@@ -6580,7 +6608,7 @@
         transform.drawWidth,
         transform.drawHeight
       );
-      drawOverlay(overlayContext, transform);
+      drawOverlay(overlayContext, transform, { respectViewportToggle: true });
     } catch (error) {
       console.error(error);
       state.canvasTransform = null;
@@ -9612,6 +9640,19 @@
     });
     els.canvasResetViewButton?.addEventListener("click", () => {
       resetCanvasView();
+    });
+    els.canvasOverlayToggleButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      state.showViewportOverlays = state.showViewportOverlays === false;
+      updateUi();
+      scheduleRender();
+    });
+    els.canvasGridToggleButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      state.showViewportGrid = !state.showViewportGrid;
+      updateUi();
     });
     els.canvasFocusToggleButton?.addEventListener("click", (event) => {
       event.preventDefault();
