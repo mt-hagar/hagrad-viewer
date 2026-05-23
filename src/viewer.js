@@ -2459,7 +2459,9 @@
       const canSync = isComparisonActive();
       const syncIsActive = canSync && state.comparison.syncEnabled;
       els.comparisonSyncButton.disabled = !canSync;
+      els.comparisonSyncButton.classList.toggle("is-hidden", !canSync);
       els.comparisonSyncButton.classList.toggle("is-active", syncIsActive);
+      els.comparisonSyncButton.setAttribute("aria-hidden", canSync ? "false" : "true");
       els.comparisonSyncButton.title = canSync
         ? syncIsActive
           ? "Comparison sync on"
