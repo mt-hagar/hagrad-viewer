@@ -1711,7 +1711,10 @@ body.is-presentation-focus .bottom-grid {
 }
 
 body.is-presentation-focus .presentation-focus-dock {
-  display: none;
+  z-index: 40;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
 }
 
 body.is-presentation-focus .canvas-overlay-message {

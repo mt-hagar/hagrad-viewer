@@ -2585,6 +2585,7 @@
     els.presentationGridToggleButton = document.getElementById("presentation-grid-toggle-button");
     els.presentationFocusToggleButton = document.getElementById("presentation-focus-toggle-button");
     els.presentationFocusExitButton = document.getElementById("presentation-focus-exit-button");
+    els.focusSidebarCollapseButton = document.getElementById("focus-sidebar-collapse-button");
     els.focusWorkflowButtons = Array.from(document.querySelectorAll("[data-focus-workflow-tab]"));
     els.focusIqExportButton = document.getElementById("focus-iq-export-button");
     els.undoButton = document.getElementById("undo-button");
@@ -7812,10 +7813,9 @@
 
   function handleFocusWorkflowTab(tab) {
     const normalizedTab = SIDEBAR_TAB_KEY_SET.has(tab) ? tab : "case";
-    const shouldClose = state.presentationFocus && state.focusSidebarOpen && state.activeSidebarTab === normalizedTab;
     setActiveSidebarTab(normalizedTab);
     if (state.presentationFocus) {
-      setFocusSidebarOpen(!shouldClose);
+      setFocusSidebarOpen(true);
       scheduleFocusLayoutRender();
     }
   }
@@ -17509,6 +17509,12 @@
       event.stopPropagation();
       setPresentationFocus(false);
     });
+    els.focusSidebarCollapseButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setFocusSidebarOpen(false);
+      scheduleFocusLayoutRender();
+    });
     els.focusWorkflowButtons?.forEach((button) => {
       button.addEventListener("click", (event) => {
         event.preventDefault();
@@ -17618,15 +17624,6 @@
           return;
         }
         closeRoiToolMenu();
-      }
-      if (
-        state.presentationFocus &&
-        state.focusSidebarOpen &&
-        !els.sidebar?.contains(target) &&
-        !target.closest?.(".presentation-focus-dock") &&
-        !target.closest?.(".viewport-mini-actions")
-      ) {
-        setFocusSidebarOpen(false);
       }
     });
     els.toolTooltipTargets.forEach((button) => {

@@ -234,6 +234,7 @@
     els.presentationGridToggleButton = document.getElementById("presentation-grid-toggle-button");
     els.presentationFocusToggleButton = document.getElementById("presentation-focus-toggle-button");
     els.presentationFocusExitButton = document.getElementById("presentation-focus-exit-button");
+    els.focusSidebarCollapseButton = document.getElementById("focus-sidebar-collapse-button");
     els.focusWorkflowButtons = Array.from(document.querySelectorAll("[data-focus-sidebar-group]"));
     els.focusFinishCloseButton = document.getElementById("focus-finish-close-button");
     els.zoomReadout = document.getElementById("zoom-readout");
@@ -2471,15 +2472,13 @@
   function handleFocusSidebarGroup(groupId) {
     const group = document.getElementById(groupId);
     const normalizedGroupId = group?.classList?.contains("sidebar-group") ? groupId : "sidebar-group-workflow";
-    const shouldClose =
-      state.presentationFocus && state.focusSidebarOpen && state.activeFocusGroupId === normalizedGroupId;
     state.activeFocusGroupId = normalizedGroupId;
     const activeGroup = document.getElementById(normalizedGroupId);
     if (activeGroup) {
       activeGroup.open = true;
     }
     if (state.presentationFocus) {
-      setFocusSidebarOpen(!shouldClose);
+      setFocusSidebarOpen(true);
       window.requestAnimationFrame(() => {
         activeGroup?.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
       });
@@ -8206,6 +8205,12 @@
       event.stopPropagation();
       setPresentationFocus(false);
     });
+    els.focusSidebarCollapseButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setFocusSidebarOpen(false);
+      scheduleFocusLayoutRender();
+    });
     els.focusWorkflowButtons?.forEach((button) => {
       button.addEventListener("click", (event) => {
         event.preventDefault();
@@ -8271,19 +8276,6 @@
       } catch (error) {
         console.error(error);
         setStatus(error.message || "Failed to load dropped DICOM files.", "error");
-      }
-    });
-
-    document.addEventListener("click", (event) => {
-      const target = event.target;
-      if (
-        state.presentationFocus &&
-        state.focusSidebarOpen &&
-        !els.sidebar?.contains(target) &&
-        !target.closest?.(".presentation-focus-dock") &&
-        !target.closest?.(".viewport-mini-actions")
-      ) {
-        setFocusSidebarOpen(false);
       }
     });
 

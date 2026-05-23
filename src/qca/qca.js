@@ -425,6 +425,7 @@
     els.canvasGridToggleButton = document.getElementById("canvas-grid-toggle-button");
     els.canvasFocusToggleButton = document.getElementById("canvas-focus-toggle-button");
     els.canvasFocusExitButton = document.getElementById("canvas-focus-exit-button");
+    els.focusSidebarCollapseButton = document.getElementById("focus-sidebar-collapse-button");
     els.focusWorkflowButtons = Array.from(document.querySelectorAll("[data-focus-sidebar-section]"));
     els.focusFinishCloseButton = document.getElementById("focus-finish-close-button");
     els.projectionHelpModal = document.getElementById("projection-help-modal");
@@ -2641,13 +2642,11 @@
   function handleFocusSidebarSection(sectionId) {
     const section = document.getElementById(sectionId);
     const normalizedSectionId = section?.tagName === "DETAILS" ? sectionId : "workflow-section";
-    const shouldClose =
-      state.presentationFocus && state.focusSidebarOpen && state.activeFocusSectionId === normalizedSectionId;
     state.activeFocusSectionId = normalizedSectionId;
     const activeSection = document.getElementById(normalizedSectionId);
     openSidebarSection(activeSection);
     if (state.presentationFocus) {
-      setFocusSidebarOpen(!shouldClose);
+      setFocusSidebarOpen(true);
       window.requestAnimationFrame(() => scrollToElement(activeSection));
       scheduleFocusLayoutRender();
     }
@@ -9664,6 +9663,12 @@
       event.stopPropagation();
       setPresentationFocus(false);
     });
+    els.focusSidebarCollapseButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setFocusSidebarOpen(false);
+      scheduleFocusLayoutRender();
+    });
     els.focusWorkflowButtons?.forEach((button) => {
       button.addEventListener("click", (event) => {
         event.preventDefault();
@@ -9877,19 +9882,6 @@
       } catch (error) {
         console.error(error);
         setStatus(error.message || "Dropped DICOM files failed to load.", "error");
-      }
-    });
-
-    document.addEventListener("click", (event) => {
-      const target = event.target;
-      if (
-        state.presentationFocus &&
-        state.focusSidebarOpen &&
-        !els.sidebar?.contains(target) &&
-        !target.closest?.(".presentation-focus-dock") &&
-        !target.closest?.(".canvas-mini-actions")
-      ) {
-        setFocusSidebarOpen(false);
       }
     });
 

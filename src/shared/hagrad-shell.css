@@ -223,6 +223,53 @@ body.is-workflow-switch-guard-open {
   flex-wrap: wrap;
 }
 
+.focus-sidebar-collapse-button {
+  display: none;
+}
+
+body.is-presentation-focus .focus-sidebar-collapse-button {
+  position: sticky;
+  top: 0;
+  z-index: 45;
+  display: inline-flex;
+  justify-self: end;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin: 0 0 4px;
+  border: 1px solid rgba(255, 215, 141, 0.28);
+  border-radius: 13px;
+  color: var(--accent-strong, #ffe0a5);
+  background: linear-gradient(180deg, rgba(255, 215, 141, 0.15), rgba(7, 14, 20, 0.9));
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  backdrop-filter: blur(14px);
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    background 150ms ease,
+    box-shadow 150ms ease,
+    opacity 220ms ease;
+}
+
+body.is-presentation-focus .focus-sidebar-collapse-button:hover {
+  transform: translateX(-1px);
+  border-color: rgba(255, 215, 141, 0.55);
+  background: linear-gradient(180deg, rgba(255, 215, 141, 0.22), rgba(7, 14, 20, 0.94));
+}
+
+body.is-presentation-focus .focus-sidebar-collapse-button:active {
+  transform: translateX(-2px) scale(0.98);
+}
+
+body.is-presentation-focus .focus-sidebar-collapse-button span {
+  display: block;
+  font-size: 28px;
+  line-height: 1;
+  transform: translateY(-1px);
+}
+
 @media (max-width: 1080px) {
   .app {
     height: auto;
