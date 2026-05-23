@@ -120,6 +120,16 @@ body.is-presentation-focus .hero {
   white-space: nowrap;
 }
 
+.hero-control-stack input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .workspace {
   grid-template-columns: minmax(var(--hagrad-sidebar-min), var(--hagrad-sidebar-max)) minmax(0, 1fr);
   gap: var(--hagrad-workspace-gap);
