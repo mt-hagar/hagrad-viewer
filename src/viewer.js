@@ -369,7 +369,7 @@
     voiPreferenceLoaded: false,
     showDicomMetadataOverlay: false,
     showPresentationSeriesLabel: true,
-    showViewportOverlays: true,
+    showViewportOverlays: false,
     showViewportGrid: false,
     syncMprTransforms: true,
     cineFps: 8,
@@ -2497,10 +2497,12 @@
     if (els.presentationOverlayToggleButton) {
       const visible = state.showViewportOverlays !== false;
       els.presentationOverlayToggleButton.classList.toggle("is-active", visible);
-      els.presentationOverlayToggleButton.title = visible ? "Hide viewport labels" : "Show viewport labels";
+      els.presentationOverlayToggleButton.title = visible
+        ? "Hide DICOM header and series labels"
+        : "Show DICOM header and series labels";
       els.presentationOverlayToggleButton.setAttribute(
         "aria-label",
-        visible ? "Hide viewport labels" : "Show viewport labels"
+        visible ? "Hide DICOM header and series labels" : "Show DICOM header and series labels"
       );
     }
     if (els.presentationGridToggleButton) {
@@ -2512,6 +2514,19 @@
         visible ? "Hide viewport grid" : "Show viewport grid"
       );
     }
+  }
+
+  function setViewportOverlayVisibility(visible) {
+    state.showViewportOverlays = Boolean(visible);
+    state.showDicomMetadataOverlay = Boolean(visible);
+    if (visible) {
+      state.showPresentationSeriesLabel = true;
+    }
+    updateViewportChromeUi();
+    updateViewportDicomOverlays();
+    updatePresentationSeriesLabel();
+    updateComparisonUi();
+    requestRenderAll();
   }
 
   function updateComparisonUi() {
@@ -9438,10 +9453,31 @@
     if (!tile || !reconstruction || !frame) {
       return;
     }
+    const currentIndex = getReadoutIndexAtCenter(reconstruction, frame.plane, frame.centerWorld);
+    setComparisonTilePlaneIndex(tile, viewportId, currentIndex + delta);
+  }
+
+  function setComparisonTilePlaneIndex(tile, viewportId, targetIndex) {
+    const reconstruction = getReconstructionById(tile?.reconstructionId);
+    const frame = getComparisonFrame(tile, viewportId);
+    if (!tile || !reconstruction || !frame) {
+      return;
+    }
+    const metrics = frame.metrics;
+    const currentIndex = getReadoutIndexAtCenter(reconstruction, frame.plane, frame.centerWorld);
+    const clampedIndex = clamp(Math.round(Number(targetIndex) || 0), 0, Math.max(0, metrics.count - 1));
+    const delta = clampedIndex - currentIndex;
+    if (!delta) {
+      return;
+    }
     stopCine();
     const startCenterWorld = tile.centerWorld || frame.centerWorld || reconstruction.volume.centerWorld;
-    const nextCenterWorld = addVectors(startCenterWorld, scaleVector(frame.nWorld, delta * frame.metrics.spacingNormal));
+    const nextCenterWorld = addVectors(startCenterWorld, scaleVector(frame.nWorld, delta * metrics.spacingNormal));
     setComparisonTileCenter(tile, nextCenterWorld);
+    state.polygonDraft = null;
+    if (state.diameterDraft?.toolKey !== "stenosisDiameter") {
+      state.diameterDraft = null;
+    }
     requestRenderAll();
   }
 
@@ -9492,6 +9528,17 @@
       return;
     }
     scrollComparisonTile(tile, viewportId, event.deltaY > 0 ? 1 : -1);
+  }
+
+  function handleComparisonFastScrollInput(event) {
+    const tile = getComparisonTile(event.currentTarget.dataset.comparisonScrollTileId);
+    const viewportId = event.currentTarget.dataset.comparisonScrollViewportId || "presentation";
+    if (!tile) {
+      return;
+    }
+    event.stopPropagation();
+    setActiveComparisonTile(tile.id);
+    setComparisonTilePlaneIndex(tile, viewportId, event.currentTarget.value);
   }
 
   function handleComparisonPointerDown(event) {
@@ -9576,6 +9623,7 @@
   function buildComparisonCanvas(tile, viewportId, className) {
     const canvas = document.createElement("canvas");
     canvas.className = className;
+    canvas.dataset.viewportId = viewportId;
     canvas.dataset.comparisonTileId = tile.id;
     canvas.dataset.comparisonViewportId = viewportId;
     canvas.setAttribute("aria-label", `${getReconstructionById(tile.reconstructionId)?.label || "Comparison tile"} ${VIEWPORT_CONFIG[viewportId].title}`);
@@ -9588,6 +9636,32 @@
     viewportState.canvas = canvas;
     viewportState.ctx = canvas.getContext("2d");
     return canvas;
+  }
+
+  function buildComparisonFastScroll(tile, viewportId) {
+    const scroller = document.createElement("div");
+    scroller.className = "comparison-fast-scroll";
+    const label = document.createElement("label");
+    label.textContent = "Slice";
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.min = "0";
+    slider.max = "0";
+    slider.step = "1";
+    slider.value = "0";
+    slider.dataset.comparisonScrollTileId = tile.id;
+    slider.dataset.comparisonScrollViewportId = viewportId;
+    slider.setAttribute("aria-label", "Scroll comparison tile");
+    slider.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+      setActiveComparisonTile(tile.id);
+    });
+    slider.addEventListener("input", handleComparisonFastScrollInput);
+    const value = document.createElement("span");
+    value.dataset.comparisonScrollValue = `${tile.id}-${viewportId}`;
+    value.textContent = getComparisonReadout(tile, viewportId);
+    scroller.append(label, slider, value);
+    return scroller;
   }
 
   function updateComparisonTileActiveClasses() {
@@ -9645,6 +9719,7 @@
         tileElement.appendChild(empty);
       } else {
         tileElement.appendChild(buildComparisonCanvas(tile, "presentation", "comparison-tile-canvas"));
+        tileElement.appendChild(buildComparisonFastScroll(tile, "presentation"));
       }
 
       els.comparisonLayer.appendChild(tileElement);
@@ -9659,6 +9734,20 @@
       const readout = els.comparisonLayer.querySelector(`[data-comparison-readout="${tile.id}-presentation"]`);
       if (readout) {
         readout.textContent = getComparisonReadout(tile, "presentation");
+      }
+      const slider = els.comparisonLayer.querySelector(
+        `[data-comparison-scroll-tile-id="${tile.id}"][data-comparison-scroll-viewport-id="presentation"]`
+      );
+      const value = els.comparisonLayer.querySelector(`[data-comparison-scroll-value="${tile.id}-presentation"]`);
+      const reconstruction = getReconstructionById(tile.reconstructionId);
+      const frame = getComparisonFrame(tile, "presentation");
+      if (slider) {
+        slider.disabled = !reconstruction || !frame;
+        slider.max = String(Math.max(0, (frame?.metrics?.count ?? 1) - 1));
+        slider.value = String(frame && reconstruction ? getReadoutIndexAtCenter(reconstruction, frame.plane, frame.centerWorld) : 0);
+      }
+      if (value) {
+        value.textContent = getComparisonReadout(tile, "presentation");
       }
     });
   }
@@ -13063,6 +13152,25 @@
 
     if (
       state.dragging.comparisonTileId &&
+      state.dragging.type === "rightScroll" &&
+      !state.comparison.viewportOverrideActive
+    ) {
+      const tile = getComparisonTile(state.dragging.comparisonTileId);
+      const viewportId = state.dragging.viewportId || "presentation";
+      const dragDeltaY = event.clientY - state.dragging.startClientY;
+      const normalized = dragDeltaY / state.dragging.scrubHeightPx;
+      const targetIndex = clamp(
+        Math.round(state.dragging.startIndex + normalized * state.dragging.maxIndex),
+        0,
+        state.dragging.maxIndex
+      );
+      setComparisonTilePlaneIndex(tile, viewportId, targetIndex);
+      event.preventDefault();
+      return;
+    }
+
+    if (
+      state.dragging.comparisonTileId &&
       !state.comparison.viewportOverrideActive &&
       !String(state.dragging.type || "").startsWith("comparison")
     ) {
@@ -13799,10 +13907,7 @@
     els.presentationOverlayToggleButton?.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      state.showViewportOverlays = state.showViewportOverlays === false;
-      updateViewportChromeUi();
-      updateComparisonUi();
-      requestRenderAll();
+      setViewportOverlayVisibility(state.showViewportOverlays === false);
     });
     els.presentationGridToggleButton?.addEventListener("click", (event) => {
       event.preventDefault();
