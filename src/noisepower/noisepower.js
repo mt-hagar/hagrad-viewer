@@ -1659,17 +1659,28 @@
   }
 
   async function loadFiles(files, options = {}) {
+    const profile = window.HAGRadCore?.createLoadProfiler?.("DICOM load", {
+      workflow: "noise-power",
+      mode: options.add ? "append" : "replace",
+    });
+    const finishEnumeration = profile?.start("fileEnumeration");
     const list = Array.from(files || []);
+    finishEnumeration?.({ fileCount: list.length });
     if (!list.length) {
       return;
     }
     setStatus(`Parsing ${list.length} DICOM file${list.length === 1 ? "" : "s"}...`);
+    const finishHeaderParse = profile?.start("dicomHeaderParse", { fileCount: list.length });
     const parsed = await dicomApi.parseDicomFiles(list, {
       onProgress(done, total) {
         setStatus(`Reading DICOM headers ${done} / ${total}...`);
       },
+      profile,
     });
+    finishHeaderParse?.({ recordCount: parsed.length });
+    const finishGrouping = profile?.start("seriesGrouping", { recordCount: parsed.length });
     const candidates = dicomApi.buildSeriesCandidates(parsed);
+    finishGrouping?.({ groupCount: candidates.length });
     if (!candidates.length) {
       throw new Error("No image series with DICOM pixel data were found.");
     }
@@ -1719,12 +1730,25 @@
             setStatus(`Loading ${candidate.label}: ${current} / ${total}`);
           }
         },
+        profile,
       });
       candidate.id = uniqueDatasetId(candidate.id || candidate.key || `series_${Date.now()}`);
       state.datasets.push(candidate);
     }
     setActiveDataset(state.datasets[0].id);
     setStatus(`${state.datasets.length} reconstruction${state.datasets.length === 1 ? "" : "s"} loaded.`);
+    profile?.sampleMemory("afterVolumeConstruction");
+    const finishFirstRender = profile?.start("firstRenderAfterVolumeCompletion", {
+      reconstructionCount: state.datasets.length,
+    });
+    window.requestAnimationFrame(() => {
+      finishFirstRender?.();
+      profile?.sampleMemory("afterFirstRender");
+      profile?.finish({
+        loadedReconstructions: importCandidates.length,
+        totalReconstructions: state.datasets.length,
+      });
+    });
   }
 
   function uniqueDatasetId(baseId) {

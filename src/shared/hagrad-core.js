@@ -199,6 +199,174 @@
     return new Promise((resolve) => global.setTimeout(resolve, milliseconds));
   }
 
+  let loadProfilingOverride = false;
+  const loadProfiles = [];
+
+  function nowMs() {
+    return typeof global.performance?.now === "function" ? global.performance.now() : Date.now();
+  }
+
+  function isLoadProfilingEnabled() {
+    if (loadProfilingOverride || global.__HAGRadLoadProfiling === true) {
+      return true;
+    }
+    try {
+      const params = new URLSearchParams(global.location?.search || "");
+      return params.get("hagradProfile") === "1" || params.get("profileLoad") === "1";
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function sanitizeProfileDetails(details) {
+    const source = details && typeof details === "object" ? details : {};
+    const sanitized = {};
+    Object.entries(source).forEach(([key, value]) => {
+      if (typeof value === "number" || typeof value === "boolean" || value === null) {
+        sanitized[key] = value;
+      } else if (typeof value === "string") {
+        sanitized[key] = value.slice(0, 80);
+      }
+    });
+    return sanitized;
+  }
+
+  function readMemorySample(label) {
+    const memory = global.performance?.memory;
+    if (!memory) {
+      return null;
+    }
+    const toMb = (value) => Math.round((value / (1024 * 1024)) * 10) / 10;
+    return {
+      label,
+      usedMb: Number.isFinite(memory.usedJSHeapSize) ? toMb(memory.usedJSHeapSize) : null,
+      totalMb: Number.isFinite(memory.totalJSHeapSize) ? toMb(memory.totalJSHeapSize) : null,
+      limitMb: Number.isFinite(memory.jsHeapSizeLimit) ? toMb(memory.jsHeapSizeLimit) : null,
+      atMs: Math.round(nowMs() * 10) / 10,
+    };
+  }
+
+  function setLoadProfilingEnabled(enabled) {
+    loadProfilingOverride = Boolean(enabled);
+    global.__HAGRadLoadProfiling = loadProfilingOverride;
+    return loadProfilingOverride;
+  }
+
+  function getLoadProfiles() {
+    return loadProfiles.slice();
+  }
+
+  function clearLoadProfiles() {
+    loadProfiles.length = 0;
+  }
+
+  function createLoadProfiler(context, details) {
+    const enabled = isLoadProfilingEnabled();
+    if (!enabled) {
+      const noop = () => {};
+      return {
+        enabled: false,
+        setDetail: noop,
+        count: noop,
+        record: noop,
+        start: () => noop,
+        sampleMemory: noop,
+        finish: noop,
+      };
+    }
+
+    const report = {
+      context: String(context || "load"),
+      startedAt: new Date().toISOString(),
+      details: sanitizeProfileDetails(details),
+      counts: {},
+      phases: [],
+      memorySamples: [],
+    };
+    const startMs = nowMs();
+    const phaseEntries = new Map();
+
+    function setDetail(key, value) {
+      Object.assign(report.details, sanitizeProfileDetails({ [key]: value }));
+    }
+
+    function count(key, value = 1) {
+      if (!Number.isFinite(value)) {
+        return;
+      }
+      report.counts[key] = (report.counts[key] || 0) + value;
+    }
+
+    function record(label, durationMs, phaseDetails) {
+      if (!Number.isFinite(durationMs)) {
+        return;
+      }
+      const phaseLabel = String(label || "phase");
+      const details = sanitizeProfileDetails(phaseDetails);
+      const key = `${phaseLabel}:${JSON.stringify(details)}`;
+      let entry = phaseEntries.get(key);
+      if (!entry) {
+        entry = {
+          label: phaseLabel,
+          count: 0,
+          totalMs: 0,
+          minMs: null,
+          maxMs: 0,
+          avgMs: 0,
+          ...details,
+        };
+        phaseEntries.set(key, entry);
+        report.phases.push(entry);
+      }
+      entry.count += 1;
+      entry.totalMs = Math.round((entry.totalMs + durationMs) * 10) / 10;
+      entry.minMs = entry.minMs === null ? Math.round(durationMs * 10) / 10 : Math.min(entry.minMs, Math.round(durationMs * 10) / 10);
+      entry.maxMs = Math.max(entry.maxMs, Math.round(durationMs * 10) / 10);
+      entry.avgMs = Math.round((entry.totalMs / entry.count) * 10) / 10;
+    }
+
+    function start(label, phaseDetails) {
+      const phaseStart = nowMs();
+      return (endDetails) => {
+        record(label, nowMs() - phaseStart, {
+          ...sanitizeProfileDetails(phaseDetails),
+          ...sanitizeProfileDetails(endDetails),
+        });
+      };
+    }
+
+    function sampleMemory(label) {
+      const sample = readMemorySample(label);
+      if (sample) {
+        report.memorySamples.push(sample);
+      }
+    }
+
+    function finish(extraDetails) {
+      report.totalMs = Math.round((nowMs() - startMs) * 10) / 10;
+      Object.assign(report.details, sanitizeProfileDetails(extraDetails));
+      loadProfiles.push(report);
+      if (loadProfiles.length > 20) {
+        loadProfiles.shift();
+      }
+      if (global.console?.info) {
+        global.console.info("[HAGRad load profile]", report);
+      }
+      return report;
+    }
+
+    sampleMemory("start");
+    return {
+      enabled: true,
+      setDetail,
+      count,
+      record,
+      start,
+      sampleMemory,
+      finish,
+    };
+  }
+
   const DICOM_HEADER_INDEX_DB_NAME = "hagrad-dicom-header-index-v1";
   const DICOM_HEADER_INDEX_STORE = "headers";
   const DICOM_HEADER_INDEX_SCHEMA = 2;
@@ -404,6 +572,7 @@
     }
 
     const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
+    const profile = options.profile?.enabled ? options.profile : null;
     const parsed = new Array(sourceFiles.length);
     const workers = [];
     const workerUrl = getDicomHeaderWorkerUrl();
@@ -415,7 +584,12 @@
     let nextIndex = 0;
     let completed = 0;
 
+    profile?.setDetail("headerWorkerAvailable", true);
+    profile?.count("selectedFiles", sourceFiles.length);
+    profile?.count("headerWorkerCount", workerCount);
+
     if (indexDb) {
+      const finishIndexLookup = profile?.start("headerIndexLookup", { fileCount: sourceFiles.length });
       await Promise.all(
         sourceFiles.map(async (file, index) => {
           const cached = await getCachedDicomHeaderRecord(indexDb, cacheKeys[index], file);
@@ -429,6 +603,9 @@
         })
       );
       completed = parsed.filter(Boolean).length;
+      profile?.count("headerIndexHits", completed);
+      profile?.count("headerIndexMisses", sourceFiles.length - completed);
+      finishIndexLookup?.({ cacheHits: completed, cacheMisses: sourceFiles.length - completed });
       if (completed && onProgress) {
         onProgress(completed, sourceFiles.length);
       }
@@ -436,6 +613,10 @@
         indexDb.close?.();
         return parsed.filter(Boolean);
       }
+    }
+
+    if (!indexDb) {
+      profile?.count("headerIndexUnavailable", 1);
     }
 
     async function runWorker() {
@@ -472,8 +653,19 @@
     }
 
     try {
+      const cacheHitsBeforeWorker = completed;
+      const finishWorkerParse = profile?.start("headerWorkerParse", {
+        fileCount: sourceFiles.length - cacheHitsBeforeWorker,
+        workerCount,
+      });
       await Promise.all(Array.from({ length: workerCount }, runWorker));
+      finishWorkerParse?.({
+        parsedCount: parsed.filter(Boolean).length,
+        cacheHits: cacheHitsBeforeWorker,
+      });
+      const finishIndexWrite = profile?.start("headerIndexWrite", { writeCount: cachePutPromises.length });
       await Promise.allSettled(cachePutPromises);
+      finishIndexWrite?.({ writeCount: cachePutPromises.length });
       indexDb?.close?.();
       return parsed.filter(Boolean);
     } catch (_error) {
@@ -680,6 +872,10 @@
     sanitizeFilePart,
     waitForAnimationFrame,
     wait,
+    createLoadProfiler,
+    setLoadProfilingEnabled,
+    getLoadProfiles,
+    clearLoadProfiles,
     parseDicomHeadersInWorker,
     clearDicomHeaderIndex,
     collectDroppedFiles,

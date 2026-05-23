@@ -3978,18 +3978,22 @@
     let completed = 0;
     let lastYieldAt = 0;
     const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
+    const profile = options.profile?.enabled ? options.profile : null;
 
     if (!options.disableWorkerParsing && typeof window.HAGRadCore?.parseDicomHeadersInWorker === "function") {
       const workerRecords = await window.HAGRadCore.parseDicomHeadersInWorker(sourceFiles, {
         byteLimits: DICOM_HEADER_READ_LIMITS,
         concurrency,
         onProgress,
+        profile,
       });
       if (Array.isArray(workerRecords)) {
+        profile?.count("headerRecords", workerRecords.length);
         return workerRecords;
       }
     }
 
+    const finishMainThreadParse = profile?.start("headerMainThreadParse", { fileCount: sourceFiles.length, concurrency });
     async function worker() {
       while (nextIndex < sourceFiles.length) {
         const currentIndex = nextIndex;
@@ -4012,7 +4016,10 @@
     }
 
     await Promise.all(Array.from({ length: concurrency }, worker));
-    return parsed.filter(Boolean);
+    const records = parsed.filter(Boolean);
+    profile?.count("headerRecords", records.length);
+    finishMainThreadParse?.({ parsedCount: records.length });
+    return records;
   }
 
   function resetAnalysisForSelectedFrame() {
@@ -4146,7 +4153,13 @@
 
   async function loadStudyFromFiles(fileList, options) {
     const append = Boolean(options?.append);
+    const profile = window.HAGRadCore?.createLoadProfiler?.("DICOM load", {
+      workflow: "qca",
+      mode: append ? "append" : "replace",
+    });
+    const finishEnumeration = profile?.start("fileEnumeration");
     const files = Array.from(fileList || []).filter((file) => file.size > 0);
+    finishEnumeration?.({ fileCount: files.length });
     if (!files.length) {
       return;
     }
@@ -4168,16 +4181,21 @@
       persistActiveSeriesState();
     }
     setStatus(`Reading ${files.length} DICOM file${files.length === 1 ? "" : "s"}...`);
+    const finishHeaderParse = profile?.start("dicomHeaderParse", { fileCount: files.length });
     const records = await parseDicomFiles(files, {
       onProgress(done, total) {
         setStatus(`Reading DICOM headers ${done} / ${total}...`);
       },
+      profile,
     });
+    finishHeaderParse?.({ recordCount: records.length });
     if (!records.length) {
       throw new Error("No readable DICOM files were found.");
     }
 
+    const finishGrouping = profile?.start("seriesGrouping", { recordCount: records.length });
     const groups = groupSeries(records);
+    finishGrouping?.({ groupCount: groups.length });
     if (!groups.length) {
       throw new Error("No pixel data was found in the selected DICOM files.");
     }
@@ -4211,7 +4229,9 @@
     }
 
     const seriesOffset = append ? state.series.length : 0;
+    const finishSeriesBuild = profile?.start("seriesBuild", { groupCount: importGroups.length });
     const nextSeries = importGroups.map((group, index) => buildSeriesFromGroup(group, seriesOffset + index));
+    finishSeriesBuild?.({ seriesCount: nextSeries.length });
 
     if (append) {
       state.series.push(...nextSeries);
@@ -4229,6 +4249,18 @@
         ? `Added ${nextSeries.length} angiography series. ${state.series.length} total loaded.`
         : `Loaded ${state.series.length} angiography series.`
     );
+    profile?.sampleMemory("afterSeriesBuild");
+    const finishFirstRender = profile?.start("firstRenderAfterLoad", {
+      seriesCount: state.series.length,
+    });
+    window.requestAnimationFrame(() => {
+      finishFirstRender?.();
+      profile?.sampleMemory("afterFirstRender");
+      profile?.finish({
+        loadedSeries: nextSeries.length,
+        totalSeries: state.series.length,
+      });
+    });
   }
 
   function activateSeries(seriesId) {

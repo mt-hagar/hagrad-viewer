@@ -10713,18 +10713,22 @@
     let completed = 0;
     let lastYieldAt = 0;
     const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
+    const profile = options.profile?.enabled ? options.profile : null;
 
     if (!options.disableWorkerParsing && typeof window.HAGRadCore?.parseDicomHeadersInWorker === "function") {
       const workerRecords = await window.HAGRadCore.parseDicomHeadersInWorker(sourceFiles, {
         byteLimits: DICOM_HEADER_READ_LIMITS,
         concurrency,
         onProgress,
+        profile,
       });
       if (Array.isArray(workerRecords)) {
+        profile?.count("headerRecords", workerRecords.length);
         return workerRecords;
       }
     }
 
+    const finishMainThreadParse = profile?.start("headerMainThreadParse", { fileCount: sourceFiles.length, concurrency });
     async function worker() {
       while (nextIndex < sourceFiles.length) {
         const currentIndex = nextIndex;
@@ -10747,7 +10751,10 @@
     }
 
     await Promise.all(Array.from({ length: concurrency }, worker));
-    return parsed.filter(Boolean);
+    const records = parsed.filter(Boolean);
+    profile?.count("headerRecords", records.length);
+    finishMainThreadParse?.({ parsedCount: records.length });
+    return records;
   }
 
   function compareDicomRecords(a, b, normalVector) {
@@ -10833,7 +10840,8 @@
     return new Uint16Array(values || []);
   }
 
-  async function decodePixelDataWithCornerstone(record) {
+  async function decodePixelDataWithCornerstone(record, options) {
+    const profile = options?.profile?.enabled ? options.profile : null;
     initializeDecoderFallback();
     if (!state.decoderFallbackReady) {
       throw new Error("Compressed DICOM decoding is not available in this viewer build.");
@@ -10841,6 +10849,7 @@
 
     const imageId = cornerstoneWADOImageLoader.wadouri.fileManager.add(record.file);
     try {
+      const finishDecode = profile?.start("pixelDecodeTypedArray", { mode: "cornerstone" });
       const image = await cornerstone.loadAndCacheImage(imageId);
       const pixelData = image.getPixelData?.();
       if (!pixelData || !Number.isFinite(image.rows) || !Number.isFinite(image.columns)) {
@@ -10850,6 +10859,11 @@
         throw new Error("Only monochrome DICOM images are supported.");
       }
 
+      finishDecode?.({
+        rows: image.rows,
+        columns: image.columns,
+        sampleCount: pixelData.length,
+      });
       return {
         rows: image.rows,
         columns: image.columns,
@@ -10862,8 +10876,9 @@
     }
   }
 
-  async function parsePixelDataFromStoredRange(record) {
+  async function parsePixelDataFromStoredRange(record, options) {
     const transferSyntaxUID = safeString(record?.transferSyntaxUID);
+    const profile = options?.profile?.enabled ? options.profile : null;
 
     if (Number.isFinite(record.numberOfFrames) && record.numberOfFrames > 1) {
       throw new Error("Multi-frame DICOM is not supported in this local MPR viewer yet.");
@@ -10898,12 +10913,19 @@
       return null;
     }
 
+    const finishRead = profile?.start("pixelPayloadRead", { mode: "directRange", bytes: expectedBytes });
     const buffer = await record.file.slice(record.pixelDataOffset, record.pixelDataOffset + expectedBytes).arrayBuffer();
+    finishRead?.({ byteLength: buffer.byteLength });
     if (buffer.byteLength < expectedBytes) {
       return null;
     }
 
     let pixels;
+    const finishDecode = profile?.start("pixelDecodeTypedArray", {
+      mode: "directRange",
+      bitsAllocated,
+      sampleCount,
+    });
     if (bitsAllocated === 16) {
       pixels = pixelRepresentation === 1 ? new Int16Array(buffer, 0, sampleCount) : new Uint16Array(buffer, 0, sampleCount);
     } else {
@@ -10913,6 +10935,7 @@
         pixels[index] = view[index];
       }
     }
+    finishDecode?.({ typedArray: pixels.constructor?.name || "" });
 
     return {
       rows,
@@ -10923,13 +10946,19 @@
     };
   }
 
-  async function parsePixelData(record) {
-    const directSlice = await parsePixelDataFromStoredRange(record);
+  async function parsePixelData(record, options) {
+    const profile = options?.profile?.enabled ? options.profile : null;
+    const directSlice = await parsePixelDataFromStoredRange(record, options);
     if (directSlice) {
+      profile?.count("pixelDirectRangeSlices", 1);
       return directSlice;
     }
 
-    const byteArray = new Uint8Array(await record.file.arrayBuffer());
+    const finishRead = profile?.start("pixelPayloadRead", { mode: "fullFile" });
+    const buffer = await record.file.arrayBuffer();
+    finishRead?.({ byteLength: buffer.byteLength });
+    const finishDecode = profile?.start("pixelDecodeTypedArray", { mode: "fullFile" });
+    const byteArray = new Uint8Array(buffer);
     const dataSet = dicomParser.parseDicom(byteArray);
     const transferSyntaxUID = safeString(dataSet.string("x00020010"));
 
@@ -10945,7 +10974,9 @@
     const pixelDataElement = dataSet.elements.x7fe00010;
 
     if (!SUPPORTED_TRANSFER_SYNTAXES.has(transferSyntaxUID || "") || pixelDataElement?.fragments?.length) {
-      return decodePixelDataWithCornerstone(record);
+      finishDecode?.({ fallback: "cornerstone" });
+      profile?.count("pixelCornerstoneSlices", 1);
+      return decodePixelDataWithCornerstone(record, options);
     }
 
     if (samplesPerPixel !== 1) {
@@ -10953,7 +10984,9 @@
     }
 
     if (!pixelDataElement || !Number.isFinite(rows) || !Number.isFinite(columns)) {
-      return decodePixelDataWithCornerstone(record);
+      finishDecode?.({ fallback: "cornerstone" });
+      profile?.count("pixelCornerstoneSlices", 1);
+      return decodePixelDataWithCornerstone(record, options);
     }
 
     const sampleCount = rows * columns;
@@ -10979,6 +11012,12 @@
     } else {
       throw new Error(`Unsupported Bits Allocated value: ${bitsAllocated}`);
     }
+    finishDecode?.({
+      bitsAllocated,
+      sampleCount,
+      typedArray: pixels.constructor?.name || "",
+    });
+    profile?.count("pixelFullFileSlices", 1);
 
     return {
       rows,
@@ -10989,7 +11028,9 @@
     };
   }
 
-  async function buildVolume(records) {
+  async function buildVolume(records, options) {
+    const profile = options?.profile?.enabled ? options.profile : null;
+    const finishVolume = profile?.start("volumeConstruction", { sliceCount: records.length });
     const slices = [];
     let skippedCount = 0;
     const rowSpacing = records[0]?.pixelSpacing?.[0] || 1;
@@ -11005,7 +11046,7 @@
 
       let slice;
       try {
-        slice = await parsePixelData(records[index]);
+        slice = await parsePixelData(records[index], options);
       } catch (error) {
         skippedCount += 1;
         continue;
@@ -11019,12 +11060,14 @@
       }
 
       slices.push(slice);
+      profile?.count("decodedSlices", 1);
       if ((index + 1) % 8 === 0) {
         await waitForAnimationFrame();
       }
     }
 
     if (!slices.length) {
+      finishVolume?.({ decodedSlices: 0, skippedCount });
       throw new Error("No usable image slices could be decoded from the selected files.");
     }
 
@@ -11043,7 +11086,7 @@
       scaleVector(normalDirection, sliceSpacing * (slices.length - 1) / 2)
     );
 
-    return {
+    const volume = {
       rows,
       columns,
       depth: slices.length,
@@ -11058,6 +11101,9 @@
       centerWorld,
       skippedCount,
     };
+    profile?.count("skippedSlices", skippedCount);
+    finishVolume?.({ decodedSlices: slices.length, skippedCount });
+    return volume;
   }
 
   function makeReconstructionId(seriesKey, offset) {
@@ -11076,7 +11122,13 @@
   }
 
   async function loadReconstructionsFromFiles(fileList, options) {
+    const profile = window.HAGRadCore?.createLoadProfiler?.("DICOM load", {
+      workflow: "viewer",
+      mode: options?.append ? "append" : "replace",
+    });
+    const finishEnumeration = profile?.start("fileEnumeration");
     const files = Array.from(fileList || []).filter((file) => file.size > 0);
+    finishEnumeration?.({ fileCount: files.length });
     if (!files.length) {
       return;
     }
@@ -11084,16 +11136,21 @@
     stopCine();
     resetHistory();
     setStatus(`Reading ${files.length} files...`);
+    const finishHeaderParse = profile?.start("dicomHeaderParse", { fileCount: files.length });
     const records = await parseDicomFiles(files, {
       onProgress(done, total) {
         setStatus(`Reading DICOM headers ${done} / ${total}...`);
       },
+      profile,
     });
+    finishHeaderParse?.({ recordCount: records.length });
     if (!records.length) {
       throw new Error("No readable DICOM files were found.");
     }
 
+    const finishGrouping = profile?.start("seriesGrouping", { recordCount: records.length });
     const groups = groupSeries(records);
+    finishGrouping?.({ groupCount: groups.length });
     const existingKeys = new Set(state.reconstructions.map((reconstruction) => reconstruction.seriesKey));
     const nextReconstructions = [];
     let skippedDifferentStudy = 0;
@@ -11120,7 +11177,7 @@
         continue;
       }
 
-      const volume = await buildVolume(imageRecords);
+      const volume = await buildVolume(imageRecords, { profile });
       nextReconstructions.push({
         id: makeReconstructionId(group.key, state.reconstructions.length + index),
         seriesKey: group.key,
@@ -11200,6 +11257,18 @@
 
     updateEmptyState();
     requestRenderAll();
+    profile?.sampleMemory("afterVolumeConstruction");
+    const finishFirstRender = profile?.start("firstRenderAfterVolumeCompletion", {
+      reconstructionCount: state.reconstructions.length,
+    });
+    window.requestAnimationFrame(() => {
+      finishFirstRender?.();
+      profile?.sampleMemory("afterFirstRender");
+      profile?.finish({
+        loadedReconstructions: nextReconstructions.length,
+        totalReconstructions: state.reconstructions.length,
+      });
+    });
   }
 
   function pointsAreNear(left, right, toleranceMm) {
