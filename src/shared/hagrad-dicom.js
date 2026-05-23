@@ -27,6 +27,10 @@
     "1.2.840.10008.1.2",
     "1.2.840.10008.1.2.1",
   ]);
+  const DIRECT_PIXEL_TRANSFER_SYNTAXES = new Set([
+    "1.2.840.10008.1.2",
+    "1.2.840.10008.1.2.1",
+  ]);
   const DICOM_HEADER_READ_LIMITS = [
     256 * 1024,
     1024 * 1024,
@@ -116,6 +120,12 @@
         numberOfFrames: parseFirstNumber(dataSet.string("x00280008")),
         rows: parseFirstNumber(dataSet.string("x00280010")),
         columns: parseFirstNumber(dataSet.string("x00280011")),
+        samplesPerPixel: parseFirstNumber(dataSet.string("x00280002")),
+        bitsAllocated: parseFirstNumber(dataSet.string("x00280100")),
+        pixelRepresentation: parseFirstNumber(dataSet.string("x00280103")),
+        pixelDataOffset: Number.isFinite(pixelDataElement?.dataOffset) ? pixelDataElement.dataOffset : null,
+        pixelDataLength: Number.isFinite(pixelDataElement?.length) ? pixelDataElement.length : null,
+        pixelDataHasFragments: Boolean(pixelDataElement?.fragments?.length),
         pixelSpacing: parseNumericArray(dataSet.string("x00280030")),
         sliceThickness: parseFirstNumber(dataSet.string("x00180050")),
         kvp: parseFirstNumber(dataSet.string("x00180060")),
@@ -332,7 +342,78 @@
     }
   }
 
+  async function parsePixelDataFromStoredRange(record, options) {
+    const allowMultiFrame = Boolean(options?.allowMultiFrame);
+    const transferSyntaxUID = safeString(record?.transferSyntaxUID);
+
+    if (Number.isFinite(record.numberOfFrames) && record.numberOfFrames > 1) {
+      if (!allowMultiFrame) {
+        throw new Error("Multi-frame DICOM is not supported in this phase of NoiseLab.");
+      }
+      return null;
+    }
+    if (
+      !DIRECT_PIXEL_TRANSFER_SYNTAXES.has(transferSyntaxUID || "") ||
+      record?.pixelDataHasFragments ||
+      !Number.isFinite(record?.pixelDataOffset)
+    ) {
+      return null;
+    }
+
+    const rows = record.rows;
+    const columns = record.columns;
+    const samplesPerPixel = record.samplesPerPixel || 1;
+    const bitsAllocated = record.bitsAllocated || 16;
+    const pixelRepresentation = record.pixelRepresentation || 0;
+    if (samplesPerPixel !== 1) {
+      throw new Error("Only monochrome DICOM images are supported.");
+    }
+    if (!Number.isFinite(rows) || !Number.isFinite(columns)) {
+      return null;
+    }
+
+    const sampleCount = rows * columns;
+    const bytesPerSample = bitsAllocated === 16 ? 2 : bitsAllocated === 8 ? 1 : 0;
+    if (!bytesPerSample) {
+      throw new Error(`Unsupported Bits Allocated value: ${bitsAllocated}`);
+    }
+    const expectedBytes = sampleCount * bytesPerSample;
+    if (Number.isFinite(record.pixelDataLength) && record.pixelDataLength < expectedBytes) {
+      return null;
+    }
+
+    const buffer = await record.file.slice(record.pixelDataOffset, record.pixelDataOffset + expectedBytes).arrayBuffer();
+    if (buffer.byteLength < expectedBytes) {
+      return null;
+    }
+
+    let pixels;
+    if (bitsAllocated === 16) {
+      pixels = pixelRepresentation === 1 ? new Int16Array(buffer, 0, sampleCount) : new Uint16Array(buffer, 0, sampleCount);
+    } else {
+      const view = pixelRepresentation === 1 ? new Int8Array(buffer, 0, sampleCount) : new Uint8Array(buffer, 0, sampleCount);
+      pixels = pixelRepresentation === 1 ? new Int16Array(sampleCount) : new Uint16Array(sampleCount);
+      for (let index = 0; index < sampleCount; index += 1) {
+        pixels[index] = view[index];
+      }
+    }
+
+    return {
+      rows,
+      columns,
+      pixels,
+      slope: record.rescaleSlope ?? 1,
+      intercept: record.rescaleIntercept ?? 0,
+      units: record.rescaleType || (record.modality === "CT" ? "HU" : "rescaled"),
+    };
+  }
+
   async function parsePixelData(record, options) {
+    const directSlice = await parsePixelDataFromStoredRange(record, options);
+    if (directSlice) {
+      return directSlice;
+    }
+
     const allowMultiFrame = Boolean(options?.allowMultiFrame);
     const byteArray = new Uint8Array(await record.file.arrayBuffer());
     const dataSet = global.dicomParser.parseDicom(byteArray);

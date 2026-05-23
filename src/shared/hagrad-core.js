@@ -201,7 +201,7 @@
 
   const DICOM_HEADER_INDEX_DB_NAME = "hagrad-dicom-header-index-v1";
   const DICOM_HEADER_INDEX_STORE = "headers";
-  const DICOM_HEADER_INDEX_SCHEMA = 1;
+  const DICOM_HEADER_INDEX_SCHEMA = 2;
   const DICOM_HEADER_FINGERPRINT_BYTES = 16 * 1024;
 
   function canUseDicomHeaderWorker() {
