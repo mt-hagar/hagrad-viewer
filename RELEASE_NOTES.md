@@ -21,6 +21,7 @@ This build refreshes the HAGRad Viewer workflow shell and adds new research tool
 - Adds a shared HAGRad workflow switcher across the main Viewer, Image Quality / CCTA IQ, EAT, and QCA pages.
 - Adds guard behavior before moving between workflows when a study appears to be open.
 - Tightens immersive focus-shell spacing across the viewer and companion workflows.
+- Hides native browser DICOM file inputs behind the polished HAGRad load buttons for a cleaner user-facing app.
 - Updates public download guidance for macOS Gatekeeper and Windows SmartScreen prompts while the research-preview builds remain unsigned.
 
 ## Public Website Draft
