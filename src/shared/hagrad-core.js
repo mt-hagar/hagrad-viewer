@@ -465,6 +465,19 @@
     return copy;
   }
 
+  function hasCompleteCachedPixelGeometry(record) {
+    if (!record?.hasPixelData && !Number.isFinite(record?.pixelDataOffset)) {
+      return true;
+    }
+    return (
+      Number.isFinite(record.rows) &&
+      Number.isFinite(record.columns) &&
+      Number.isFinite(record.samplesPerPixel) &&
+      Number.isFinite(record.bitsAllocated) &&
+      Number.isFinite(record.pixelRepresentation)
+    );
+  }
+
   async function getCachedDicomHeaderRecord(db, key, file) {
     if (!db || !key) {
       return null;
@@ -482,6 +495,9 @@
       }
       const currentFingerprint = await computeDicomHeaderFingerprint(file);
       if (!currentFingerprint || currentFingerprint !== stored.headerFingerprint) {
+        return null;
+      }
+      if (!hasCompleteCachedPixelGeometry(stored.record)) {
         return null;
       }
       return stored.record;

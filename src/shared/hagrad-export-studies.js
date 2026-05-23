@@ -16,9 +16,16 @@
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(payload.message || `Request failed with status ${response.status}.`);
+      const error = new Error(payload.message || `Request failed with status ${response.status}.`);
+      error.status = response.status;
+      error.url = url;
+      throw error;
     }
     return payload;
+  }
+
+  function isOptionalBackendMissing(error) {
+    return error?.status === 404;
   }
 
   function populateSelect(selectElement, studies, currentStudyId, emptyLabel) {
@@ -57,8 +64,15 @@
   window.HAGRadExportStudies = {
     fetchJson,
     safeString,
-    load() {
-      return fetchJson("/api/export-studies");
+    async load() {
+      try {
+        return await fetchJson("/api/export-studies");
+      } catch (error) {
+        if (isOptionalBackendMissing(error)) {
+          return { studies: [], currentStudyId: "" };
+        }
+        throw error;
+      }
     },
     create(label) {
       return fetchJson("/api/export-studies/create", {

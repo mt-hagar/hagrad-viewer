@@ -1688,6 +1688,9 @@
     const existingKeys = new Set(state.datasets.map((dataset) => dataset.key || dataset.id));
     let skippedDifferentStudy = 0;
     let skippedDuplicateSeries = 0;
+    let skippedUnreadableSeries = 0;
+    let skippedFiles = 0;
+    let importedCount = 0;
     candidates.forEach((candidate) => {
       const key = candidate.key || candidate.id;
       if (options.add && !isSameStudyAsLoadedDataset(candidate)) {
@@ -1724,19 +1727,38 @@
     for (let index = 0; index < importCandidates.length; index += 1) {
       const candidate = importCandidates[index];
       setStatus(`Building ${candidate.label}: ${index + 1} / ${importCandidates.length}`);
-      candidate.volume = await dicomApi.buildVolume(candidate.records, {
-        statusCallback(current, total) {
-          if (current === 1 || current === total || current % 10 === 0) {
-            setStatus(`Loading ${candidate.label}: ${current} / ${total}`);
-          }
-        },
-        profile,
-      });
+      try {
+        candidate.volume = await dicomApi.buildVolume(candidate.records, {
+          statusCallback(current, total) {
+            if (current === 1 || current === total || current % 10 === 0) {
+              setStatus(`Loading ${candidate.label}: ${current} / ${total}`);
+            }
+          },
+          profile,
+        });
+      } catch (error) {
+        skippedUnreadableSeries += 1;
+        console.warn("Skipping unreadable DICOM series.", error);
+        continue;
+      }
+      skippedFiles += candidate.volume?.skippedCount || 0;
       candidate.id = uniqueDatasetId(candidate.id || candidate.key || `series_${Date.now()}`);
       state.datasets.push(candidate);
+      importedCount += 1;
+    }
+    if (!importedCount) {
+      throw new Error("No new readable reconstructions could be loaded from the selected files.");
     }
     setActiveDataset(state.datasets[0].id);
-    setStatus(`${state.datasets.length} reconstruction${state.datasets.length === 1 ? "" : "s"} loaded.`);
+    const notes = [];
+    if (skippedUnreadableSeries) {
+      notes.push(`${skippedUnreadableSeries} unreadable series skipped`);
+    }
+    if (skippedFiles) {
+      notes.push(`${skippedFiles} file${skippedFiles === 1 ? "" : "s"} skipped during decoding`);
+    }
+    const loadedMessage = `${state.datasets.length} reconstruction${state.datasets.length === 1 ? "" : "s"} loaded.`;
+    setStatus(notes.length ? `${loadedMessage} ${notes.join("; ")}.` : loadedMessage, notes.length ? "warning" : "");
     profile?.sampleMemory("afterVolumeConstruction");
     const finishFirstRender = profile?.start("firstRenderAfterVolumeCompletion", {
       reconstructionCount: state.datasets.length,

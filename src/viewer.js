@@ -450,6 +450,34 @@
   const exportStudyApi = window.HAGRadExportStudies || null;
   const overlayStyle = window.HAGRadOverlayStyle || null;
 
+  function readDicomNumber(dataSet, tag) {
+    const stringValue = parseFirstNumber(dataSet.string(tag));
+    if (Number.isFinite(stringValue)) {
+      return stringValue;
+    }
+
+    const element = dataSet.elements[tag];
+    if (!element) {
+      return null;
+    }
+
+    const readers = {
+      US: "uint16",
+      SS: "int16",
+      UL: "uint32",
+      SL: "int32",
+      FL: "float",
+      FD: "double",
+    };
+    const readerName = readers[element.vr || ""];
+    if (!readerName || typeof dataSet[readerName] !== "function") {
+      return null;
+    }
+
+    const value = dataSet[readerName](tag);
+    return Number.isFinite(value) ? value : null;
+  }
+
   function cacheElements() {
     els.app = document.querySelector(".app");
     els.dicomInput = document.getElementById("dicom-input");
@@ -10628,17 +10656,17 @@
         studyInstanceUID: safeString(dataSet.string("x0020000d")),
         seriesInstanceUID: safeString(dataSet.string("x0020000e")),
         studyId: safeString(dataSet.string("x00200010")),
-        seriesNumber: parseFirstNumber(dataSet.string("x00200011")),
-        acquisitionNumber: parseFirstNumber(dataSet.string("x00200012")),
+        seriesNumber: readDicomNumber(dataSet, "x00200011"),
+        acquisitionNumber: readDicomNumber(dataSet, "x00200012"),
         frameOfReferenceUID: safeString(dataSet.string("x00200052")),
-        instanceNumber: parseFirstNumber(dataSet.string("x00200013")),
+        instanceNumber: readDicomNumber(dataSet, "x00200013"),
         imageType: safeString(dataSet.string("x00080008")),
-        numberOfFrames: parseFirstNumber(dataSet.string("x00280008")),
-        rows: parseFirstNumber(dataSet.string("x00280010")),
-        columns: parseFirstNumber(dataSet.string("x00280011")),
-        samplesPerPixel: parseFirstNumber(dataSet.string("x00280002")),
-        bitsAllocated: parseFirstNumber(dataSet.string("x00280100")),
-        pixelRepresentation: parseFirstNumber(dataSet.string("x00280103")),
+        numberOfFrames: readDicomNumber(dataSet, "x00280008"),
+        rows: readDicomNumber(dataSet, "x00280010"),
+        columns: readDicomNumber(dataSet, "x00280011"),
+        samplesPerPixel: readDicomNumber(dataSet, "x00280002"),
+        bitsAllocated: readDicomNumber(dataSet, "x00280100"),
+        pixelRepresentation: readDicomNumber(dataSet, "x00280103"),
         pixelDataOffset: Number.isFinite(pixelDataElement?.dataOffset) ? pixelDataElement.dataOffset : null,
         pixelDataLength: Number.isFinite(pixelDataElement?.length) ? pixelDataElement.length : null,
         pixelDataHasFragments: Boolean(pixelDataElement?.fragments?.length),
@@ -10966,11 +10994,11 @@
       throw new Error("Multi-frame DICOM is not supported in this local MPR viewer yet.");
     }
 
-    const rows = parseFirstNumber(dataSet.string("x00280010"));
-    const columns = parseFirstNumber(dataSet.string("x00280011"));
-    const samplesPerPixel = parseFirstNumber(dataSet.string("x00280002")) || 1;
-    const bitsAllocated = parseFirstNumber(dataSet.string("x00280100")) || 16;
-    const pixelRepresentation = parseFirstNumber(dataSet.string("x00280103")) || 0;
+    const rows = readDicomNumber(dataSet, "x00280010");
+    const columns = readDicomNumber(dataSet, "x00280011");
+    const samplesPerPixel = readDicomNumber(dataSet, "x00280002") || 1;
+    const bitsAllocated = readDicomNumber(dataSet, "x00280100") || 16;
+    const pixelRepresentation = readDicomNumber(dataSet, "x00280103") || 0;
     const pixelDataElement = dataSet.elements.x7fe00010;
 
     if (!SUPPORTED_TRANSFER_SYNTAXES.has(transferSyntaxUID || "") || pixelDataElement?.fragments?.length) {
@@ -11023,8 +11051,8 @@
       rows,
       columns,
       pixels,
-      slope: parseFirstNumber(dataSet.string("x00281053")) ?? record.rescaleSlope ?? 1,
-      intercept: parseFirstNumber(dataSet.string("x00281052")) ?? record.rescaleIntercept ?? 0,
+      slope: readDicomNumber(dataSet, "x00281053") ?? record.rescaleSlope ?? 1,
+      intercept: readDicomNumber(dataSet, "x00281052") ?? record.rescaleIntercept ?? 0,
     };
   }
 
@@ -11155,6 +11183,8 @@
     const nextReconstructions = [];
     let skippedDifferentStudy = 0;
     let skippedDuplicateSeries = 0;
+    let skippedUnreadableSeries = 0;
+    let skippedFiles = 0;
 
     for (let index = 0; index < groups.length; index += 1) {
       const group = groups[index];
@@ -11177,7 +11207,15 @@
         continue;
       }
 
-      const volume = await buildVolume(imageRecords, { profile });
+      let volume;
+      try {
+        volume = await buildVolume(imageRecords, { profile });
+      } catch (error) {
+        skippedUnreadableSeries += 1;
+        console.warn("Skipping unreadable DICOM series.", error);
+        continue;
+      }
+      skippedFiles += volume.skippedCount || 0;
       nextReconstructions.push({
         id: makeReconstructionId(group.key, state.reconstructions.length + index),
         seriesKey: group.key,
@@ -11229,7 +11267,15 @@
 
     if (options?.append) {
       setActiveReconstruction(nextReconstructions[0].id);
-      setStatus(`Added ${nextReconstructions.length} reconstruction${nextReconstructions.length === 1 ? "" : "s"}.`);
+      const notes = [];
+      if (skippedUnreadableSeries) {
+        notes.push(`${skippedUnreadableSeries} unreadable series skipped`);
+      }
+      if (skippedFiles) {
+        notes.push(`${skippedFiles} file${skippedFiles === 1 ? "" : "s"} skipped during decoding`);
+      }
+      const loadedMessage = `Added ${nextReconstructions.length} reconstruction${nextReconstructions.length === 1 ? "" : "s"}.`;
+      setStatus(notes.length ? `${loadedMessage} ${notes.join("; ")}.` : loadedMessage, notes.length ? "warning" : null);
     } else {
       setActiveReconstruction(state.reconstructions[0].id);
       state.currentVOI = determineInitialVoi(state.reconstructions[0].records);
@@ -11238,7 +11284,15 @@
         state.currentPresetDirty = false;
       }
       updateSidebarUi();
-      setStatus(`Loaded ${state.reconstructions.length} reconstruction${state.reconstructions.length === 1 ? "" : "s"} for this patient.`);
+      const notes = [];
+      if (skippedUnreadableSeries) {
+        notes.push(`${skippedUnreadableSeries} unreadable series skipped`);
+      }
+      if (skippedFiles) {
+        notes.push(`${skippedFiles} file${skippedFiles === 1 ? "" : "s"} skipped during decoding`);
+      }
+      const loadedMessage = `Loaded ${state.reconstructions.length} reconstruction${state.reconstructions.length === 1 ? "" : "s"} for this patient.`;
+      setStatus(notes.length ? `${loadedMessage} ${notes.join("; ")}.` : loadedMessage, notes.length ? "warning" : null);
     }
 
     if (!options?.append) {

@@ -67,6 +67,34 @@
     return new Uint16Array(values || []);
   }
 
+  function readDicomNumber(dataSet, tag) {
+    const stringValue = parseFirstNumber(dataSet.string(tag));
+    if (Number.isFinite(stringValue)) {
+      return stringValue;
+    }
+
+    const element = dataSet.elements[tag];
+    if (!element) {
+      return null;
+    }
+
+    const readers = {
+      US: "uint16",
+      SS: "int16",
+      UL: "uint32",
+      SL: "int32",
+      FL: "float",
+      FD: "double",
+    };
+    const readerName = readers[element.vr || ""];
+    if (!readerName || typeof dataSet[readerName] !== "function") {
+      return null;
+    }
+
+    const value = dataSet[readerName](tag);
+    return Number.isFinite(value) ? value : null;
+  }
+
   function readDicomHeaderBuffer(file, byteLimit) {
     if (Number.isFinite(byteLimit) && file.size > byteLimit && typeof file.slice === "function") {
       return file.slice(0, byteLimit).arrayBuffer();
@@ -115,14 +143,14 @@
         seriesInstanceUID: safeString(dataSet.string("x0020000e")),
         sopInstanceUID: safeString(dataSet.string("x00080018")),
         frameOfReferenceUID: safeString(dataSet.string("x00200052")),
-        seriesNumber: parseFirstNumber(dataSet.string("x00200011")),
-        instanceNumber: parseFirstNumber(dataSet.string("x00200013")),
-        numberOfFrames: parseFirstNumber(dataSet.string("x00280008")),
-        rows: parseFirstNumber(dataSet.string("x00280010")),
-        columns: parseFirstNumber(dataSet.string("x00280011")),
-        samplesPerPixel: parseFirstNumber(dataSet.string("x00280002")),
-        bitsAllocated: parseFirstNumber(dataSet.string("x00280100")),
-        pixelRepresentation: parseFirstNumber(dataSet.string("x00280103")),
+        seriesNumber: readDicomNumber(dataSet, "x00200011"),
+        instanceNumber: readDicomNumber(dataSet, "x00200013"),
+        numberOfFrames: readDicomNumber(dataSet, "x00280008"),
+        rows: readDicomNumber(dataSet, "x00280010"),
+        columns: readDicomNumber(dataSet, "x00280011"),
+        samplesPerPixel: readDicomNumber(dataSet, "x00280002"),
+        bitsAllocated: readDicomNumber(dataSet, "x00280100"),
+        pixelRepresentation: readDicomNumber(dataSet, "x00280103"),
         pixelDataOffset: Number.isFinite(pixelDataElement?.dataOffset) ? pixelDataElement.dataOffset : null,
         pixelDataLength: Number.isFinite(pixelDataElement?.length) ? pixelDataElement.length : null,
         pixelDataHasFragments: Boolean(pixelDataElement?.fragments?.length),
@@ -452,11 +480,11 @@
       throw new Error("Multi-frame DICOM is not supported in this phase of NoiseLab.");
     }
 
-    const rows = parseFirstNumber(dataSet.string("x00280010"));
-    const columns = parseFirstNumber(dataSet.string("x00280011"));
-    const samplesPerPixel = parseFirstNumber(dataSet.string("x00280002")) || 1;
-    const bitsAllocated = parseFirstNumber(dataSet.string("x00280100")) || 16;
-    const pixelRepresentation = parseFirstNumber(dataSet.string("x00280103")) || 0;
+    const rows = readDicomNumber(dataSet, "x00280010");
+    const columns = readDicomNumber(dataSet, "x00280011");
+    const samplesPerPixel = readDicomNumber(dataSet, "x00280002") || 1;
+    const bitsAllocated = readDicomNumber(dataSet, "x00280100") || 16;
+    const pixelRepresentation = readDicomNumber(dataSet, "x00280103") || 0;
     const pixelDataElement = dataSet.elements.x7fe00010;
 
     if (!SUPPORTED_TRANSFER_SYNTAXES.has(transferSyntaxUID || "") || pixelDataElement?.fragments?.length) {
@@ -509,8 +537,8 @@
       rows,
       columns,
       pixels,
-      slope: parseFirstNumber(dataSet.string("x00281053")) ?? record.rescaleSlope ?? 1,
-      intercept: parseFirstNumber(dataSet.string("x00281052")) ?? record.rescaleIntercept ?? 0,
+      slope: readDicomNumber(dataSet, "x00281053") ?? record.rescaleSlope ?? 1,
+      intercept: readDicomNumber(dataSet, "x00281052") ?? record.rescaleIntercept ?? 0,
       units: record.rescaleType || (record.modality === "CT" ? "HU" : "rescaled"),
     };
   }

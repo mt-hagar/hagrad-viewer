@@ -486,6 +486,34 @@
     return match ? Number.parseFloat(match[0]) : null;
   }
 
+  function readDicomNumber(dataSet, tag) {
+    const stringValue = parseFirstNumber(dataSet.string(tag));
+    if (Number.isFinite(stringValue)) {
+      return stringValue;
+    }
+
+    const element = dataSet.elements[tag];
+    if (!element) {
+      return null;
+    }
+
+    const readers = {
+      US: "uint16",
+      SS: "int16",
+      UL: "uint32",
+      SL: "int32",
+      FL: "float",
+      FD: "double",
+    };
+    const readerName = readers[element.vr || ""];
+    if (!readerName || typeof dataSet[readerName] !== "function") {
+      return null;
+    }
+
+    const value = dataSet[readerName](tag);
+    return Number.isFinite(value) ? value : null;
+  }
+
   function parseNumericArray(value) {
     const text = safeString(value);
     if (!text) {
@@ -3931,16 +3959,16 @@
         seriesDescription: safeString(dataSet.string("x0008103e")),
         seriesInstanceUID: safeString(dataSet.string("x0020000e")),
         sopInstanceUID: safeString(dataSet.string("x00080018")),
-        instanceNumber: parseFirstNumber(dataSet.string("x00200013")),
-        numberOfFrames: parseFirstNumber(dataSet.string("x00280008")),
-        rows: parseFirstNumber(dataSet.string("x00280010")),
-        columns: parseFirstNumber(dataSet.string("x00280011")),
+        instanceNumber: readDicomNumber(dataSet, "x00200013"),
+        numberOfFrames: readDicomNumber(dataSet, "x00280008"),
+        rows: readDicomNumber(dataSet, "x00280010"),
+        columns: readDicomNumber(dataSet, "x00280011"),
         pixelSpacing: parseNumericArray(dataSet.string("x00280030")),
         imagerPixelSpacing: parseNumericArray(dataSet.string("x00181164")),
         photometricInterpretation: safeString(dataSet.string("x00280004")),
-        samplesPerPixel: parseFirstNumber(dataSet.string("x00280002")),
-        bitsAllocated: parseFirstNumber(dataSet.string("x00280100")),
-        pixelRepresentation: parseFirstNumber(dataSet.string("x00280103")),
+        samplesPerPixel: readDicomNumber(dataSet, "x00280002"),
+        bitsAllocated: readDicomNumber(dataSet, "x00280100"),
+        pixelRepresentation: readDicomNumber(dataSet, "x00280103"),
         pixelDataOffset: Number.isFinite(pixelDataElement?.dataOffset) ? pixelDataElement.dataOffset : null,
         pixelDataLength: Number.isFinite(pixelDataElement?.length) ? pixelDataElement.length : null,
         pixelDataHasFragments: Boolean(pixelDataElement?.fragments?.length),
@@ -4572,12 +4600,12 @@
     const record = frameDescriptor.record;
     const dataSet = await getRecordDataSet(record);
     const transferSyntaxUID = safeString(dataSet.string("x00020010"));
-    const rows = parseFirstNumber(dataSet.string("x00280010")) || record.rows;
-    const columns = parseFirstNumber(dataSet.string("x00280011")) || record.columns;
-    const samplesPerPixel = parseFirstNumber(dataSet.string("x00280002")) || record.samplesPerPixel || 1;
-    const bitsAllocated = parseFirstNumber(dataSet.string("x00280100")) || record.bitsAllocated || 16;
-    const pixelRepresentation = parseFirstNumber(dataSet.string("x00280103")) || record.pixelRepresentation || 0;
-    const numberOfFrames = Math.max(1, parseFirstNumber(dataSet.string("x00280008")) || record.numberOfFrames || 1);
+    const rows = readDicomNumber(dataSet, "x00280010") || record.rows;
+    const columns = readDicomNumber(dataSet, "x00280011") || record.columns;
+    const samplesPerPixel = readDicomNumber(dataSet, "x00280002") || record.samplesPerPixel || 1;
+    const bitsAllocated = readDicomNumber(dataSet, "x00280100") || record.bitsAllocated || 16;
+    const pixelRepresentation = readDicomNumber(dataSet, "x00280103") || record.pixelRepresentation || 0;
+    const numberOfFrames = Math.max(1, readDicomNumber(dataSet, "x00280008") || record.numberOfFrames || 1);
     const pixelDataElement = dataSet.elements.x7fe00010;
 
     if (!SUPPORTED_TRANSFER_SYNTAXES.has(transferSyntaxUID) || pixelDataElement?.fragments?.length) {
