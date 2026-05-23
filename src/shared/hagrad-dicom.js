@@ -21,6 +21,8 @@
     waitForAnimationFrame,
     appendSourceDirectoryToKey,
     parseDicomHeadersInWorker,
+    buildDicomVolumeInWorker,
+    createVolumeFromWorkerPayload,
   } = sharedCore;
 
   const SUPPORTED_TRANSFER_SYNTAXES = new Set([
@@ -546,6 +548,21 @@
   async function buildVolume(records, options) {
     const profile = options?.profile?.enabled ? options.profile : null;
     const finishVolume = profile?.start("volumeConstruction", { sliceCount: records.length });
+    const workerPayload = await buildDicomVolumeInWorker?.(records, {
+      profile,
+      disableVolumeWorker: options?.disableVolumeWorker,
+      statusCallback: options?.statusCallback,
+      pixelReadConcurrency: options?.pixelReadConcurrency,
+    });
+    const workerVolume = createVolumeFromWorkerPayload?.(workerPayload, records, {
+      includeRecord: true,
+      includeRecords: true,
+    });
+    if (workerVolume) {
+      finishVolume?.({ decodedSlices: workerVolume.depth, skippedCount: workerVolume.skippedCount });
+      return workerVolume;
+    }
+
     const slices = [];
     let skippedCount = 0;
     const rowSpacing = records[0]?.pixelSpacing?.[0] || null;

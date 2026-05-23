@@ -1979,6 +1979,22 @@
   async function buildVolume(records, options) {
     const profile = options?.profile?.enabled ? options.profile : null;
     const finishVolume = profile?.start("volumeConstruction", { sliceCount: records.length });
+    const workerPayload = await window.HAGRadCore?.buildDicomVolumeInWorker?.(records, {
+      profile,
+      disableVolumeWorker: options?.disableVolumeWorker,
+      spacingFallback: 1,
+      statusCallback(current, total) {
+        if (current === 1 || current === total || current % 10 === 0) {
+          setStatus(`Loading volume ${current} / ${total}...`);
+        }
+      },
+    });
+    const workerVolume = window.HAGRadCore?.createVolumeFromWorkerPayload?.(workerPayload, records, { includeUnits: false });
+    if (workerVolume) {
+      finishVolume?.({ decodedSlices: workerVolume.depth, skippedCount: workerVolume.skippedCount });
+      return workerVolume;
+    }
+
     const slices = [];
     let skippedCount = 0;
     const rowSpacing = records[0]?.pixelSpacing?.[0] || 1;

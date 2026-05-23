@@ -371,6 +371,10 @@
   const DICOM_HEADER_INDEX_STORE = "headers";
   const DICOM_HEADER_INDEX_SCHEMA = 2;
   const DICOM_HEADER_FINGERPRINT_BYTES = 16 * 1024;
+  const DICOM_VOLUME_WORKER_TRANSFER_SYNTAXES = new Set([
+    "1.2.840.10008.1.2",
+    "1.2.840.10008.1.2.1",
+  ]);
 
   function canUseDicomHeaderWorker() {
     return (
@@ -382,6 +386,18 @@
 
   function getDicomHeaderWorkerUrl() {
     return new URL("/src/shared/hagrad-dicom-worker.js", global.location.origin).href;
+  }
+
+  function canUseDicomVolumeWorker() {
+    return (
+      typeof global.Worker === "function" &&
+      global.location?.protocol !== "file:" &&
+      typeof global.location?.origin === "string"
+    );
+  }
+
+  function getDicomVolumeWorkerUrl() {
+    return new URL("/src/shared/hagrad-volume-worker.js", global.location.origin).href;
   }
 
   function getDicomHeaderWorkerConcurrency(requestedConcurrency, fileCount) {
@@ -691,6 +707,219 @@
     }
   }
 
+  function isDicomVolumeWorkerPhotometricSupported(record) {
+    const photometric = safeString(record?.photometricInterpretation);
+    return !photometric || /^MONOCHROME/i.test(photometric);
+  }
+
+  function isDicomVolumeWorkerEligibleRecord(record) {
+    if (!record?.file || typeof record.file.slice !== "function") {
+      return false;
+    }
+    if (Number.isFinite(record.numberOfFrames) && record.numberOfFrames > 1) {
+      return false;
+    }
+    if (!DICOM_VOLUME_WORKER_TRANSFER_SYNTAXES.has(safeString(record.transferSyntaxUID) || "")) {
+      return false;
+    }
+    if (record.pixelDataHasFragments || !Number.isFinite(record.pixelDataOffset)) {
+      return false;
+    }
+    if (!isDicomVolumeWorkerPhotometricSupported(record)) {
+      return false;
+    }
+
+    const rows = record.rows;
+    const columns = record.columns;
+    const samplesPerPixel = record.samplesPerPixel || 1;
+    const bitsAllocated = record.bitsAllocated || 16;
+    if (!Number.isFinite(rows) || !Number.isFinite(columns) || samplesPerPixel !== 1) {
+      return false;
+    }
+    const bytesPerSample = bitsAllocated === 16 ? 2 : bitsAllocated === 8 ? 1 : 0;
+    if (!bytesPerSample) {
+      return false;
+    }
+    const expectedBytes = rows * columns * bytesPerSample;
+    return !(Number.isFinite(record.pixelDataLength) && record.pixelDataLength < expectedBytes);
+  }
+
+  function cloneNumericVector(value) {
+    return Array.isArray(value) ? value.filter(Number.isFinite) : [];
+  }
+
+  function makeDicomVolumeWorkerRecord(record, index) {
+    return {
+      index,
+      file: record.file,
+      transferSyntaxUID: safeString(record.transferSyntaxUID),
+      numberOfFrames: Number.isFinite(record.numberOfFrames) ? record.numberOfFrames : null,
+      rows: Number.isFinite(record.rows) ? record.rows : null,
+      columns: Number.isFinite(record.columns) ? record.columns : null,
+      samplesPerPixel: Number.isFinite(record.samplesPerPixel) ? record.samplesPerPixel : 1,
+      bitsAllocated: Number.isFinite(record.bitsAllocated) ? record.bitsAllocated : 16,
+      pixelRepresentation: Number.isFinite(record.pixelRepresentation) ? record.pixelRepresentation : 0,
+      pixelDataOffset: Number.isFinite(record.pixelDataOffset) ? record.pixelDataOffset : null,
+      pixelDataLength: Number.isFinite(record.pixelDataLength) ? record.pixelDataLength : null,
+      pixelDataHasFragments: Boolean(record.pixelDataHasFragments),
+      photometricInterpretation: safeString(record.photometricInterpretation),
+      pixelSpacing: cloneNumericVector(record.pixelSpacing),
+      sliceThickness: Number.isFinite(record.sliceThickness) ? record.sliceThickness : null,
+      imagePositionPatient: cloneNumericVector(record.imagePositionPatient),
+      rowDirection: cloneNumericVector(record.rowDirection),
+      columnDirection: cloneNumericVector(record.columnDirection),
+      normalVector: cloneNumericVector(record.normalVector),
+      rescaleSlope: Number.isFinite(record.rescaleSlope) ? record.rescaleSlope : null,
+      rescaleIntercept: Number.isFinite(record.rescaleIntercept) ? record.rescaleIntercept : null,
+      rescaleType: safeString(record.rescaleType),
+      modality: safeString(record.modality),
+    };
+  }
+
+  function createVolumeFromWorkerPayload(payload, records, options = {}) {
+    if (!payload || !Array.isArray(payload.slices) || !payload.slices.length) {
+      return null;
+    }
+
+    const includeRecord = Boolean(options.includeRecord);
+    const includeRecords = Boolean(options.includeRecords);
+    const includeUnits = options.includeUnits !== false;
+    const sourceRecords = Array.from(records || []);
+    const slices = payload.slices.map((slice) => {
+      const nextSlice = {
+        rows: slice.rows,
+        columns: slice.columns,
+        pixels: slice.pixels,
+        slope: Number.isFinite(slice.slope) ? slice.slope : 1,
+        intercept: Number.isFinite(slice.intercept) ? slice.intercept : 0,
+      };
+      if (includeUnits) {
+        nextSlice.units = safeString(slice.units) || "rescaled";
+      }
+      if (includeRecord) {
+        nextSlice.record = sourceRecords[slice.recordIndex] || null;
+      }
+      return nextSlice;
+    });
+
+    const volume = {
+      rows: payload.rows,
+      columns: payload.columns,
+      depth: slices.length,
+      rowSpacing: payload.rowSpacing,
+      columnSpacing: payload.columnSpacing,
+      sliceSpacing: payload.sliceSpacing,
+      originWorld: cloneNumericVector(payload.originWorld),
+      rowDirection: cloneNumericVector(payload.rowDirection),
+      columnDirection: cloneNumericVector(payload.columnDirection),
+      normalDirection: cloneNumericVector(payload.normalDirection),
+      centerWorld: cloneNumericVector(payload.centerWorld),
+      slices,
+      skippedCount: Number.isFinite(payload.skippedCount) ? payload.skippedCount : 0,
+    };
+    if (includeRecords) {
+      volume.records = sourceRecords;
+    }
+    return volume;
+  }
+
+  async function buildDicomVolumeInWorker(records, options = {}) {
+    const sourceRecords = Array.from(records || []);
+    const profile = options.profile?.enabled ? options.profile : null;
+    if (
+      options.disableVolumeWorker ||
+      !sourceRecords.length ||
+      !canUseDicomVolumeWorker() ||
+      !sourceRecords.every(isDicomVolumeWorkerEligibleRecord)
+    ) {
+      profile?.count("volumeWorkerFallback", 1);
+      return null;
+    }
+
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const workerRecords = sourceRecords.map(makeDicomVolumeWorkerRecord);
+    const workerOptions = {
+      spacingFallback: Number.isFinite(options.spacingFallback) ? options.spacingFallback : null,
+      pixelReadConcurrency: Number.isFinite(options.pixelReadConcurrency)
+        ? Math.max(1, Math.min(4, Math.floor(options.pixelReadConcurrency)))
+        : 2,
+    };
+    const onProgress = typeof options.statusCallback === "function" ? options.statusCallback : null;
+    const finishWorker = profile?.start("volumeWorkerConstruction", { sliceCount: sourceRecords.length });
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let worker = null;
+
+      const settle = (volume, details) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        finishWorker?.(details);
+        try {
+          worker?.terminate();
+        } catch (_error) {}
+        resolve(volume || null);
+      };
+
+      const handleMessage = (event) => {
+        const payload = event.data || {};
+        if (payload.requestId !== requestId) {
+          return;
+        }
+        if (payload.type === "buildDicomVolumeProgress") {
+          if (onProgress) {
+            onProgress(payload.done || 0, payload.total || sourceRecords.length);
+          }
+          return;
+        }
+        if (payload.type !== "buildDicomVolumeResult") {
+          return;
+        }
+        if (payload.ok && payload.volume) {
+          profile?.count("volumeWorkerUsed", 1);
+          profile?.count("decodedSlices", payload.volume.slices?.length || 0);
+          profile?.count("skippedSlices", payload.volume.skippedCount || 0);
+          settle(payload.volume, {
+            status: "ok",
+            decodedSlices: payload.volume.slices?.length || 0,
+            skippedCount: payload.volume.skippedCount || 0,
+          });
+          return;
+        }
+        profile?.count(payload.unsupported ? "volumeWorkerUnsupported" : "volumeWorkerFailed", 1);
+        settle(null, { status: payload.unsupported ? "unsupported" : "failed" });
+      };
+
+      const handleError = () => {
+        profile?.count("volumeWorkerFailed", 1);
+        settle(null, { status: "error" });
+      };
+
+      const handleMessageError = () => {
+        profile?.count("volumeWorkerFailed", 1);
+        settle(null, { status: "messageerror" });
+      };
+
+      try {
+        worker = new global.Worker(getDicomVolumeWorkerUrl());
+        worker.addEventListener("message", handleMessage);
+        worker.addEventListener("error", handleError);
+        worker.addEventListener("messageerror", handleMessageError);
+        worker.postMessage({
+          type: "buildDicomVolume",
+          requestId,
+          records: workerRecords,
+          options: workerOptions,
+        });
+      } catch (_error) {
+        profile?.count("volumeWorkerFailed", 1);
+        settle(null, { status: "post-failed" });
+      }
+    });
+  }
+
   function defineRelativePath(file, relativePath) {
     if (!file || !relativePath) {
       return file;
@@ -893,6 +1122,8 @@
     getLoadProfiles,
     clearLoadProfiles,
     parseDicomHeadersInWorker,
+    buildDicomVolumeInWorker,
+    createVolumeFromWorkerPayload,
     clearDicomHeaderIndex,
     collectDroppedFiles,
   });
