@@ -619,6 +619,33 @@
         color: var(--text);
       }
 
+      .credits-card {
+        grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
+        align-items: center;
+        padding: clamp(22px, 4vw, 34px);
+        border-color: rgba(103, 216, 205, 0.32);
+      }
+
+      .credits-copy p:last-child {
+        margin-bottom: 0;
+      }
+
+      .credits-photo {
+        overflow: hidden;
+        aspect-ratio: 4 / 5;
+        margin: 0;
+        border: 1px solid rgba(166, 209, 212, 0.24);
+        border-radius: 22px;
+        box-shadow: 0 18px 54px rgba(0, 0, 0, 0.28);
+      }
+
+      .credits-photo img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center;
+      }
+
       footer {
         padding: 34px 0 48px;
         color: var(--muted);
@@ -632,7 +659,8 @@
 
       @media (max-width: 960px) {
         .hero,
-        .contact-card {
+        .contact-card,
+        .credits-card {
           grid-template-columns: 1fr;
         }
 
@@ -705,6 +733,7 @@
             <a href="#downloads">Downloads</a>
             <a href="#citation">Citation</a>
             <a href="#mission">Mission</a>
+            <a href="#credits">Credits</a>
             <a href="#contact">Contact</a>
           </div>
         </nav>
@@ -986,6 +1015,22 @@ Repository: https://github.com/mt-hagar/hagrad-viewer</code></pre>
               <a class="button support" href="https://buymeacoffee.com/hagrad" rel="noopener noreferrer" target="_blank">Support the mission</a>
             </div>
           </div>
+        </section>
+
+        <section id="credits" aria-labelledby="credits-title">
+          <article class="contact-card credits-card">
+            <div class="credits-copy">
+              <p class="eyebrow">Credits</p>
+              <h2 id="credits-title">With Gratitude</h2>
+              <p>
+                I would like to thank my wonderful wife for all her support and patience.
+                I love her deeply, and her encouragement has meant so much throughout this work.
+              </p>
+            </div>
+            <figure class="credits-photo">
+              <img src="./assets/credits-wife-support.jpg" alt="Photo of the project creator with his wife outdoors." />
+            </figure>
+          </article>
         </section>
       </main>
 
