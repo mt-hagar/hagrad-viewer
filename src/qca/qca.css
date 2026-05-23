@@ -1330,7 +1330,7 @@ input[type="range"] {
 
 .canvas-wrap {
   position: relative;
-  min-height: clamp(700px, 72vh, 780px);
+  min-height: clamp(660px, 68vh, 720px);
   border: 1px solid rgba(145, 181, 201, 0.14);
   border-radius: var(--panel-radius);
   background:
