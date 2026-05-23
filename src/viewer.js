@@ -10704,6 +10704,17 @@
     let lastYieldAt = 0;
     const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
 
+    if (!options.disableWorkerParsing && typeof window.HAGRadCore?.parseDicomHeadersInWorker === "function") {
+      const workerRecords = await window.HAGRadCore.parseDicomHeadersInWorker(sourceFiles, {
+        byteLimits: DICOM_HEADER_READ_LIMITS,
+        concurrency,
+        onProgress,
+      });
+      if (Array.isArray(workerRecords)) {
+        return workerRecords;
+      }
+    }
+
     async function worker() {
       while (nextIndex < sourceFiles.length) {
         const currentIndex = nextIndex;

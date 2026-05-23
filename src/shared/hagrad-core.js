@@ -199,6 +199,290 @@
     return new Promise((resolve) => global.setTimeout(resolve, milliseconds));
   }
 
+  const DICOM_HEADER_INDEX_DB_NAME = "hagrad-dicom-header-index-v1";
+  const DICOM_HEADER_INDEX_STORE = "headers";
+  const DICOM_HEADER_INDEX_SCHEMA = 1;
+  const DICOM_HEADER_FINGERPRINT_BYTES = 16 * 1024;
+
+  function canUseDicomHeaderWorker() {
+    return (
+      typeof global.Worker === "function" &&
+      global.location?.protocol !== "file:" &&
+      typeof global.location?.origin === "string"
+    );
+  }
+
+  function getDicomHeaderWorkerUrl() {
+    return new URL("/src/shared/hagrad-dicom-worker.js", global.location.origin).href;
+  }
+
+  function getDicomHeaderWorkerConcurrency(requestedConcurrency, fileCount) {
+    const hardwareConcurrency =
+      (global.navigator && Number.isFinite(global.navigator.hardwareConcurrency)
+        ? global.navigator.hardwareConcurrency
+        : 4) || 4;
+    const defaultConcurrency = Math.min(4, Math.max(1, Math.floor(hardwareConcurrency / 2)));
+    const requested = Number.isFinite(requestedConcurrency) ? requestedConcurrency : defaultConcurrency;
+    return Math.max(1, Math.min(fileCount || 1, Math.floor(requested)));
+  }
+
+  function getFileSourceKey(file) {
+    return [file?.name || "file", file?.size || 0, file?.lastModified || 0].join("::");
+  }
+
+  function canUseDicomHeaderIndex() {
+    return Boolean(global.indexedDB && global.crypto?.subtle && typeof global.TextEncoder === "function");
+  }
+
+  function requestToPromise(request) {
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error("IndexedDB request failed."));
+    });
+  }
+
+  function openDicomHeaderIndexDb() {
+    if (!canUseDicomHeaderIndex()) {
+      return Promise.resolve(null);
+    }
+
+    return new Promise((resolve, reject) => {
+      const request = global.indexedDB.open(DICOM_HEADER_INDEX_DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(DICOM_HEADER_INDEX_STORE)) {
+          db.createObjectStore(DICOM_HEADER_INDEX_STORE, { keyPath: "key" });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error("Could not open the DICOM header index."));
+    });
+  }
+
+  function getDicomHeaderIndexKey(file) {
+    const relativePath = getFileRelativePath(file) || getFileSourceKey(file);
+    return [
+      `schema-${DICOM_HEADER_INDEX_SCHEMA}`,
+      relativePath,
+      file?.size || 0,
+      file?.lastModified || 0,
+    ].join("::");
+  }
+
+  function arrayBufferToHex(buffer) {
+    return Array.from(new Uint8Array(buffer))
+      .map((value) => value.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  async function computeDicomHeaderFingerprint(file) {
+    if (!global.crypto?.subtle || typeof file?.slice !== "function") {
+      return null;
+    }
+    const byteLength = Math.min(file.size || 0, DICOM_HEADER_FINGERPRINT_BYTES);
+    const buffer = await file.slice(0, byteLength).arrayBuffer();
+    const digest = await global.crypto.subtle.digest("SHA-256", buffer);
+    return arrayBufferToHex(digest);
+  }
+
+  function stripFileFromDicomHeaderRecord(record) {
+    if (!record) {
+      return null;
+    }
+    const copy = { ...record };
+    delete copy.file;
+    delete copy.arrayBufferPromise;
+    delete copy.dataSetPromise;
+    delete copy.fileImageId;
+    return copy;
+  }
+
+  async function getCachedDicomHeaderRecord(db, key, file) {
+    if (!db || !key) {
+      return null;
+    }
+    try {
+      const transaction = db.transaction(DICOM_HEADER_INDEX_STORE, "readonly");
+      const stored = await requestToPromise(transaction.objectStore(DICOM_HEADER_INDEX_STORE).get(key));
+      if (
+        !stored ||
+        stored.schemaVersion !== DICOM_HEADER_INDEX_SCHEMA ||
+        !stored.record ||
+        !stored.headerFingerprint
+      ) {
+        return null;
+      }
+      const currentFingerprint = await computeDicomHeaderFingerprint(file);
+      if (!currentFingerprint || currentFingerprint !== stored.headerFingerprint) {
+        return null;
+      }
+      return stored.record;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  async function putCachedDicomHeaderRecord(db, key, record) {
+    if (!db || !key || !record?.headerFingerprint) {
+      return;
+    }
+    try {
+      const transaction = db.transaction(DICOM_HEADER_INDEX_STORE, "readwrite");
+      await requestToPromise(
+        transaction.objectStore(DICOM_HEADER_INDEX_STORE).put({
+          key,
+          schemaVersion: DICOM_HEADER_INDEX_SCHEMA,
+          headerFingerprint: record.headerFingerprint,
+          record: stripFileFromDicomHeaderRecord(record),
+          updatedAt: Date.now(),
+        })
+      );
+    } catch (_error) {}
+  }
+
+  async function clearDicomHeaderIndex() {
+    if (!global.indexedDB) {
+      return false;
+    }
+    return new Promise((resolve) => {
+      const request = global.indexedDB.deleteDatabase(DICOM_HEADER_INDEX_DB_NAME);
+      request.onsuccess = () => resolve(true);
+      request.onerror = () => resolve(false);
+      request.onblocked = () => resolve(false);
+    });
+  }
+
+  function parseDicomHeaderWithWorker(worker, file, index, byteLimits) {
+    return new Promise((resolve, reject) => {
+      const requestId = `${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`;
+
+      const cleanup = () => {
+        worker.removeEventListener("message", handleMessage);
+        worker.removeEventListener("error", handleError);
+        worker.removeEventListener("messageerror", handleMessageError);
+      };
+
+      const handleMessage = (event) => {
+        const payload = event.data || {};
+        if (payload.requestId !== requestId) {
+          return;
+        }
+        cleanup();
+        resolve(payload);
+      };
+
+      const handleError = (error) => {
+        cleanup();
+        reject(error instanceof Error ? error : new Error("DICOM header worker failed."));
+      };
+
+      const handleMessageError = () => {
+        cleanup();
+        reject(new Error("DICOM header worker could not receive a file."));
+      };
+
+      worker.addEventListener("message", handleMessage);
+      worker.addEventListener("error", handleError);
+      worker.addEventListener("messageerror", handleMessageError);
+      worker.postMessage({
+        type: "parseDicomHeader",
+        requestId,
+        index,
+        file,
+        byteLimits,
+      });
+    });
+  }
+
+  async function parseDicomHeadersInWorker(files, options = {}) {
+    const sourceFiles = Array.from(files || []).filter(Boolean);
+    if (!sourceFiles.length) {
+      return [];
+    }
+    if (!canUseDicomHeaderWorker()) {
+      return null;
+    }
+
+    const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
+    const parsed = new Array(sourceFiles.length);
+    const workers = [];
+    const workerUrl = getDicomHeaderWorkerUrl();
+    const workerCount = getDicomHeaderWorkerConcurrency(options.concurrency, sourceFiles.length);
+    const byteLimits = Array.isArray(options.byteLimits) ? options.byteLimits : null;
+    const cacheKeys = sourceFiles.map(getDicomHeaderIndexKey);
+    const indexDb = await openDicomHeaderIndexDb().catch(() => null);
+    const cachePutPromises = [];
+    let nextIndex = 0;
+    let completed = 0;
+
+    if (indexDb) {
+      await Promise.all(
+        sourceFiles.map(async (file, index) => {
+          const cached = await getCachedDicomHeaderRecord(indexDb, cacheKeys[index], file);
+          if (cached) {
+            parsed[index] = {
+              ...cached,
+              file,
+              sourceKey: cached.sourceKey || getFileSourceKey(file),
+            };
+          }
+        })
+      );
+      completed = parsed.filter(Boolean).length;
+      if (completed && onProgress) {
+        onProgress(completed, sourceFiles.length);
+      }
+      if (completed === sourceFiles.length) {
+        indexDb.close?.();
+        return parsed.filter(Boolean);
+      }
+    }
+
+    async function runWorker() {
+      const worker = new global.Worker(workerUrl);
+      workers.push(worker);
+      try {
+        while (nextIndex < sourceFiles.length) {
+          const currentIndex = nextIndex;
+          nextIndex += 1;
+          if (parsed[currentIndex]) {
+            continue;
+          }
+          const file = sourceFiles[currentIndex];
+          try {
+            const payload = await parseDicomHeaderWithWorker(worker, file, currentIndex, byteLimits);
+            if (payload?.ok && payload.record) {
+              parsed[currentIndex] = {
+                ...payload.record,
+                file,
+                sourceKey: payload.record.sourceKey || getFileSourceKey(file),
+              };
+              cachePutPromises.push(putCachedDicomHeaderRecord(indexDb, cacheKeys[currentIndex], parsed[currentIndex]));
+            }
+          } finally {
+            completed += 1;
+            if (onProgress && (completed === sourceFiles.length || completed % 50 === 0)) {
+              onProgress(completed, sourceFiles.length);
+            }
+          }
+        }
+      } finally {
+        worker.terminate();
+      }
+    }
+
+    try {
+      await Promise.all(Array.from({ length: workerCount }, runWorker));
+      await Promise.allSettled(cachePutPromises);
+      indexDb?.close?.();
+      return parsed.filter(Boolean);
+    } catch (_error) {
+      workers.forEach((worker) => worker.terminate());
+      indexDb?.close?.();
+      return null;
+    }
+  }
+
   function defineRelativePath(file, relativePath) {
     if (!file || !relativePath) {
       return file;
@@ -396,6 +680,8 @@
     sanitizeFilePart,
     waitForAnimationFrame,
     wait,
+    parseDicomHeadersInWorker,
+    clearDicomHeaderIndex,
     collectDroppedFiles,
   });
 })(window);

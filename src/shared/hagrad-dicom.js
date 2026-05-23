@@ -20,6 +20,7 @@
     scaleVector,
     waitForAnimationFrame,
     appendSourceDirectoryToKey,
+    parseDicomHeadersInWorker,
   } = sharedCore;
 
   const SUPPORTED_TRANSFER_SYNTAXES = new Set([
@@ -155,6 +156,17 @@
     let completed = 0;
     let lastYieldAt = 0;
     const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
+
+    if (!options.disableWorkerParsing && typeof parseDicomHeadersInWorker === "function") {
+      const workerRecords = await parseDicomHeadersInWorker(sourceFiles, {
+        byteLimits: DICOM_HEADER_READ_LIMITS,
+        concurrency,
+        onProgress,
+      });
+      if (Array.isArray(workerRecords)) {
+        return workerRecords;
+      }
+    }
 
     async function worker() {
       while (nextIndex < sourceFiles.length) {
