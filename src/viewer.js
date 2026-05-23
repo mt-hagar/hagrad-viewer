@@ -9,6 +9,52 @@
   };
 
   const VIEWPORT_IDS = Object.keys(VIEWPORT_CONFIG);
+  const COMPARISON_TILE_IDS = ["comparison-tile-1", "comparison-tile-2", "comparison-tile-3", "comparison-tile-4"];
+  const COMPARISON_LAYOUTS = {
+    single: {
+      label: "Presentation",
+      mode: "presentation",
+      tileCount: 1,
+      comparison: false,
+      cssClass: "comparison-layout-single",
+    },
+    stacked2: {
+      label: "Stacked 2",
+      mode: "presentation",
+      tileCount: 2,
+      comparison: true,
+      cssClass: "comparison-layout-stacked2",
+    },
+    columns2: {
+      label: "Side by side",
+      mode: "presentation",
+      tileCount: 2,
+      comparison: true,
+      cssClass: "comparison-layout-columns2",
+    },
+    grid2x2: {
+      label: "2 x 2",
+      mode: "presentation",
+      tileCount: 4,
+      comparison: true,
+      cssClass: "comparison-layout-grid2x2",
+    },
+    mpr: {
+      label: "4-up MPR",
+      mode: "mpr",
+      tileCount: 1,
+      comparison: false,
+      cssClass: "comparison-layout-single",
+    },
+    mprSplit2: {
+      label: "MPR 1:1",
+      mode: "mpr",
+      tileCount: 2,
+      comparison: true,
+      cssClass: "comparison-layout-mprSplit2",
+    },
+  };
+  const COMPARISON_MPR_VIEWPORT_IDS = ["presentation", "sagittal", "axial", "coronal"];
   const PROFILE_TYPES = new Set(["lineProfile", "squareProfile", "plaqueLineProfile", "plaqueNoncalcifiedLineProfile", "vascularLineProfile"]);
   const LINE_PROFILE_TYPES = new Set(["lineProfile", "plaqueLineProfile", "plaqueNoncalcifiedLineProfile", "vascularLineProfile"]);
   const STENT_INTERFACE_PROFILE_TYPES = new Set(["lineProfile", "squareProfile"]);
@@ -368,6 +414,13 @@
         sagittal: 0,
       },
     },
+    comparison: {
+      layout: "single",
+      syncEnabled: false,
+      activeTileId: "comparison-tile-1",
+      layoutMenuOpen: false,
+      tiles: [],
+    },
     maximizedViewportId: null,
     rightClick: {
       lastTap: null,
@@ -387,6 +440,7 @@
       projectUi: "",
       projectCases: "",
       reconstructionList: "",
+      comparisonLayer: "",
       annotationManager: "",
       metadata: "",
     },
@@ -537,6 +591,9 @@
     els.presentationResetWindowButton = document.getElementById("presentation-reset-window-button");
     els.presentationResetFitButton = document.getElementById("presentation-reset-fit-button");
     els.presentationLayoutToggleButton = document.getElementById("presentation-layout-toggle-button");
+    els.presentationLayoutMenu = document.getElementById("presentation-layout-menu");
+    els.comparisonLayoutChoices = Array.from(document.querySelectorAll("[data-comparison-layout]"));
+    els.comparisonSyncButton = document.getElementById("comparison-sync-button");
     els.presentationOverlayToggleButton = document.getElementById("presentation-overlay-toggle-button");
     els.presentationGridToggleButton = document.getElementById("presentation-grid-toggle-button");
     els.presentationFocusToggleButton = document.getElementById("presentation-focus-toggle-button");
@@ -635,7 +692,9 @@
     els.toolHuds = Array.from(document.querySelectorAll("[data-tool-hud]"));
     els.emptyState = document.getElementById("empty-state");
     els.viewportGrid = document.getElementById("viewport-grid");
+    els.comparisonLayer = document.getElementById("comparison-layer");
     els.stage = document.querySelector(".stage");
+    els.viewportMiniActions = document.querySelector(".viewport-mini-actions");
     els.viewportPanels = Array.from(document.querySelectorAll(".viewport-panel"));
     els.viewports = {
       presentation: document.getElementById("viewport-presentation"),
@@ -662,6 +721,13 @@
     els.cineSpeedSlider = document.getElementById("cine-speed-slider");
     els.cineSpeedReadout = document.getElementById("cine-speed-readout");
     els.cineButton = document.getElementById("cine-button");
+  }
+
+  function relocateViewportMiniActions() {
+    if (!els.stage || !els.viewportMiniActions || els.viewportMiniActions.parentElement === els.stage) {
+      return;
+    }
+    els.stage.insertBefore(els.viewportMiniActions, els.comparisonLayer || null);
   }
 
   function setStatus(message, tone) {
@@ -1606,6 +1672,151 @@
     return getActiveReconstruction()?.volume.depth || 0;
   }
 
+  function createComparisonViewportState(id) {
+    return {
+      id,
+      canvas: null,
+      ctx: null,
+      zoom: 1,
+      panX: 0,
+      panY: 0,
+      lastGeometry: null,
+      lastFrame: null,
+      bufferCanvas: null,
+    };
+  }
+
+  function createComparisonTile(id, index) {
+    return {
+      id,
+      index,
+      reconstructionId: null,
+      centerWorld: null,
+      voi: { ...state.currentVOI },
+      viewports: Object.fromEntries(
+        VIEWPORT_IDS.map((viewportId) => [viewportId, createComparisonViewportState(`${id}-${viewportId}`)])
+      ),
+    };
+  }
+
+  function ensureComparisonTiles() {
+    if (state.comparison.tiles.length === COMPARISON_TILE_IDS.length) {
+      return;
+    }
+    state.comparison.tiles = COMPARISON_TILE_IDS.map((id, index) => {
+      const existing = state.comparison.tiles.find((tile) => tile.id === id);
+      return existing || createComparisonTile(id, index);
+    });
+  }
+
+  function getComparisonLayoutDefinition(layoutKey) {
+    return COMPARISON_LAYOUTS[layoutKey] || COMPARISON_LAYOUTS.single;
+  }
+
+  function isComparisonActive() {
+    return Boolean(getComparisonLayoutDefinition(state.comparison.layout).comparison);
+  }
+
+  function getVisibleComparisonTiles() {
+    ensureComparisonTiles();
+    const definition = getComparisonLayoutDefinition(state.comparison.layout);
+    return state.comparison.tiles.slice(0, definition.tileCount);
+  }
+
+  function getComparisonTile(tileId) {
+    ensureComparisonTiles();
+    return state.comparison.tiles.find((tile) => tile.id === tileId) || state.comparison.tiles[0] || null;
+  }
+
+  function getReconstructionById(reconstructionId) {
+    return state.reconstructions.find((reconstruction) => reconstruction.id === reconstructionId) || null;
+  }
+
+  function getActiveComparisonTile() {
+    return getComparisonTile(state.comparison.activeTileId);
+  }
+
+  function cloneVoi(voi) {
+    return {
+      width: clamp(Math.round(Number(voi?.width) || state.currentVOI.width), 1, 4000),
+      center: clamp(Math.round(Number(voi?.center) || state.currentVOI.center), -1200, 3000),
+    };
+  }
+
+  function resetComparisonViewportTransforms(tile) {
+    Object.values(tile?.viewports || {}).forEach((viewportState) => {
+      viewportState.zoom = 1;
+      viewportState.panX = 0;
+      viewportState.panY = 0;
+      viewportState.lastGeometry = null;
+      viewportState.lastFrame = null;
+    });
+  }
+
+  function assignComparisonTileReconstruction(tileId, reconstructionId, options = {}) {
+    const tile = getComparisonTile(tileId);
+    const reconstruction = getReconstructionById(reconstructionId);
+    if (!tile || !reconstruction) {
+      return false;
+    }
+
+    tile.reconstructionId = reconstruction.id;
+    tile.centerWorld = cloneVector(state.mpr.centerWorld || reconstruction.volume.centerWorld);
+    tile.voi = cloneVoi(options.voi || state.currentVOI);
+    resetComparisonViewportTransforms(tile);
+    state.comparison.activeTileId = tile.id;
+    state.activeReconId = reconstruction.id;
+    state.mpr.centerWorld = cloneVector(tile.centerWorld);
+    state.currentVOI = cloneVoi(tile.voi);
+    state.uiCache.comparisonLayer = "";
+    updateVoiUi();
+    updateSidebarUi();
+    requestRenderAll();
+    setStatus(`${reconstruction.label} assigned to comparison tile ${tile.index + 1}.`);
+    return true;
+  }
+
+  function seedComparisonTiles() {
+    ensureComparisonTiles();
+    const visibleTiles = getVisibleComparisonTiles();
+    visibleTiles.forEach((tile, index) => {
+      if (tile.reconstructionId && getReconstructionById(tile.reconstructionId)) {
+        return;
+      }
+      const reconstruction = state.reconstructions[index] || state.reconstructions[0] || null;
+      if (!reconstruction) {
+        tile.reconstructionId = null;
+        return;
+      }
+      tile.reconstructionId = reconstruction.id;
+      tile.centerWorld = cloneVector(state.mpr.centerWorld || reconstruction.volume.centerWorld);
+      tile.voi = cloneVoi(state.currentVOI);
+      resetComparisonViewportTransforms(tile);
+    });
+    if (!visibleTiles.some((tile) => tile.id === state.comparison.activeTileId)) {
+      state.comparison.activeTileId = visibleTiles[0]?.id || "comparison-tile-1";
+    }
+    const activeTile = getActiveComparisonTile();
+    if (activeTile?.reconstructionId) {
+      state.activeReconId = activeTile.reconstructionId;
+      if (activeTile.centerWorld) {
+        state.mpr.centerWorld = cloneVector(activeTile.centerWorld);
+      }
+      state.currentVOI = cloneVoi(activeTile.voi);
+      updateVoiUi();
+    }
+  }
+
+  function clearInvalidComparisonAssignments() {
+    ensureComparisonTiles();
+    state.comparison.tiles.forEach((tile) => {
+      if (tile.reconstructionId && !getReconstructionById(tile.reconstructionId)) {
+        tile.reconstructionId = null;
+        tile.centerWorld = null;
+      }
+    });
+  }
+
   function getSectionStorageKey(sectionId) {
     return `hagrad.sidebar.${sectionId}`;
   }
@@ -2216,12 +2427,47 @@
       button.classList.toggle("is-active", button.dataset.layout === state.layout);
     });
     if (els.presentationLayoutToggleButton) {
-      const nextLayout = state.layout === "mpr" ? "presentation" : "mpr";
-      const label = nextLayout === "mpr" ? "Switch to 4-up MPR" : "Switch to presentation";
-      els.presentationLayoutToggleButton.classList.toggle("is-active", state.layout === "mpr");
+      const activeDefinition = getComparisonLayoutDefinition(state.comparison.layout);
+      const label = `Layout: ${activeDefinition.label}`;
+      els.presentationLayoutToggleButton.classList.toggle("is-active", state.layout === "mpr" || isComparisonActive());
       els.presentationLayoutToggleButton.title = label;
-      els.presentationLayoutToggleButton.setAttribute("aria-label", label);
+      els.presentationLayoutToggleButton.setAttribute("aria-label", "Choose viewport layout");
+      els.presentationLayoutToggleButton.setAttribute("aria-expanded", state.comparison.layoutMenuOpen ? "true" : "false");
     }
+    els.comparisonLayoutChoices?.forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.comparisonLayout === state.comparison.layout);
+    });
+    if (els.comparisonSyncButton) {
+      const canSync = isComparisonActive();
+      const syncIsActive = canSync && state.comparison.syncEnabled;
+      els.comparisonSyncButton.disabled = !canSync;
+      els.comparisonSyncButton.classList.toggle("is-active", syncIsActive);
+      els.comparisonSyncButton.textContent = syncIsActive ? "Sync On" : "Sync Off";
+      els.comparisonSyncButton.title = canSync
+        ? syncIsActive
+          ? "Comparison sync on"
+          : "Comparison sync off"
+        : "Choose a comparison layout to enable sync";
+      els.comparisonSyncButton.setAttribute(
+        "aria-label",
+        syncIsActive ? "Turn comparison sync off" : "Turn comparison sync on"
+      );
+    }
+  }
+
+  function setComparisonLayoutMenuOpen(open) {
+    state.comparison.layoutMenuOpen = Boolean(open);
+    els.presentationLayoutMenu?.classList.toggle("is-hidden", !state.comparison.layoutMenuOpen);
+    updateLayoutButtons();
+  }
+
+  function setComparisonSync(enabled) {
+    state.comparison.syncEnabled = Boolean(enabled);
+    if (state.comparison.syncEnabled && isComparisonActive()) {
+      syncComparisonTilesFromActiveTile({ center: true, transform: true, voi: true });
+    }
+    updateLayoutButtons();
+    requestRenderAll();
   }
 
   function updateViewportChromeUi() {
@@ -2247,6 +2493,27 @@
         visible ? "Hide viewport grid" : "Show viewport grid"
       );
     }
+  }
+
+  function updateComparisonUi() {
+    clearInvalidComparisonAssignments();
+    const active = isComparisonActive();
+    const definition = getComparisonLayoutDefinition(state.comparison.layout);
+    els.stage?.classList.toggle("is-comparison-mode", active);
+    if (els.comparisonLayer) {
+      els.comparisonLayer.classList.toggle("is-hidden", !active);
+      els.comparisonLayer.classList.remove(
+        "comparison-layout-single",
+        "comparison-layout-stacked2",
+        "comparison-layout-columns2",
+        "comparison-layout-grid2x2",
+        "comparison-layout-mprSplit2"
+      );
+      els.comparisonLayer.classList.add(definition.cssClass || "comparison-layout-single");
+      els.comparisonLayer.classList.toggle("hide-viewport-overlays", state.showViewportOverlays === false);
+      els.comparisonLayer.classList.toggle("has-grid-overlay", Boolean(state.showViewportGrid));
+    }
+    updateLayoutButtons();
   }
 
   function isRoiAnnotationType(type) {
@@ -2470,9 +2737,29 @@
     }
   }
 
+  function setComparisonLayout(layoutKey) {
+    const definition = getComparisonLayoutDefinition(layoutKey);
+    state.comparison.layout = COMPARISON_LAYOUTS[layoutKey] ? layoutKey : "single";
+    setComparisonLayoutMenuOpen(false);
+    setLayout(definition.mode, { preserveComparison: true });
+    if (definition.comparison) {
+      seedComparisonTiles();
+    }
+    state.uiCache.comparisonLayer = "";
+    updateComparisonUi();
+    if (definition.comparison) {
+      renderComparisonLayer();
+    }
+    requestRenderAll();
+    setStatus(definition.comparison ? `${definition.label} comparison layout enabled.` : `${definition.label} layout enabled.`);
+  }
+
   function setLayout(layout, options) {
     const previousLayout = state.layout;
     state.layout = layout === "mpr" ? "mpr" : "presentation";
+    if (!options?.preserveComparison) {
+      state.comparison.layout = state.layout === "mpr" ? "mpr" : "single";
+    }
     if (state.layout !== "mpr") {
       state.maximizedViewportId = null;
       if (previousLayout === "mpr" && options?.resetPresentationTransform !== false) {
@@ -2484,6 +2771,7 @@
     els.viewportGrid.classList.toggle("layout-presentation", state.layout !== "mpr");
     updateViewportFocusUi();
     updateLayoutButtons();
+    updateComparisonUi();
     requestRenderAll();
   }
 
@@ -3501,10 +3789,17 @@
       const button = document.createElement("button");
       button.type = "button";
       button.className = "recon-button";
+      button.draggable = true;
+      button.dataset.reconstructionId = reconstruction.id;
       button.classList.toggle("is-active", reconstruction.id === state.activeReconId);
       button.innerHTML = `<strong>${reconstruction.label}</strong><span>${reconstruction.volume.depth} slices</span>`;
       button.addEventListener("click", () => {
         setActiveReconstruction(reconstruction.id);
+      });
+      button.addEventListener("dragstart", (event) => {
+        event.dataTransfer.effectAllowed = "copy";
+        event.dataTransfer.setData("application/x-hagrad-reconstruction-id", reconstruction.id);
+        event.dataTransfer.setData("text/plain", reconstruction.id);
       });
       els.reconstructionList.appendChild(button);
     });
@@ -3678,6 +3973,17 @@
       sagittal: 0,
     };
     state.mpr.planeNormals = null;
+    state.comparison.layout = "single";
+    state.comparison.activeTileId = "comparison-tile-1";
+    state.comparison.layoutMenuOpen = false;
+    ensureComparisonTiles();
+    state.comparison.tiles.forEach((tile) => {
+      tile.reconstructionId = null;
+      tile.centerWorld = null;
+      tile.voi = cloneVoi(state.currentVOI);
+      resetComparisonViewportTransforms(tile);
+    });
+    state.uiCache.comparisonLayer = "";
     state.maximizedViewportId = null;
     state.polygonDraft = null;
     state.contourCorrectionDraft = null;
@@ -3846,6 +4152,13 @@
     };
     if (resetPreset) {
       state.currentPresetDirty = Boolean(state.currentPreset);
+    }
+    if (isComparisonActive()) {
+      const tile = getActiveComparisonTile();
+      if (tile) {
+        tile.voi = cloneVoi(state.currentVOI);
+        syncComparisonTilesFromActiveTile({ voi: true });
+      }
     }
     updateVoiUi();
     saveVoiPresetSettings();
@@ -4145,6 +4458,85 @@
     };
   }
 
+  function getCanonicalPlaneFrameAtCenter(plane, reconstruction, centerWorld) {
+    const activeReconstruction = reconstruction || getActiveReconstruction();
+    const volume = activeReconstruction?.volume;
+    if (!volume) {
+      return null;
+    }
+
+    const metrics = getPlaneMetrics(volume, plane);
+    const base = LOCAL_PLANE_BASES[plane];
+    const nWorld = worldDirectionFromLocal(base.n);
+    const { uWorld, vWorld } = getRollLockedPlaneBasis(base, nWorld);
+    const navigationCenter = centerWorld || volume.centerWorld;
+    const normalOffset = dot(subtractVectors(navigationCenter, volume.centerWorld), nWorld);
+    const planeCenter = addVectors(volume.centerWorld, scaleVector(nWorld, normalOffset));
+
+    return {
+      plane,
+      reconstructionId: activeReconstruction.id,
+      centerWorld: cloneVector(planeCenter),
+      uWorld,
+      vWorld,
+      nWorld,
+      metrics: {
+        sampleWidth: metrics.sampleWidth,
+        sampleHeight: metrics.sampleHeight,
+        spacingX: metrics.spacingX,
+        spacingY: metrics.spacingY,
+        spacingNormal: metrics.spacingNormal,
+        count: metrics.count,
+      },
+    };
+  }
+
+  function getCurrentPlaneFrameAtCenter(plane, reconstruction, centerWorld) {
+    const activeReconstruction = reconstruction || getActiveReconstruction();
+    const volume = activeReconstruction?.volume;
+    if (!volume) {
+      return null;
+    }
+
+    const metrics = getPlaneMetrics(volume, plane);
+    const base = LOCAL_PLANE_BASES[plane];
+    const planeNormals = getMprPlaneNormals();
+    const nWorld = cloneVector(planeNormals[plane] || worldDirectionFromLocal(rotateLocalVector(base.n)));
+    const { uWorld, vWorld } = getRollLockedPlaneBasis(base, nWorld);
+
+    return {
+      plane,
+      reconstructionId: activeReconstruction.id,
+      centerWorld: cloneVector(centerWorld || volume.centerWorld),
+      uWorld,
+      vWorld,
+      nWorld,
+      metrics: {
+        sampleWidth: metrics.sampleWidth,
+        sampleHeight: metrics.sampleHeight,
+        spacingX: metrics.spacingX,
+        spacingY: metrics.spacingY,
+        spacingNormal: metrics.spacingNormal,
+        count: metrics.count,
+      },
+    };
+  }
+
+  function getReadoutIndexAtCenter(reconstruction, plane, centerWorld) {
+    if (!reconstruction || !centerWorld) {
+      return 0;
+    }
+
+    const coordinates = worldToVolumeCoordinates(reconstruction.volume, centerWorld);
+    if (plane === "axial") {
+      return clamp(Math.round(coordinates.z), 0, reconstruction.volume.depth - 1);
+    }
+    if (plane === "coronal") {
+      return clamp(Math.round(coordinates.y), 0, reconstruction.volume.rows - 1);
+    }
+    return clamp(Math.round(coordinates.x), 0, reconstruction.volume.columns - 1);
+  }
+
   function cloneFrame(frame) {
     return {
       plane: frame.plane,
@@ -4415,9 +4807,10 @@
     };
   }
 
-  function voiToByte(value) {
-    const width = Math.max(1, state.currentVOI.width);
-    const center = state.currentVOI.center;
+  function voiToByte(value, voi) {
+    const activeVoi = voi || state.currentVOI;
+    const width = Math.max(1, activeVoi.width);
+    const center = activeVoi.center;
     const lower = center - 0.5 - (width - 1) / 2;
     const upper = center - 0.5 + (width - 1) / 2;
     if (value <= lower) {
@@ -4429,7 +4822,7 @@
     return Math.round((((value - (center - 0.5)) / (width - 1)) + 0.5) * 255);
   }
 
-  function renderPlanePixelsToCanvas(bufferCanvas, reconstruction, frame) {
+  function renderPlanePixelsToCanvas(bufferCanvas, reconstruction, frame, voi) {
     const metrics = frame.metrics;
     if (bufferCanvas.width !== metrics.sampleWidth || bufferCanvas.height !== metrics.sampleHeight) {
       bufferCanvas.width = metrics.sampleWidth;
@@ -4452,7 +4845,7 @@
           scaleVector(frame.vWorld, yMm)
         );
         const hu = sampleVolumeAtWorld(reconstruction.volume, world);
-        const gray = voiToByte(hu == null ? -1024 : hu);
+        const gray = voiToByte(hu == null ? -1024 : hu, voi);
         pixels[offset] = gray;
         pixels[offset + 1] = gray;
         pixels[offset + 2] = gray;
@@ -8730,7 +9123,7 @@
     const geometry = getRenderGeometry(viewportState, frame, canvasWidth, canvasHeight);
     const bufferCanvas = viewportState.bufferCanvas || document.createElement("canvas");
     viewportState.bufferCanvas = bufferCanvas;
-    renderPlanePixelsToCanvas(bufferCanvas, reconstruction, frame);
+    renderPlanePixelsToCanvas(bufferCanvas, reconstruction, frame, options?.voi);
     ctx.drawImage(bufferCanvas, geometry.originX, geometry.originY, geometry.drawWidth, geometry.drawHeight);
 
     if (options?.storeGeometry !== false) {
@@ -8781,6 +9174,504 @@
     return VIEWPORT_IDS.filter((viewportId) => getViewportPlane(viewportId) === plane);
   }
 
+  function canSyncComparisonCenter(sourceReconstruction, targetReconstruction) {
+    const sourceVolume = sourceReconstruction?.volume;
+    const targetVolume = targetReconstruction?.volume;
+    if (!sourceVolume || !targetVolume) {
+      return false;
+    }
+    return (
+      Math.abs(dot(sourceVolume.rowDirection, targetVolume.rowDirection)) > 0.98 &&
+      Math.abs(dot(sourceVolume.columnDirection, targetVolume.columnDirection)) > 0.98 &&
+      Math.abs(dot(sourceVolume.normalDirection, targetVolume.normalDirection)) > 0.98
+    );
+  }
+
+  function syncComparisonTilesFromActiveTile(options = {}) {
+    if (!state.comparison.syncEnabled || !isComparisonActive()) {
+      return;
+    }
+    const sourceTile = getActiveComparisonTile();
+    const sourceReconstruction = getReconstructionById(sourceTile?.reconstructionId);
+    if (!sourceTile || !sourceReconstruction) {
+      return;
+    }
+
+    let warned = false;
+    getVisibleComparisonTiles().forEach((tile) => {
+      if (tile.id === sourceTile.id || !tile.reconstructionId) {
+        return;
+      }
+      const reconstruction = getReconstructionById(tile.reconstructionId);
+      if (!reconstruction) {
+        return;
+      }
+      if (options.center) {
+        if (canSyncComparisonCenter(sourceReconstruction, reconstruction)) {
+          tile.centerWorld = cloneVector(sourceTile.centerWorld || sourceReconstruction.volume.centerWorld);
+        } else if (!warned) {
+          warned = true;
+          setStatus("Comparison sync skipped one tile because its geometry could not be mapped safely.", "warning");
+        }
+      }
+      if (options.voi) {
+        tile.voi = cloneVoi(sourceTile.voi);
+      }
+      if (options.transform) {
+        VIEWPORT_IDS.forEach((viewportId) => {
+          const sourceViewport = sourceTile.viewports[viewportId];
+          const targetViewport = tile.viewports[viewportId];
+          targetViewport.zoom = sourceViewport.zoom;
+          targetViewport.panX = sourceViewport.panX;
+          targetViewport.panY = sourceViewport.panY;
+        });
+      }
+    });
+  }
+
+  function setActiveComparisonTile(tileId) {
+    const tile = getComparisonTile(tileId);
+    if (!tile) {
+      return;
+    }
+    state.comparison.activeTileId = tile.id;
+    const reconstruction = getReconstructionById(tile.reconstructionId);
+    if (reconstruction) {
+      state.activeReconId = reconstruction.id;
+      state.mpr.centerWorld = cloneVector(tile.centerWorld || reconstruction.volume.centerWorld);
+      state.currentVOI = cloneVoi(tile.voi);
+      updateVoiUi();
+      updateSidebarUi();
+    } else {
+      updateComparisonUi();
+    }
+    state.uiCache.comparisonLayer = "";
+    updateComparisonUi();
+    requestRenderAll();
+  }
+
+  function setComparisonTileCenter(tile, nextCenterWorld, options = {}) {
+    if (!tile || !Array.isArray(nextCenterWorld)) {
+      return;
+    }
+    tile.centerWorld = cloneVector(nextCenterWorld);
+    if (tile.id === state.comparison.activeTileId) {
+      state.mpr.centerWorld = cloneVector(tile.centerWorld);
+    }
+    if (options.sync !== false) {
+      syncComparisonTilesFromActiveTile({ center: true });
+    }
+  }
+
+  function setComparisonTileVoi(tile, voi, options = {}) {
+    if (!tile) {
+      return;
+    }
+    tile.voi = cloneVoi(voi);
+    if (tile.id === state.comparison.activeTileId) {
+      state.currentVOI = cloneVoi(tile.voi);
+      updateVoiUi();
+    }
+    if (options.sync !== false) {
+      syncComparisonTilesFromActiveTile({ voi: true });
+    }
+  }
+
+  function setComparisonViewportTransform(tile, viewportId, transform, options = {}) {
+    const viewportState = tile?.viewports?.[viewportId];
+    if (!viewportState) {
+      return;
+    }
+    if (transform.zoom != null) {
+      viewportState.zoom = transform.zoom;
+    }
+    if (transform.panX != null) {
+      viewportState.panX = transform.panX;
+    }
+    if (transform.panY != null) {
+      viewportState.panY = transform.panY;
+    }
+    if (options.sync !== false) {
+      syncComparisonTilesFromActiveTile({ transform: true });
+    }
+  }
+
+  function getComparisonFrame(tile, viewportId) {
+    const reconstruction = getReconstructionById(tile?.reconstructionId);
+    if (!reconstruction) {
+      return null;
+    }
+    const plane = getViewportPlane(viewportId);
+    if (state.comparison.layout === "mprSplit2") {
+      return getCurrentPlaneFrameAtCenter(plane, reconstruction, tile.centerWorld || reconstruction.volume.centerWorld);
+    }
+    return getCanonicalPlaneFrameAtCenter(plane, reconstruction, tile.centerWorld || reconstruction.volume.centerWorld);
+  }
+
+  function getComparisonReadout(tile, viewportId) {
+    const reconstruction = getReconstructionById(tile?.reconstructionId);
+    const frame = getComparisonFrame(tile, viewportId);
+    if (!reconstruction || !frame) {
+      return viewportId === "presentation" ? "0 / 0" : `${VIEWPORT_CONFIG[viewportId].readoutLabel} -`;
+    }
+    const index = getReadoutIndexAtCenter(reconstruction, frame.plane, frame.centerWorld);
+    if (viewportId === "presentation") {
+      return `${index + 1} / ${frame.metrics.count}`;
+    }
+    return `${VIEWPORT_CONFIG[viewportId].readoutLabel} ${index + 1} / ${frame.metrics.count}`;
+  }
+
+  function ensureComparisonCanvasSize(viewportState) {
+    const canvas = viewportState?.canvas;
+    if (!canvas) {
+      return { width: 1, height: 1 };
+    }
+    const rect = canvas.getBoundingClientRect();
+    const logicalWidth = Math.max(1, Math.round(rect.width));
+    const logicalHeight = Math.max(1, Math.round(rect.height));
+    const dpr = window.devicePixelRatio || 1;
+    const pixelWidth = Math.max(1, Math.round(logicalWidth * dpr));
+    const pixelHeight = Math.max(1, Math.round(logicalHeight * dpr));
+    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+      canvas.width = pixelWidth;
+      canvas.height = pixelHeight;
+    }
+    viewportState.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    viewportState.ctx.imageSmoothingEnabled = false;
+    return { width: logicalWidth, height: logicalHeight };
+  }
+
+  function renderComparisonViewport(tile, viewportId) {
+    const reconstruction = getReconstructionById(tile?.reconstructionId);
+    const viewportState = tile?.viewports?.[viewportId];
+    if (!viewportState?.ctx) {
+      return;
+    }
+    const size = ensureComparisonCanvasSize(viewportState);
+    const frame = getComparisonFrame(tile, viewportId);
+    if (!reconstruction || !frame) {
+      viewportState.ctx.clearRect(0, 0, size.width, size.height);
+      viewportState.ctx.fillStyle = "#000000";
+      viewportState.ctx.fillRect(0, 0, size.width, size.height);
+      return;
+    }
+    drawPlaneScene(viewportState.ctx, reconstruction, frame, size.width, size.height, viewportState, {
+      includeAnnotations: true,
+      showMprOverlay: state.mpr.overlayVisible !== false && state.comparison.layout === "mprSplit2",
+      voi: tile.voi,
+      previewAnnotation: null,
+    });
+  }
+
+  function getInternalReconstructionDragId(dataTransfer) {
+    return (
+      dataTransfer?.getData?.("application/x-hagrad-reconstruction-id") ||
+      dataTransfer?.getData?.("text/plain") ||
+      ""
+    );
+  }
+
+  function hasInternalReconstructionDrag(dataTransfer) {
+    const types = Array.from(dataTransfer?.types || []);
+    if (types.includes("application/x-hagrad-reconstruction-id")) {
+      return true;
+    }
+    return Boolean(getReconstructionById(getInternalReconstructionDragId(dataTransfer)));
+  }
+
+  function handleComparisonTileDragEnter(event) {
+    if (!hasInternalReconstructionDrag(event.dataTransfer)) {
+      return;
+    }
+    event.preventDefault();
+    event.currentTarget.classList.add("is-drop-target");
+  }
+
+  function handleComparisonTileDragOver(event) {
+    if (!hasInternalReconstructionDrag(event.dataTransfer)) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    event.currentTarget.classList.add("is-drop-target");
+  }
+
+  function handleComparisonTileDragLeave(event) {
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+      event.currentTarget.classList.remove("is-drop-target");
+    }
+  }
+
+  function handleComparisonTileDrop(event) {
+    const tileId = event.currentTarget.dataset.comparisonTileId;
+    const reconstructionId = getInternalReconstructionDragId(event.dataTransfer);
+    if (!tileId || !reconstructionId || !getReconstructionById(reconstructionId)) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.classList.remove("is-drop-target");
+    assignComparisonTileReconstruction(tileId, reconstructionId);
+  }
+
+  function scrollComparisonTile(tile, viewportId, delta) {
+    const reconstruction = getReconstructionById(tile?.reconstructionId);
+    const frame = getComparisonFrame(tile, viewportId);
+    if (!tile || !reconstruction || !frame) {
+      return;
+    }
+    stopCine();
+    const startCenterWorld = tile.centerWorld || frame.centerWorld || reconstruction.volume.centerWorld;
+    const nextCenterWorld = addVectors(startCenterWorld, scaleVector(frame.nWorld, delta * frame.metrics.spacingNormal));
+    setComparisonTileCenter(tile, nextCenterWorld);
+    requestRenderAll();
+  }
+
+  function zoomComparisonViewportAtClientPoint(tile, viewportId, clientX, clientY, nextZoom) {
+    const viewportState = tile?.viewports?.[viewportId];
+    const geometry = viewportState?.lastGeometry;
+    const canvas = viewportState?.canvas;
+    if (!tile || !viewportState || !canvas) {
+      return false;
+    }
+    const currentZoom = Number(viewportState.zoom) || 1;
+    const clampedZoom = clamp(nextZoom, 0.2, 12);
+    if (Math.abs(clampedZoom - currentZoom) < 0.0001) {
+      return false;
+    }
+    if (!geometry) {
+      setComparisonViewportTransform(tile, viewportId, { zoom: clampedZoom });
+      return true;
+    }
+    const rect = canvas.getBoundingClientRect();
+    const canvasX = clientX - rect.left;
+    const canvasY = clientY - rect.top;
+    const centerX = geometry.originX + geometry.drawWidth / 2;
+    const centerY = geometry.originY + geometry.drawHeight / 2;
+    const zoomFactor = clampedZoom / currentZoom;
+    setComparisonViewportTransform(tile, viewportId, {
+      zoom: clampedZoom,
+      panX: viewportState.panX + (canvasX - centerX) * (1 - zoomFactor),
+      panY: viewportState.panY + (canvasY - centerY) * (1 - zoomFactor),
+    });
+    return true;
+  }
+
+  function handleComparisonWheel(event) {
+    const tile = getComparisonTile(event.currentTarget.dataset.comparisonTileId);
+    const viewportId = event.currentTarget.dataset.comparisonViewportId || "presentation";
+    if (!tile) {
+      return;
+    }
+    event.preventDefault();
+    setActiveComparisonTile(tile.id);
+    if (event.metaKey || event.ctrlKey) {
+      const viewportState = tile.viewports[viewportId];
+      const currentZoom = Number(viewportState?.zoom) || 1;
+      if (zoomComparisonViewportAtClientPoint(tile, viewportId, event.clientX, event.clientY, currentZoom * Math.exp(-event.deltaY * 0.0015))) {
+        requestRenderAll();
+      }
+      return;
+    }
+    scrollComparisonTile(tile, viewportId, event.deltaY > 0 ? 1 : -1);
+  }
+
+  function handleComparisonPointerDown(event) {
+    const tile = getComparisonTile(event.currentTarget.dataset.comparisonTileId);
+    const viewportId = event.currentTarget.dataset.comparisonViewportId || "presentation";
+    const viewportState = tile?.viewports?.[viewportId];
+    if (!tile || !viewportState) {
+      return;
+    }
+    setActiveComparisonTile(tile.id);
+    if (event.button !== 0 && event.button !== 1) {
+      return;
+    }
+    const shouldPan = event.button === 1 || state.activeToolKey === "pan";
+    const shouldZoom = state.activeToolKey === "zoom";
+    const shouldWindow = state.activeToolKey === "windowLevel";
+    if (!shouldPan && !shouldZoom && !shouldWindow) {
+      return;
+    }
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    state.dragging = {
+      type: shouldWindow ? "comparisonWindowLevel" : shouldZoom ? "comparisonZoom" : "comparisonPan",
+      tileId: tile.id,
+      viewportId,
+      pointerElement: event.currentTarget,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startPanX: viewportState.panX,
+      startPanY: viewportState.panY,
+      startZoom: viewportState.zoom,
+      startVOI: cloneVoi(tile.voi),
+    };
+  }
+
+  function handleComparisonDragMove(event) {
+    const dragging = state.dragging;
+    const tile = getComparisonTile(dragging.tileId);
+    const viewportId = dragging.viewportId || "presentation";
+    const viewportState = tile?.viewports?.[viewportId];
+    if (!tile || !viewportState) {
+      return false;
+    }
+    if (dragging.type === "comparisonWindowLevel") {
+      const deltaX = event.clientX - dragging.startClientX;
+      const deltaY = event.clientY - dragging.startClientY;
+      setComparisonTileVoi(tile, {
+        width: dragging.startVOI.width + deltaX * 4,
+        center: dragging.startVOI.center - deltaY * 4,
+      });
+      requestRenderAll();
+      return true;
+    }
+    if (dragging.type === "comparisonPan") {
+      setComparisonViewportTransform(tile, viewportId, {
+        panX: dragging.startPanX + (event.clientX - dragging.startClientX),
+        panY: dragging.startPanY + (event.clientY - dragging.startClientY),
+      });
+      requestRenderAll();
+      return true;
+    }
+    if (dragging.type === "comparisonZoom") {
+      const deltaY = dragging.startClientY - event.clientY;
+      setComparisonViewportTransform(tile, viewportId, {
+        zoom: clamp(dragging.startZoom * Math.exp(deltaY * 0.01), 0.2, 12),
+      });
+      requestRenderAll();
+      return true;
+    }
+    return false;
+  }
+
+  function getComparisonLayoutSignature() {
+    return JSON.stringify({
+      layout: state.comparison.layout,
+      activeTileId: state.comparison.activeTileId,
+      tiles: getVisibleComparisonTiles().map((tile) => ({
+        id: tile.id,
+        reconstructionId: tile.reconstructionId,
+        label: getReconstructionById(tile.reconstructionId)?.label || "",
+      })),
+    });
+  }
+
+  function buildComparisonCanvas(tile, viewportId, className) {
+    const canvas = document.createElement("canvas");
+    canvas.className = className;
+    canvas.dataset.comparisonTileId = tile.id;
+    canvas.dataset.comparisonViewportId = viewportId;
+    canvas.setAttribute("aria-label", `${getReconstructionById(tile.reconstructionId)?.label || "Comparison tile"} ${VIEWPORT_CONFIG[viewportId].title}`);
+    canvas.addEventListener("pointerdown", handleComparisonPointerDown);
+    canvas.addEventListener("wheel", handleComparisonWheel, { passive: false });
+    const viewportState = tile.viewports[viewportId];
+    viewportState.canvas = canvas;
+    viewportState.ctx = canvas.getContext("2d");
+    return canvas;
+  }
+
+  function renderComparisonLayerShell() {
+    if (!els.comparisonLayer || !isComparisonActive()) {
+      return;
+    }
+    const signature = getComparisonLayoutSignature();
+    if (state.uiCache.comparisonLayer === signature) {
+      return;
+    }
+    state.uiCache.comparisonLayer = signature;
+    els.comparisonLayer.innerHTML = "";
+    getVisibleComparisonTiles().forEach((tile) => {
+      const reconstruction = getReconstructionById(tile.reconstructionId);
+      const tileElement = document.createElement("article");
+      tileElement.className = "comparison-tile";
+      tileElement.classList.toggle("is-active", tile.id === state.comparison.activeTileId);
+      tileElement.dataset.comparisonTileId = tile.id;
+      tileElement.tabIndex = 0;
+      tileElement.addEventListener("click", () => setActiveComparisonTile(tile.id));
+      tileElement.addEventListener("dragenter", handleComparisonTileDragEnter);
+      tileElement.addEventListener("dragover", handleComparisonTileDragOver);
+      tileElement.addEventListener("dragleave", handleComparisonTileDragLeave);
+      tileElement.addEventListener("drop", handleComparisonTileDrop);
+
+      const header = document.createElement("header");
+      header.className = "comparison-tile-header";
+      const label = document.createElement("span");
+      label.className = "comparison-tile-series";
+      label.textContent = reconstruction?.label || "Empty tile";
+      const readout = document.createElement("span");
+      readout.className = "viewport-readout";
+      readout.dataset.comparisonReadout = `${tile.id}-presentation`;
+      readout.textContent = getComparisonReadout(tile, "presentation");
+      header.append(label, readout);
+      tileElement.appendChild(header);
+
+      if (!reconstruction) {
+        const empty = document.createElement("div");
+        empty.className = "comparison-empty";
+        empty.innerHTML = "<strong>Drop series here</strong><span>Drag a reconstruction from Patient & Series.</span>";
+        tileElement.appendChild(empty);
+      } else if (state.comparison.layout === "mprSplit2") {
+        const group = document.createElement("div");
+        group.className = "comparison-mpr-group";
+        COMPARISON_MPR_VIEWPORT_IDS.forEach((viewportId) => {
+          const subview = document.createElement("section");
+          subview.className = "comparison-subview";
+          subview.dataset.comparisonTileId = tile.id;
+          subview.dataset.comparisonViewportId = viewportId;
+          const subHeader = document.createElement("header");
+          subHeader.className = "comparison-subview-header";
+          const title = document.createElement("span");
+          title.textContent = VIEWPORT_CONFIG[viewportId].title;
+          const subReadout = document.createElement("span");
+          subReadout.className = "viewport-readout";
+          subReadout.dataset.comparisonReadout = `${tile.id}-${viewportId}`;
+          subReadout.textContent = getComparisonReadout(tile, viewportId);
+          subHeader.append(title, subReadout);
+          subview.append(subHeader, buildComparisonCanvas(tile, viewportId, "comparison-subview-canvas"));
+          group.appendChild(subview);
+        });
+        tileElement.appendChild(group);
+      } else {
+        tileElement.appendChild(buildComparisonCanvas(tile, "presentation", "comparison-tile-canvas"));
+      }
+
+      els.comparisonLayer.appendChild(tileElement);
+    });
+  }
+
+  function updateComparisonReadouts() {
+    if (!els.comparisonLayer || !isComparisonActive()) {
+      return;
+    }
+    getVisibleComparisonTiles().forEach((tile) => {
+      const viewportIds = state.comparison.layout === "mprSplit2" ? COMPARISON_MPR_VIEWPORT_IDS : ["presentation"];
+      viewportIds.forEach((viewportId) => {
+        const readout = els.comparisonLayer.querySelector(`[data-comparison-readout="${tile.id}-${viewportId}"]`);
+        if (readout) {
+          readout.textContent = getComparisonReadout(tile, viewportId);
+        }
+      });
+    });
+  }
+
+  function renderComparisonLayer() {
+    if (!isComparisonActive()) {
+      return;
+    }
+    renderComparisonLayerShell();
+    getVisibleComparisonTiles().forEach((tile) => {
+      if (state.comparison.layout === "mprSplit2") {
+        COMPARISON_MPR_VIEWPORT_IDS.forEach((viewportId) => renderComparisonViewport(tile, viewportId));
+      } else {
+        renderComparisonViewport(tile, "presentation");
+      }
+    });
+    updateComparisonReadouts();
+  }
+
   function renderViewport(viewportId) {
     const reconstruction = getActiveReconstruction();
     const viewportState = state.viewports[viewportId];
@@ -8805,6 +9696,11 @@
   }
 
   function renderAll() {
+    if (isComparisonActive()) {
+      renderComparisonLayer();
+      updateReadouts();
+      return;
+    }
     VIEWPORT_IDS.forEach(renderViewport);
     updateReadouts();
   }
@@ -8827,6 +9723,15 @@
     state.renderQueued = true;
     window.requestAnimationFrame(() => {
       state.renderQueued = false;
+      if (isComparisonActive()) {
+        state.renderDirtyViewports.clear();
+        renderComparisonLayer();
+        if (state.readoutsDirty) {
+          updateReadouts();
+          state.readoutsDirty = false;
+        }
+        return;
+      }
       const dirtyViewports = state.renderDirtyViewports.size ? Array.from(state.renderDirtyViewports) : VIEWPORT_IDS;
       state.renderDirtyViewports.clear();
       dirtyViewports.forEach(renderViewport);
@@ -10630,6 +11535,7 @@
     resetHistory();
     setActiveViewport("presentation");
     resetViewportTransforms();
+    updateComparisonUi();
     updateEmptyState();
     updateSidebarUi();
     requestRenderAll();
@@ -11363,6 +12269,14 @@
       }
     } else {
       requestProjectSessionAutosave();
+    }
+
+    if (isComparisonActive()) {
+      seedComparisonTiles();
+      state.uiCache.comparisonLayer = "";
+      updateComparisonUi();
+    } else {
+      clearInvalidComparisonAssignments();
     }
 
     updateEmptyState();
@@ -12145,6 +13059,13 @@
       return;
     }
 
+    if (String(state.dragging.type || "").startsWith("comparison")) {
+      if (handleComparisonDragMove(event)) {
+        event.preventDefault();
+      }
+      return;
+    }
+
     if (state.dragging.type === "rightScroll") {
       const dragDeltaY = event.clientY - state.dragging.startClientY;
       const normalized = dragDeltaY / state.dragging.scrubHeightPx;
@@ -12509,6 +13430,14 @@
     }
 
     const dragging = state.dragging;
+    if (String(dragging.type || "").startsWith("comparison")) {
+      dragging.pointerElement?.releasePointerCapture?.(dragging.pointerId);
+      state.dragging = null;
+      updateViewportCursors();
+      requestRenderAll();
+      return;
+    }
+
     if (dragging.type === "profileGuide") {
       els.profileChart.releasePointerCapture?.(dragging.pointerId);
       els.profileChart.style.cursor = "default";
@@ -12828,13 +13757,26 @@
     els.presentationLayoutToggleButton?.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      setLayout(state.layout === "mpr" ? "presentation" : "mpr");
+      setComparisonLayoutMenuOpen(!state.comparison.layoutMenuOpen);
+    });
+    els.comparisonLayoutChoices?.forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setComparisonLayout(button.dataset.comparisonLayout || "single");
+      });
+    });
+    els.comparisonSyncButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setComparisonSync(!state.comparison.syncEnabled);
     });
     els.presentationOverlayToggleButton?.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
       state.showViewportOverlays = state.showViewportOverlays === false;
       updateViewportChromeUi();
+      updateComparisonUi();
       requestRenderAll();
     });
     els.presentationGridToggleButton?.addEventListener("click", (event) => {
@@ -12842,6 +13784,7 @@
       event.stopPropagation();
       state.showViewportGrid = !state.showViewportGrid;
       updateViewportChromeUi();
+      updateComparisonUi();
     });
     els.presentationFocusToggleButton?.addEventListener("click", (event) => {
       event.preventDefault();
@@ -12970,6 +13913,11 @@
     });
     document.addEventListener("click", (event) => {
       const target = event.target;
+      if (state.comparison.layoutMenuOpen && els.presentationLayoutMenu && els.presentationLayoutToggleButton) {
+        if (!els.presentationLayoutMenu.contains(target) && !els.presentationLayoutToggleButton.contains(target)) {
+          setComparisonLayoutMenuOpen(false);
+        }
+      }
       if (els.roiToolMenu && els.roiToolTrigger) {
         if (els.roiToolMenu.contains(target) || els.roiToolTrigger.contains(target)) {
           return;
@@ -13278,6 +14226,9 @@
 
     ["dragenter", "dragover"].forEach((eventName) => {
       els.stage.addEventListener(eventName, (event) => {
+        if (hasInternalReconstructionDrag(event.dataTransfer)) {
+          return;
+        }
         event.preventDefault();
         els.stage.classList.add("is-dragging");
       });
@@ -13291,6 +14242,10 @@
     });
 
     els.stage.addEventListener("drop", async (event) => {
+      if (hasInternalReconstructionDrag(event.dataTransfer)) {
+        event.preventDefault();
+        return;
+      }
       try {
         const droppedFiles =
           (await window.HAGRadCore?.collectDroppedFiles?.(event.dataTransfer)) ||
@@ -13303,6 +14258,11 @@
     });
 
     document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && state.comparison.layoutMenuOpen) {
+        event.preventDefault();
+        setComparisonLayoutMenuOpen(false);
+        return;
+      }
       if (event.key === "Escape" && els.measurementExportModal && !els.measurementExportModal.classList.contains("is-hidden")) {
         event.preventDefault();
         closeMeasurementExportModal();
@@ -13407,6 +14367,7 @@
 
   function initialize() {
     cacheElements();
+    relocateViewportMiniActions();
     refreshExportStudyOptions().catch((error) => {
       console.error(error);
       setStatus(error.message || "Could not load export studies.", "error");

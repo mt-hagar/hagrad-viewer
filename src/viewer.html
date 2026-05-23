@@ -837,9 +837,49 @@
                     id="presentation-layout-toggle-button"
                     class="viewport-mini-button"
                     type="button"
-                    aria-label="Switch between presentation and 4-up MPR"
-                    title="Switch presentation / 4-up MPR"
+                    aria-label="Choose viewport layout"
+                    title="Choose viewport layout"
+                    aria-expanded="false"
+                    aria-haspopup="true"
                   >▦</button>
+                  <div
+                    id="presentation-layout-menu"
+                    class="viewport-layout-menu is-hidden"
+                    role="menu"
+                    aria-label="Viewport layout choices"
+                  >
+                    <button class="viewport-layout-choice is-active" data-comparison-layout="single" type="button" role="menuitem">
+                      <span class="layout-choice-icon layout-icon-single" aria-hidden="true"></span>
+                      <span>Presentation</span>
+                    </button>
+                    <button class="viewport-layout-choice" data-comparison-layout="stacked2" type="button" role="menuitem">
+                      <span class="layout-choice-icon layout-icon-stacked" aria-hidden="true"></span>
+                      <span>Stacked 2</span>
+                    </button>
+                    <button class="viewport-layout-choice" data-comparison-layout="columns2" type="button" role="menuitem">
+                      <span class="layout-choice-icon layout-icon-columns" aria-hidden="true"></span>
+                      <span>Side by side</span>
+                    </button>
+                    <button class="viewport-layout-choice" data-comparison-layout="grid2x2" type="button" role="menuitem">
+                      <span class="layout-choice-icon layout-icon-grid" aria-hidden="true"></span>
+                      <span>2 x 2</span>
+                    </button>
+                    <button class="viewport-layout-choice" data-comparison-layout="mpr" type="button" role="menuitem">
+                      <span class="layout-choice-icon layout-icon-mpr" aria-hidden="true"></span>
+                      <span>4-up MPR</span>
+                    </button>
+                    <button class="viewport-layout-choice" data-comparison-layout="mprSplit2" type="button" role="menuitem">
+                      <span class="layout-choice-icon layout-icon-mpr-split" aria-hidden="true"></span>
+                      <span>MPR 1:1</span>
+                    </button>
+                  </div>
+                  <button
+                    id="comparison-sync-button"
+                    class="viewport-mini-button viewport-sync-button"
+                    type="button"
+                    aria-label="Turn comparison sync on"
+                    title="Comparison sync off"
+                  >Sync</button>
                   <button
                     id="presentation-overlay-toggle-button"
                     class="viewport-mini-button is-active"
@@ -931,6 +971,11 @@
                 </div>
               </article>
             </div>
+            <div
+              id="comparison-layer"
+              class="comparison-layer is-hidden comparison-layout-single"
+              aria-label="Multi-series comparison view"
+            ></div>
             <div class="presentation-focus-dock focus-workflow-dock" aria-label="Focus workflow controls">
               <button class="focus-pill-button" data-focus-workflow-tab="case" type="button">Case</button>
               <button class="focus-pill-button" data-focus-workflow-tab="annotate" type="button">Annotate</button>
