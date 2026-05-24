@@ -1329,6 +1329,7 @@ input[type="range"] {
 }
 
 .canvas-wrap {
+  --qca-canvas-message-height: 50px;
   position: relative;
   min-height: clamp(660px, 68vh, 720px);
   border: 1px solid rgba(145, 181, 201, 0.14);
@@ -1345,7 +1346,7 @@ input[type="range"] {
 .canvas-wrap.has-grid-overlay::after {
   content: "";
   position: absolute;
-  inset: 0;
+  inset: 0 0 var(--qca-canvas-message-height) 0;
   z-index: 3;
   pointer-events: none;
   background-image:
@@ -1500,9 +1501,9 @@ input[type="range"] {
 #image-canvas,
 #overlay-canvas {
   position: absolute;
-  inset: 0;
+  inset: 0 0 var(--qca-canvas-message-height) 0;
   width: 100%;
-  height: 100%;
+  height: calc(100% - var(--qca-canvas-message-height));
 }
 
 #overlay-canvas {
@@ -1511,12 +1512,15 @@ input[type="range"] {
 
 .canvas-overlay-message {
   position: absolute;
-  inset: auto 16px 16px 16px;
-  z-index: 5;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(13, 11, 24, 0.84);
-  border: 1px solid rgba(145, 181, 201, 0.18);
+  inset: auto 18px 8px 18px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  min-height: calc(var(--qca-canvas-message-height) - 16px);
+  padding: 0 4px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
   color: var(--muted-strong);
   font-size: 12px;
   line-height: 1.45;
@@ -1718,7 +1722,8 @@ body.is-presentation-focus .canvas-mini-actions {
 
 body.is-presentation-focus #image-canvas,
 body.is-presentation-focus #overlay-canvas {
-  inset: 0;
+  inset: 0 0 var(--qca-canvas-message-height) 0;
+  height: calc(100% - var(--qca-canvas-message-height));
 }
 
 body.is-presentation-focus .bottom-grid {
@@ -1733,8 +1738,8 @@ body.is-presentation-focus .presentation-focus-dock {
 }
 
 body.is-presentation-focus .canvas-overlay-message {
-  bottom: 18px;
-  max-width: min(720px, calc(100% - 44px));
+  bottom: 8px;
+  max-width: none;
 }
 
 @media (max-width: 1180px) {

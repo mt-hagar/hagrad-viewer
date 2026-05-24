@@ -34,6 +34,8 @@
 
   const MAX_FRAME_CACHE_SIZE = 8;
   const MAX_HISTORY_ENTRIES = 80;
+  const MIN_VIEW_ZOOM = 0.5;
+  const MAX_VIEW_ZOOM = 8;
   const CENTERLINE_CONTROL_STRIDE = 8;
   const BORDER_CONTROL_STRIDE = 8;
   const BORDER_BRUSH_RADIUS_SAMPLES = 6;
@@ -6020,7 +6022,7 @@
   function buildCanvasTransform(frame, canvas) {
     const view = getActiveViewState();
     const baseScale = Math.min(canvas.width / frame.columns, canvas.height / frame.rows);
-    const zoom = clamp(view.zoom || 1, 1, 8);
+    const zoom = clamp(view.zoom || 1, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM);
     const scale = baseScale * zoom;
     const drawWidth = frame.columns * scale;
     const drawHeight = frame.rows * scale;
@@ -6045,7 +6047,7 @@
       return;
     }
     const view = getActiveViewState();
-    const nextZoom = clamp((view.zoom || 1) * zoomFactor, 1, 8);
+    const nextZoom = clamp((view.zoom || 1) * zoomFactor, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM);
     if (Math.abs(nextZoom - (view.zoom || 1)) < 1e-4) {
       return;
     }
