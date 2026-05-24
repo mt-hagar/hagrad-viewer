@@ -2967,7 +2967,7 @@
           const labelText = ensureSeriesPrefLabel(pref, model, index);
           const analysis = model.analysis || {};
           return `
-            <div class="series-control-row" data-series-key="${escapeAttr(key)}">
+            <div class="series-control-row" data-series-key="${escapeAttr(key)}" data-default-label="${escapeAttr(labelText)}">
               <div class="series-order-control">
                 <button class="series-sequence" type="button" aria-label="Use arrow keys to reorder ${escapeAttr(labelText)}">#${index + 1}</button>
                 <button class="series-order-button" data-series-move="up" type="button" ${index === 0 ? "disabled" : ""} aria-label="Move ${escapeAttr(labelText)} up">Up</button>
@@ -2979,7 +2979,7 @@
                 <span>Ref</span>
               </label>
               ${getSeriesColorPaletteMarkup(pref.color, labelText)}
-              <input type="text" class="np-series-label" value="${escapeAttr(labelText)}" aria-label="Label for ${escapeAttr(labelText)}" />
+              <input type="text" class="np-series-label" value="${escapeAttr(labelText)}" placeholder="${escapeAttr(labelText)}" data-default-label="${escapeAttr(labelText)}" aria-label="Label for ${escapeAttr(labelText)}" />
               <span class="series-metric-chip">SD ${formatMetric(analysis.noiseMagnitude, analysis.units, 1)} · fP ${formatMetric(analysis.peakFrequency, "mm^-1", 3)}</span>
             </div>
           `;
@@ -2999,6 +2999,17 @@
         const visible = row.querySelector(".np-series-visible");
         const reference = row.querySelector(".np-series-reference");
         const label = row.querySelector(".np-series-label");
+        const defaultLabel = safeString(label?.dataset.defaultLabel || row.dataset.defaultLabel);
+        if (label && !safeString(label.value) && defaultLabel) {
+          label.value = defaultLabel;
+        }
+        if (defaultLabel) {
+          state.seriesPrefs[key] = state.seriesPrefs[key] || {};
+          if (!safeString(state.seriesPrefs[key].label)) {
+            state.seriesPrefs[key].label = defaultLabel;
+            syncReconstructionPrefFromSeriesKey(key, { label: defaultLabel });
+          }
+        }
         visible?.addEventListener("change", () => {
           state.seriesPrefs[key] = state.seriesPrefs[key] || {};
           state.seriesPrefs[key].visible = visible.checked;
@@ -3187,7 +3198,7 @@
               ? " · TTF invalid"
               : "";
           return `
-            <div class="series-control-row" data-profile-series-key="${escapeAttr(key)}">
+            <div class="series-control-row" data-profile-series-key="${escapeAttr(key)}" data-default-label="${escapeAttr(labelText)}">
               <div class="series-order-control">
                 <button class="series-sequence" type="button" aria-label="Use arrow keys to reorder ${escapeAttr(labelText)}">#${index + 1}</button>
                 <button class="series-order-button" data-series-move="up" type="button" ${index === 0 ? "disabled" : ""} aria-label="Move ${escapeAttr(labelText)} up">Up</button>
@@ -3199,7 +3210,7 @@
                 <span>Ref</span>
               </label>
               ${getSeriesColorPaletteMarkup(pref.color, labelText)}
-              <input type="text" class="np-profile-label" value="${escapeAttr(labelText)}" aria-label="Label for ${escapeAttr(labelText)}" />
+              <input type="text" class="np-profile-label" value="${escapeAttr(labelText)}" placeholder="${escapeAttr(labelText)}" data-default-label="${escapeAttr(labelText)}" aria-label="Label for ${escapeAttr(labelText)}" />
               <span class="series-metric-chip">Mean ${formatMetric(stats.mean, model.extraction?.units, 2)} · SD ${formatMetric(stats.sd, model.extraction?.units, 2)}${ttfMetric}</span>
             </div>
           `;
@@ -3219,6 +3230,17 @@
         const visible = row.querySelector(".np-profile-visible");
         const reference = row.querySelector(".np-profile-reference");
         const label = row.querySelector(".np-profile-label");
+        const defaultLabel = safeString(label?.dataset.defaultLabel || row.dataset.defaultLabel);
+        if (label && !safeString(label.value) && defaultLabel) {
+          label.value = defaultLabel;
+        }
+        if (defaultLabel) {
+          state.squareProfilePrefs[key] = state.squareProfilePrefs[key] || {};
+          if (!safeString(state.squareProfilePrefs[key].label)) {
+            state.squareProfilePrefs[key].label = defaultLabel;
+            syncReconstructionPrefFromSeriesKey(key, { label: defaultLabel });
+          }
+        }
         visible?.addEventListener("change", () => {
           state.squareProfilePrefs[key] = state.squareProfilePrefs[key] || {};
           state.squareProfilePrefs[key].visible = visible.checked;
