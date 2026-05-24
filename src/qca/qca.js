@@ -9977,17 +9977,6 @@
         if (!getActiveSeries()?.frames?.length) {
           return;
         }
-        if (Number.isFinite(state.selectedFrameIndex)) {
-          setStatus(`Frame ${state.selectedFrameIndex + 1} is already locked for QCA analysis.`);
-          return;
-        }
-        selectCurrentFrameForAnalysis();
-      } else if (key === "u") {
-        event.preventDefault();
-        if (!Number.isFinite(state.selectedFrameIndex)) {
-          setStatus("No QCA frame is currently locked.", "warning");
-          return;
-        }
         selectCurrentFrameForAnalysis();
       } else if (key === "z") {
         event.preventDefault();
