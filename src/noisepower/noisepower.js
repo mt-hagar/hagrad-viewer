@@ -2547,8 +2547,17 @@
     return seriesNumber ? `S${seriesNumber} · ${label}` : label;
   }
 
+  function modelDatasetIndex(model, fallback = 0) {
+    return Number.isFinite(model?.datasetIndex) ? model.datasetIndex : fallback;
+  }
+
+  function analysisModelLabel(model, index = 0) {
+    const datasetIndex = modelDatasetIndex(model, index);
+    return safeString(analysisDatasetLabel(model?.dataset, datasetIndex)) || `Series ${index + 1}`;
+  }
+
   function ensureLabelHasSeriesNumber(label, dataset, index = 0) {
-    const fallback = datasetLabel(dataset, index);
+    const fallback = safeString(analysisDatasetLabel(dataset, index)) || `Series ${index + 1}`;
     const text = safeString(label) || fallback;
     const seriesNumber = analysisSeriesNumber(dataset);
     if (!seriesNumber) {
@@ -2557,6 +2566,14 @@
     const escapedSeries = seriesNumber.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const alreadyTagged = new RegExp(`\\bS\\s*${escapedSeries}\\b|\\bSeries\\s*#?\\s*${escapedSeries}\\b`, "i").test(text);
     return alreadyTagged ? text : `S${seriesNumber} · ${text}`;
+  }
+
+  function ensureSeriesPrefLabel(pref, model, index = 0) {
+    const label = ensureLabelHasSeriesNumber(pref?.label || analysisModelLabel(model, index), model?.dataset, modelDatasetIndex(model, index));
+    if (pref) {
+      pref.label = label;
+    }
+    return label;
   }
 
   function analysisRowReconLabel(row) {
@@ -2605,16 +2622,17 @@
     const datasetId = seriesDatasetKey(model);
     const existing = findExistingSeriesPref(datasetId) || {};
     const fallbackColor = PLOT_PALETTE[index % PLOT_PALETTE.length];
+    const fallbackLabel = analysisModelLabel(model, index);
     if (!state.reconstructionPrefs[datasetId]) {
       state.reconstructionPrefs[datasetId] = {
-        label: ensureLabelHasSeriesNumber(existing.label || analysisDatasetLabel(model.dataset, model.datasetIndex), model.dataset, model.datasetIndex),
+        label: ensureLabelHasSeriesNumber(existing.label || fallbackLabel, model.dataset, modelDatasetIndex(model, index)),
         color: normalizePlotColor(existing.color, fallbackColor),
         visible: existing.visible !== false,
         order: Number.isFinite(existing.order) ? existing.order : index,
       };
     } else {
       const pref = state.reconstructionPrefs[datasetId];
-      pref.label = ensureLabelHasSeriesNumber(pref.label || analysisDatasetLabel(model.dataset, model.datasetIndex), model.dataset, model.datasetIndex);
+      pref.label = ensureLabelHasSeriesNumber(pref.label || fallbackLabel, model.dataset, modelDatasetIndex(model, index));
       pref.color = normalizePlotColor(pref.color, fallbackColor);
       if (!Number.isFinite(pref.order)) {
         pref.order = Number.isFinite(existing.order) ? existing.order : index;
@@ -2905,12 +2923,13 @@
         const pref =
           state.seriesPrefs[key] ||
           applyReconstructionPrefToSeries(model, state.seriesPrefs, modelSeriesKey, index) || {
-            label: analysisDatasetLabel(model.dataset, model.datasetIndex),
+            label: analysisModelLabel(model, index),
             color: PLOT_PALETTE[index % PLOT_PALETTE.length],
             visible: true,
           };
+        const labelText = ensureSeriesPrefLabel(pref, model, index);
         return {
-          label: displaySeriesLabel(pref, index),
+          label: displaySeriesLabel({ ...pref, label: labelText }, index),
           color: normalizePlotColor(pref.color, PLOT_PALETTE[model.datasetIndex % PLOT_PALETTE.length]),
           hidden: pref.visible === false,
           points: (model.analysis.radialBins || []).map((bin) => ({
@@ -2941,25 +2960,26 @@
           const pref =
             state.seriesPrefs[key] ||
             applyReconstructionPrefToSeries(model, state.seriesPrefs, modelSeriesKey, index) || {
-              label: analysisDatasetLabel(model.dataset, model.datasetIndex),
+              label: analysisModelLabel(model, index),
               color: PLOT_PALETTE[index % PLOT_PALETTE.length],
               visible: true,
             };
+          const labelText = ensureSeriesPrefLabel(pref, model, index);
           const analysis = model.analysis || {};
           return `
             <div class="series-control-row" data-series-key="${escapeAttr(key)}">
               <div class="series-order-control">
-                <button class="series-sequence" type="button" aria-label="Use arrow keys to reorder ${escapeAttr(pref.label)}">#${index + 1}</button>
-                <button class="series-order-button" data-series-move="up" type="button" ${index === 0 ? "disabled" : ""} aria-label="Move ${escapeAttr(pref.label)} up">Up</button>
-                <button class="series-order-button" data-series-move="down" type="button" ${index === orderedModels.length - 1 ? "disabled" : ""} aria-label="Move ${escapeAttr(pref.label)} down">Dn</button>
+                <button class="series-sequence" type="button" aria-label="Use arrow keys to reorder ${escapeAttr(labelText)}">#${index + 1}</button>
+                <button class="series-order-button" data-series-move="up" type="button" ${index === 0 ? "disabled" : ""} aria-label="Move ${escapeAttr(labelText)} up">Up</button>
+                <button class="series-order-button" data-series-move="down" type="button" ${index === orderedModels.length - 1 ? "disabled" : ""} aria-label="Move ${escapeAttr(labelText)} down">Dn</button>
               </div>
-              <input type="checkbox" class="np-series-visible" ${pref.visible === false ? "" : "checked"} aria-label="Show ${escapeAttr(pref.label)}" />
+              <input type="checkbox" class="np-series-visible" ${pref.visible === false ? "" : "checked"} aria-label="Show ${escapeAttr(labelText)}" />
               <label class="series-reference-choice" title="Use as reference in paper table">
-                <input type="radio" class="np-series-reference" name="np-series-reference" ${state.seriesReferenceKey === key ? "checked" : ""} aria-label="Use ${escapeAttr(pref.label)} as reference" />
+                <input type="radio" class="np-series-reference" name="np-series-reference" ${state.seriesReferenceKey === key ? "checked" : ""} aria-label="Use ${escapeAttr(labelText)} as reference" />
                 <span>Ref</span>
               </label>
-              ${getSeriesColorPaletteMarkup(pref.color, pref.label)}
-              <input type="text" class="np-series-label" value="${escapeAttr(pref.label)}" aria-label="Label for ${escapeAttr(pref.label)}" />
+              ${getSeriesColorPaletteMarkup(pref.color, labelText)}
+              <input type="text" class="np-series-label" value="${escapeAttr(labelText)}" aria-label="Label for ${escapeAttr(labelText)}" />
               <span class="series-metric-chip">SD ${formatMetric(analysis.noiseMagnitude, analysis.units, 1)} · fP ${formatMetric(analysis.peakFrequency, "mm^-1", 3)}</span>
             </div>
           `;
@@ -3088,8 +3108,9 @@
     return sortModelsByPrefs(safeModels, state.squareProfilePrefs, squareProfileSeriesKey)
       .map((model, index) => {
         const pref = state.squareProfilePrefs[squareProfileSeriesKey(model)] || {};
+        const labelText = ensureSeriesPrefLabel(pref, model, index);
         return {
-          label: displaySeriesLabel(pref, index),
+          label: displaySeriesLabel({ ...pref, label: labelText }, index),
           color: normalizePlotColor(pref.color, PLOT_PALETTE[model.datasetIndex % PLOT_PALETTE.length]),
           hidden: pref.visible === false,
           points: (model.profile.samples || []).map((sample) => ({
@@ -3111,6 +3132,7 @@
     return sortModelsByPrefs(safeModels, state.squareProfilePrefs, squareProfileSeriesKey)
       .map((model, index) => {
         const pref = state.squareProfilePrefs[squareProfileSeriesKey(model)] || {};
+        const labelText = ensureSeriesPrefLabel(pref, model, index);
         const ttf = model.extraction?.ttfAnalysis;
         const points =
           ttf?.valid && curveType === "esf"
@@ -3119,7 +3141,7 @@
               ? (ttf.ttf || []).map((point) => ({ x: point.frequencyMmMinus1, y: point.ttf }))
               : [];
         return {
-          label: displaySeriesLabel(pref, index),
+          label: displaySeriesLabel({ ...pref, label: labelText }, index),
           color: normalizePlotColor(pref.color, PLOT_PALETTE[model.datasetIndex % PLOT_PALETTE.length]),
           hidden: pref.visible === false,
           points,
@@ -3152,10 +3174,11 @@
           const pref =
             state.squareProfilePrefs[key] ||
             applyReconstructionPrefToSeries(model, state.squareProfilePrefs, squareProfileSeriesKey, index) || {
-              label: analysisDatasetLabel(model.dataset, model.datasetIndex),
+              label: analysisModelLabel(model, index),
               color: PLOT_PALETTE[index % PLOT_PALETTE.length],
               visible: true,
             };
+          const labelText = ensureSeriesPrefLabel(pref, model, index);
           const stats = model.extraction?.statsCalibrated || {};
           const ttf = model.extraction?.ttfAnalysis || {};
           const ttfMetric = ttf.valid
@@ -3166,17 +3189,17 @@
           return `
             <div class="series-control-row" data-profile-series-key="${escapeAttr(key)}">
               <div class="series-order-control">
-                <button class="series-sequence" type="button" aria-label="Use arrow keys to reorder ${escapeAttr(pref.label)}">#${index + 1}</button>
-                <button class="series-order-button" data-series-move="up" type="button" ${index === 0 ? "disabled" : ""} aria-label="Move ${escapeAttr(pref.label)} up">Up</button>
-                <button class="series-order-button" data-series-move="down" type="button" ${index === orderedModels.length - 1 ? "disabled" : ""} aria-label="Move ${escapeAttr(pref.label)} down">Dn</button>
+                <button class="series-sequence" type="button" aria-label="Use arrow keys to reorder ${escapeAttr(labelText)}">#${index + 1}</button>
+                <button class="series-order-button" data-series-move="up" type="button" ${index === 0 ? "disabled" : ""} aria-label="Move ${escapeAttr(labelText)} up">Up</button>
+                <button class="series-order-button" data-series-move="down" type="button" ${index === orderedModels.length - 1 ? "disabled" : ""} aria-label="Move ${escapeAttr(labelText)} down">Dn</button>
               </div>
-              <input type="checkbox" class="np-profile-visible" ${pref.visible === false ? "" : "checked"} aria-label="Show ${escapeAttr(pref.label)}" />
+              <input type="checkbox" class="np-profile-visible" ${pref.visible === false ? "" : "checked"} aria-label="Show ${escapeAttr(labelText)}" />
               <label class="series-reference-choice" title="Use as reference in paper table">
-                <input type="radio" class="np-profile-reference" name="np-profile-reference" ${state.squareProfileReferenceKey === key ? "checked" : ""} aria-label="Use ${escapeAttr(pref.label)} as reference" />
+                <input type="radio" class="np-profile-reference" name="np-profile-reference" ${state.squareProfileReferenceKey === key ? "checked" : ""} aria-label="Use ${escapeAttr(labelText)} as reference" />
                 <span>Ref</span>
               </label>
-              ${getSeriesColorPaletteMarkup(pref.color, pref.label)}
-              <input type="text" class="np-profile-label" value="${escapeAttr(pref.label)}" aria-label="Label for ${escapeAttr(pref.label)}" />
+              ${getSeriesColorPaletteMarkup(pref.color, labelText)}
+              <input type="text" class="np-profile-label" value="${escapeAttr(labelText)}" aria-label="Label for ${escapeAttr(labelText)}" />
               <span class="series-metric-chip">Mean ${formatMetric(stats.mean, model.extraction?.units, 2)} · SD ${formatMetric(stats.sd, model.extraction?.units, 2)}${ttfMetric}</span>
             </div>
           `;
@@ -3448,15 +3471,20 @@
     ensureSeriesPrefs(npsTableModels);
     state.seriesReferenceKey = resolveReferenceKey(npsTableModels, state.seriesPrefs, modelSeriesKey, state.seriesReferenceKey);
     const npsTableMeta = new Map(
-      sortModelsByPrefs(npsTableModels, state.seriesPrefs, modelSeriesKey).map((entry, index) => [
-        `${entry.datasetIndex + 1}::${entry.circle.id}`,
-        {
-          sequence: index + 1,
-          label: displaySeriesLabel(state.seriesPrefs[modelSeriesKey(entry)], index),
-          visible: state.seriesPrefs[modelSeriesKey(entry)]?.visible !== false,
-          seriesKey: modelSeriesKey(entry),
-        },
-      ])
+      sortModelsByPrefs(npsTableModels, state.seriesPrefs, modelSeriesKey).map((entry, index) => {
+        const key = modelSeriesKey(entry);
+        const pref = state.seriesPrefs[key] || {};
+        ensureSeriesPrefLabel(pref, entry, index);
+        return [
+          `${entry.datasetIndex + 1}::${entry.circle.id}`,
+          {
+            sequence: index + 1,
+            label: displaySeriesLabel(pref, index),
+            visible: pref.visible !== false,
+            seriesKey: key,
+          },
+        ];
+      })
     );
     const squareTableModels = state.rois
       .filter((roi) => roi.type === ROI_TYPE)
@@ -3476,15 +3504,20 @@
       state.squareProfileReferenceKey
     );
     const squareTableMeta = new Map(
-      sortModelsByPrefs(squareTableModels, state.squareProfilePrefs, squareProfileSeriesKey).map((entry, index) => [
-        `${entry.datasetIndex + 1}::${entry.roi.id}`,
-        {
-          sequence: index + 1,
-          label: displaySeriesLabel(state.squareProfilePrefs[squareProfileSeriesKey(entry)], index),
-          visible: state.squareProfilePrefs[squareProfileSeriesKey(entry)]?.visible !== false,
-          seriesKey: squareProfileSeriesKey(entry),
-        },
-      ])
+      sortModelsByPrefs(squareTableModels, state.squareProfilePrefs, squareProfileSeriesKey).map((entry, index) => {
+        const key = squareProfileSeriesKey(entry);
+        const pref = state.squareProfilePrefs[key] || {};
+        ensureSeriesPrefLabel(pref, entry, index);
+        return [
+          `${entry.datasetIndex + 1}::${entry.roi.id}`,
+          {
+            sequence: index + 1,
+            label: displaySeriesLabel(pref, index),
+            visible: pref.visible !== false,
+            seriesKey: key,
+          },
+        ];
+      })
     );
     const rows = buildUiSquareRows()
       .map((row, index) => {
@@ -4076,14 +4109,19 @@
       })
     );
     const metaByRow = new Map(
-      sortModelsByPrefs(npsModels, state.seriesPrefs, modelSeriesKey).map((entry, index) => [
-        `${entry.datasetIndex + 1}::${entry.circle.id}`,
-        {
-          sequence: index + 1,
-          label: displaySeriesLabel(state.seriesPrefs[modelSeriesKey(entry)], index),
-          visible: state.seriesPrefs[modelSeriesKey(entry)]?.visible !== false,
-        },
-      ])
+      sortModelsByPrefs(npsModels, state.seriesPrefs, modelSeriesKey).map((entry, index) => {
+        const key = modelSeriesKey(entry);
+        const pref = state.seriesPrefs[key] || {};
+        ensureSeriesPrefLabel(pref, entry, index);
+        return [
+          `${entry.datasetIndex + 1}::${entry.circle.id}`,
+          {
+            sequence: index + 1,
+            label: displaySeriesLabel(pref, index),
+            visible: pref.visible !== false,
+          },
+        ];
+      })
     );
     const numberValue = (row, key) => {
       const raw = row?.[key];
