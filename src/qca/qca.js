@@ -293,7 +293,6 @@
       lesion: true,
       lumen: false,
     },
-    showViewportOverlays: true,
     showViewportGrid: false,
     projectionHelpOpen: false,
     projectionHelpIndex: 0,
@@ -423,7 +422,6 @@
     els.projectionHelpButton = document.getElementById("projection-help-button");
     els.canvasResetWindowButton = document.getElementById("canvas-reset-window-button");
     els.canvasResetViewButton = document.getElementById("canvas-reset-view-button");
-    els.canvasOverlayToggleButton = document.getElementById("canvas-overlay-toggle-button");
     els.canvasGridToggleButton = document.getElementById("canvas-grid-toggle-button");
     els.canvasFocusToggleButton = document.getElementById("canvas-focus-toggle-button");
     els.canvasFocusExitButton = document.getElementById("canvas-focus-exit-button");
@@ -3771,15 +3769,6 @@
     if (els.canvasWrap) {
       els.canvasWrap.classList.toggle("has-grid-overlay", Boolean(state.showViewportGrid));
     }
-    if (els.canvasOverlayToggleButton) {
-      const visible = state.showViewportOverlays !== false;
-      els.canvasOverlayToggleButton.classList.toggle("is-active", visible);
-      els.canvasOverlayToggleButton.title = visible ? "Hide QCA overlays" : "Show QCA overlays";
-      els.canvasOverlayToggleButton.setAttribute(
-        "aria-label",
-        visible ? "Hide QCA overlays" : "Show QCA overlays"
-      );
-    }
     if (els.canvasGridToggleButton) {
       const visible = Boolean(state.showViewportGrid);
       els.canvasGridToggleButton.classList.toggle("is-active", visible);
@@ -4177,7 +4166,6 @@
     state.canvasTransform = null;
     state.profileGeometry = null;
     state.activePopover = null;
-    state.showViewportOverlays = true;
     state.projectionHelpOpen = false;
     state.projectionHelpIndex = 0;
     state.localizationPromptOpen = false;
@@ -6294,9 +6282,6 @@
     const analysis = options?.analysis || state.analysis;
     const showHandles = options?.showHandles !== false;
     const forceAnalysisVisible = options?.forceAnalysisVisible === true;
-    if (options?.respectViewportToggle && state.showViewportOverlays === false) {
-      return;
-    }
     const overlayVisibility = options?.overlayVisibility || state.overlayVisibility;
     const showCenterline = overlayVisibility.centerline;
     const showBorders = overlayVisibility.borders;
@@ -9642,14 +9627,6 @@
     });
     els.canvasResetViewButton?.addEventListener("click", () => {
       resetCanvasView();
-    });
-    els.canvasOverlayToggleButton?.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const shouldShowOverlays = state.showViewportOverlays === false;
-      state.showViewportOverlays = shouldShowOverlays;
-      updateUi();
-      scheduleRender();
     });
     els.canvasGridToggleButton?.addEventListener("click", (event) => {
       event.preventDefault();
