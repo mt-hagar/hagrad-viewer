@@ -4175,6 +4175,7 @@
     state.canvasTransform = null;
     state.profileGeometry = null;
     state.activePopover = null;
+    state.showViewportOverlays = true;
     state.projectionHelpOpen = false;
     state.projectionHelpIndex = 0;
     state.localizationPromptOpen = false;
@@ -9643,7 +9644,8 @@
     els.canvasOverlayToggleButton?.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      state.showViewportOverlays = state.showViewportOverlays === false;
+      const shouldShowOverlays = state.showViewportOverlays === false;
+      state.showViewportOverlays = shouldShowOverlays;
       updateUi();
       scheduleRender();
     });
