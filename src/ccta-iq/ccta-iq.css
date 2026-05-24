@@ -3109,6 +3109,21 @@ input[type="range"] {
   box-shadow: 0 0 0 1px rgba(255, 210, 127, 0.14), 0 10px 22px rgba(0, 0, 0, 0.24);
 }
 
+.viewport-info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 900;
+  font-style: normal;
+  line-height: 1;
+  text-transform: none;
+}
+
 .viewport-mode-icon {
   position: relative;
   display: inline-flex;
