@@ -3109,6 +3109,52 @@ input[type="range"] {
   box-shadow: 0 0 0 1px rgba(255, 210, 127, 0.14), 0 10px 22px rgba(0, 0, 0, 0.24);
 }
 
+.viewport-mode-icon {
+  position: relative;
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+}
+
+.viewport-mode-icon::before,
+.viewport-mode-icon::after {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 8px rgba(255, 229, 166, 0.2);
+}
+
+.viewport-mode-icon.mode-mpr::before {
+  width: 16px;
+  height: 3px;
+  top: 50%;
+  left: 1px;
+  transform: translateY(-50%);
+}
+
+.viewport-mode-icon.mode-mpr::after {
+  width: 3px;
+  height: 16px;
+  top: 1px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.viewport-mode-icon.mode-presentation::before {
+  inset: 3px;
+  border-radius: 4px;
+  border: 2px solid currentColor;
+  background: rgba(232, 242, 248, 0.12);
+  box-shadow: inset 0 0 10px rgba(232, 242, 248, 0.18);
+}
+
+.viewport-mode-icon.mode-presentation::after {
+  display: none;
+}
+
 .presentation-focus-dock {
   position: absolute;
   z-index: 5;

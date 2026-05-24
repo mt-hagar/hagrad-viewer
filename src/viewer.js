@@ -371,6 +371,10 @@
     showPresentationSeriesLabel: true,
     showViewportOverlays: false,
     showViewportGrid: false,
+    viewportOverlayPositions: {
+      dicom: null,
+      series: null,
+    },
     syncMprTransforms: true,
     cineFps: 8,
     cineTimerId: null,
@@ -382,7 +386,7 @@
     renderDirtyViewports: new Set(VIEWPORT_IDS),
     readoutsDirty: true,
     annotationSequence: 1,
-    roiClipboard: null,
+    annotationClipboard: null,
     selectedAnnotationId: null,
     hoveredAnnotationId: null,
     selectedProfileAnnotationId: null,
@@ -583,6 +587,7 @@
     els.resetButton = document.getElementById("reset-button");
     els.presentationResetWindowButton = document.getElementById("presentation-reset-window-button");
     els.presentationResetFitButton = document.getElementById("presentation-reset-fit-button");
+    els.presentationModeToggleButton = document.getElementById("presentation-mode-toggle-button");
     els.presentationLayoutToggleButton = document.getElementById("presentation-layout-toggle-button");
     els.presentationLayoutMenu = document.getElementById("presentation-layout-menu");
     els.comparisonLayoutChoices = Array.from(document.querySelectorAll("[data-comparison-layout]"));
@@ -607,8 +612,6 @@
     els.eraserSizeInput = document.getElementById("eraser-size-input");
     els.brushShrinkButton = document.getElementById("brush-shrink-button");
     els.brushGrowButton = document.getElementById("brush-grow-button");
-    els.copyRoiButton = document.getElementById("copy-roi-button");
-    els.pasteRoiButton = document.getElementById("paste-roi-button");
     els.syncMeasurementsButton = document.getElementById("sync-measurements-button");
     els.windowWidthSlider = document.getElementById("window-width-slider");
     els.windowCenterSlider = document.getElementById("window-center-slider");
@@ -2444,6 +2447,16 @@
     els.layoutButtons.forEach((button) => {
       button.classList.toggle("is-active", button.dataset.layout === state.layout);
     });
+    if (els.presentationModeToggleButton) {
+      const nextLayout = state.layout === "mpr" ? "presentation" : "mpr";
+      const label = nextLayout === "mpr" ? "Switch to 4-up MPR" : "Switch to presentation";
+      const icon = els.presentationModeToggleButton.querySelector(".viewport-mode-icon");
+      els.presentationModeToggleButton.classList.toggle("is-active", state.layout === "mpr");
+      els.presentationModeToggleButton.title = label;
+      els.presentationModeToggleButton.setAttribute("aria-label", label);
+      icon?.classList.toggle("mode-mpr", nextLayout === "mpr");
+      icon?.classList.toggle("mode-presentation", nextLayout === "presentation");
+    }
     if (els.presentationLayoutToggleButton) {
       const activeDefinition = getComparisonLayoutDefinition(state.comparison.layout);
       const label = `Layout: ${activeDefinition.label}`;
@@ -2998,16 +3011,13 @@
     els.historySummary.textContent = `${undoCount} undo / ${redoCount} redo`;
   }
 
-  function cloneRoiClipboard() {
-    if (!state.roiClipboard?.pointsMm?.length) {
+  function cloneAnnotationClipboard() {
+    if (!state.annotationClipboard?.annotation) {
       return null;
     }
     return {
-      plane: state.roiClipboard.plane,
-      pointsMm: state.roiClipboard.pointsMm.map((point) => ({
-        xMm: point.xMm,
-        yMm: point.yMm,
-      })),
+      annotation: cloneAnnotation(state.annotationClipboard.annotation),
+      sourceLabel: state.annotationClipboard.sourceLabel || "",
     };
   }
 
@@ -3017,7 +3027,7 @@
       activeReconId: state.activeReconId,
       selectedAnnotationId: state.selectedAnnotationId,
       selectedProfileAnnotationId: state.selectedProfileAnnotationId,
-      roiClipboard: cloneRoiClipboard(),
+      annotationClipboard: cloneAnnotationClipboard(),
       reconstructions: state.reconstructions.map((reconstruction) => ({
         id: reconstruction.id,
         annotations: reconstruction.annotations.map((annotation) => cloneAnnotation(annotation)),
@@ -3032,13 +3042,10 @@
     state.diameterDraft = null;
     state.eraser.preview = null;
     state.annotationSequence = snapshot.annotationSequence;
-    state.roiClipboard = snapshot.roiClipboard
+    state.annotationClipboard = snapshot.annotationClipboard
       ? {
-          plane: snapshot.roiClipboard.plane,
-          pointsMm: snapshot.roiClipboard.pointsMm.map((point) => ({
-            xMm: point.xMm,
-            yMm: point.yMm,
-          })),
+          annotation: cloneAnnotation(snapshot.annotationClipboard.annotation),
+          sourceLabel: snapshot.annotationClipboard.sourceLabel || "",
         }
       : null;
 
@@ -4718,6 +4725,13 @@
       return;
     }
     overlay.innerHTML = "";
+    const closeButton = document.createElement("button");
+    closeButton.className = "viewport-dicom-overlay-close";
+    closeButton.type = "button";
+    closeButton.setAttribute("aria-label", "Hide DICOM header");
+    closeButton.setAttribute("title", "Hide DICOM header");
+    closeButton.textContent = "×";
+    overlay.appendChild(closeButton);
     rows.forEach((row) => {
       const line = document.createElement("div");
       line.className = "viewport-dicom-line";
@@ -4738,6 +4752,90 @@
     });
   }
 
+  function applyViewportOverlayPosition(kind, element) {
+    if (!element) {
+      return;
+    }
+    const position = state.viewportOverlayPositions?.[kind];
+    if (!position) {
+      element.style.left = "";
+      element.style.top = "";
+      element.style.right = "";
+      return;
+    }
+    element.style.left = `${position.x}px`;
+    element.style.top = `${position.y}px`;
+    element.style.right = "auto";
+  }
+
+  function applyViewportOverlayPositions() {
+    applyViewportOverlayPosition("dicom", els.dicomOverlays?.presentation);
+    applyViewportOverlayPosition("series", els.presentationSeriesLabel);
+  }
+
+  function syncViewportOverlayVisibilityFlag() {
+    if (!state.showDicomMetadataOverlay && !state.showPresentationSeriesLabel) {
+      state.showViewportOverlays = false;
+      updateViewportChromeUi();
+      updateComparisonUi();
+    }
+  }
+
+  function getPresentationOverlayDragBounds(element) {
+    const panel = element?.closest(".viewport-panel");
+    if (!panel || !element) {
+      return null;
+    }
+    const panelRect = panel.getBoundingClientRect();
+    const elementRect = element.getBoundingClientRect();
+    return {
+      panelRect,
+      elementRect,
+      left: elementRect.left - panelRect.left,
+      top: elementRect.top - panelRect.top,
+      maxLeft: Math.max(0, panelRect.width - elementRect.width - 8),
+      maxTop: Math.max(0, panelRect.height - elementRect.height - 8),
+    };
+  }
+
+  function startViewportOverlayDrag(kind, element, event) {
+    if (event.button !== 2 || event.target?.closest?.("button")) {
+      return;
+    }
+    const bounds = getPresentationOverlayDragBounds(element);
+    if (!bounds) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    element.setPointerCapture?.(event.pointerId);
+    state.dragging = {
+      type: "viewportOverlay",
+      overlayKind: kind,
+      pointerElement: element,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startLeft: bounds.left,
+      startTop: bounds.top,
+      maxLeft: bounds.maxLeft,
+      maxTop: bounds.maxTop,
+    };
+  }
+
+  function handleViewportOverlayDragMove(event) {
+    const dragging = state.dragging;
+    if (!dragging || dragging.type !== "viewportOverlay") {
+      return false;
+    }
+    const x = clamp(dragging.startLeft + event.clientX - dragging.startClientX, 8, dragging.maxLeft);
+    const y = clamp(dragging.startTop + event.clientY - dragging.startClientY, 8, dragging.maxTop);
+    state.viewportOverlayPositions[dragging.overlayKind] = { x, y };
+    applyViewportOverlayPositions();
+    event.preventDefault();
+    return true;
+  }
+
   function updateViewportDicomOverlays() {
     updateMetadataOverlayToggleButton();
     Object.entries(els.dicomOverlays || {}).forEach(([viewportId, overlay]) => {
@@ -4752,6 +4850,7 @@
       }
       renderViewportDicomOverlay(overlay, buildViewportDicomOverlayRows(viewportId));
     });
+    applyViewportOverlayPositions();
   }
 
   function updatePresentationSeriesLabelToggleButton() {
@@ -4793,6 +4892,7 @@
     if (els.presentationSeriesLabelText) {
       els.presentationSeriesLabelText.textContent = shouldShow ? buildPresentationSeriesLabelText(reconstruction) : "";
     }
+    applyViewportOverlayPosition("series", els.presentationSeriesLabel);
   }
 
   function ensureCanvasSize(viewportId) {
@@ -9173,7 +9273,7 @@
       const annotations = options?.annotationList || getVisibleAnnotationsForFrame(reconstruction, frame);
       annotations.forEach((annotation) => drawAnnotation(ctx, annotation, reconstruction, frame, geometry));
       if (!options?.annotationList) {
-        const selectedAnnotation = getSelectedAnnotation();
+        const selectedAnnotation = reconstruction.annotations.find((annotation) => annotation.id === state.selectedAnnotationId);
         const hoveredAnnotation = reconstruction.annotations.find((annotation) => annotation.id === state.hoveredAnnotationId);
         if (hoveredAnnotation && hoveredAnnotation.id !== selectedAnnotation?.id) {
           drawSelectedAnnotationOverlay(ctx, hoveredAnnotation, reconstruction, frame, geometry, { hover: true });
@@ -11371,55 +11471,75 @@
     setStatus(statusMessage);
   }
 
-  function copyLatestRoi() {
-    const reconstruction = getActiveReconstruction();
-    if (!reconstruction) {
-      throw new Error("Load a reconstruction first.");
-    }
-
-    const frame = state.viewports[state.activeViewportId]?.lastFrame || getViewportFrame(state.activeViewportId, reconstruction);
-    const visibleRois = reconstruction.annotations
-      .filter((annotation) => annotation.type === "freehandRoi")
-      .filter((annotation) => isAnnotationVisible(annotation, frame));
-    const roi = visibleRois[visibleRois.length - 1] || reconstruction.annotations.filter((item) => item.type === "freehandRoi").slice(-1)[0];
-
-    if (!roi) {
-      throw new Error("Draw an ROI first.");
-    }
-
-    state.roiClipboard = {
-      plane: frame.plane,
-      pointsMm: roi.worldPoints.map((worldPoint) => {
-        const coordinates = worldToPlaneCoordinates(roi.frame, worldPoint);
-        return { xMm: coordinates.xMm, yMm: coordinates.yMm };
-      }),
-    };
-    setStatus("ROI copied. Switch reconstruction and paste when ready.");
+  function mapWorldPointBetweenFrames(sourceFrame, targetFrame, worldPoint) {
+    const coordinates = worldToPlaneCoordinates(sourceFrame, worldPoint);
+    return addVectors(
+      addVectors(targetFrame.centerWorld, scaleVector(targetFrame.uWorld, coordinates.xMm)),
+      scaleVector(targetFrame.vWorld, coordinates.yMm)
+    );
   }
 
-  function pasteCopiedRoi() {
+  function copySelectedAnnotation() {
     const reconstruction = getActiveReconstruction();
     if (!reconstruction) {
       throw new Error("Load a reconstruction first.");
     }
 
-    if (!state.roiClipboard?.pointsMm?.length) {
-      throw new Error("Copy an ROI first.");
+    const annotation = getSelectedAnnotation();
+    if (!annotation) {
+      throw new Error("Select an annotation first.");
+    }
+
+    state.annotationClipboard = {
+      annotation: cloneAnnotation(annotation),
+      sourceLabel: getAnnotationDisplayName(annotation, reconstruction),
+    };
+    setStatus(`${state.annotationClipboard.sourceLabel || "Annotation"} copied. Switch series or slice and paste when ready.`);
+  }
+
+  function buildPastedAnnotationForFrame(sourceAnnotation, targetFrame, viewportId) {
+    const annotation = cloneAnnotation(sourceAnnotation);
+    annotation.id = state.annotationSequence++;
+    annotation.frame = cloneFrame(targetFrame);
+    annotation.plane = targetFrame.plane;
+    annotation.viewContext = createAnnotationViewContext(targetFrame, { viewportId });
+    annotation.worldPoints = (sourceAnnotation.worldPoints || []).map((point) =>
+      mapWorldPointBetweenFrames(sourceAnnotation.frame, targetFrame, point)
+    );
+    if (Array.isArray(sourceAnnotation.diameterLines)) {
+      annotation.diameterLines = sourceAnnotation.diameterLines.map((line) => ({
+        ...line,
+        frame: cloneFrame(targetFrame),
+        plane: targetFrame.plane,
+        viewContext: createAnnotationViewContext(targetFrame, { viewportId }),
+        worldPoints: (line.worldPoints || []).map((point) =>
+          mapWorldPointBetweenFrames(line.frame || sourceAnnotation.frame, targetFrame, point)
+        ),
+      }));
+      annotation.worldPoints = annotation.diameterLines.flatMap((line) => line.worldPoints || []);
+    }
+    return annotation;
+  }
+
+  function pasteCopiedAnnotation() {
+    const reconstruction = getActiveReconstruction();
+    if (!reconstruction) {
+      throw new Error("Load a reconstruction first.");
+    }
+
+    const sourceAnnotation = state.annotationClipboard?.annotation;
+    if (!sourceAnnotation) {
+      throw new Error("Copy an annotation first.");
     }
 
     const frame = state.viewports[state.activeViewportId]?.lastFrame || getViewportFrame(state.activeViewportId, reconstruction);
-    const worldPoints = state.roiClipboard.pointsMm.map((point) =>
-      addVectors(
-        addVectors(frame.centerWorld, scaleVector(frame.uWorld, point.xMm)),
-        scaleVector(frame.vWorld, point.yMm)
-      )
-    );
+    if (!frame) {
+      throw new Error("The active viewport is not ready yet.");
+    }
 
-    addAnnotation({
-      ...createAnnotationBase("freehandRoi", frame),
-      worldPoints,
-    });
-    setStatus(`ROI pasted into ${reconstruction.label}.`);
+    const annotation = buildPastedAnnotationForFrame(sourceAnnotation, frame, state.activeViewportId);
+    addAnnotation(annotation);
+    setStatus(`${getAnnotationDisplayName(annotation, reconstruction)} pasted into ${reconstruction.label}.`);
   }
 
   function translateAnnotationInPlane(annotation, sourceAnnotation, deltaXmm, deltaYmm) {
@@ -11604,7 +11724,7 @@
     state.dragging = null;
     state.polygonDraft = null;
     state.diameterDraft = null;
-    state.roiClipboard = null;
+    state.annotationClipboard = null;
     state.selectedAnnotationId = null;
     state.selectedProfileAnnotationId = null;
     state.annotationSequence = 1;
@@ -12294,7 +12414,7 @@
       state.sourceRecords = [];
       state.referenceBasis = null;
       state.annotationSequence = 1;
-      state.roiClipboard = null;
+      state.annotationClipboard = null;
       state.selectedAnnotationId = null;
       state.selectedProfileAnnotationId = null;
     }
@@ -13150,6 +13270,11 @@
       return;
     }
 
+    if (state.dragging.type === "viewportOverlay") {
+      handleViewportOverlayDragMove(event);
+      return;
+    }
+
     if (
       state.dragging.comparisonTileId &&
       state.dragging.type === "rightScroll" &&
@@ -13552,6 +13677,12 @@
     }
 
     const dragging = state.dragging;
+    if (dragging.type === "viewportOverlay") {
+      dragging.pointerElement?.releasePointerCapture?.(dragging.pointerId);
+      state.dragging = null;
+      return;
+    }
+
     if (
       dragging.comparisonTileId &&
       !state.comparison.viewportOverrideActive &&
@@ -13778,11 +13909,13 @@
     els.metadataOverlayToggleButton?.addEventListener("click", () => {
       state.showDicomMetadataOverlay = !state.showDicomMetadataOverlay;
       updateViewportDicomOverlays();
+      syncViewportOverlayVisibilityFlag();
     });
     els.presentationSeriesLabelToggleButton?.addEventListener("click", () => {
       state.showPresentationSeriesLabel = !state.showPresentationSeriesLabel;
       savePresentationSeriesLabelPreference();
       updatePresentationSeriesLabel();
+      syncViewportOverlayVisibilityFlag();
     });
     els.presentationSeriesLabelCloseButton?.addEventListener("click", (event) => {
       event.preventDefault();
@@ -13790,7 +13923,26 @@
       state.showPresentationSeriesLabel = false;
       savePresentationSeriesLabelPreference();
       updatePresentationSeriesLabel();
+      syncViewportOverlayVisibilityFlag();
     });
+    els.presentationSeriesLabel?.addEventListener("pointerdown", (event) => {
+      startViewportOverlayDrag("series", els.presentationSeriesLabel, event);
+    });
+    els.presentationSeriesLabel?.addEventListener("contextmenu", (event) => event.preventDefault());
+    els.dicomOverlays?.presentation?.addEventListener("click", (event) => {
+      if (!event.target?.closest?.(".viewport-dicom-overlay-close")) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      state.showDicomMetadataOverlay = false;
+      updateViewportDicomOverlays();
+      syncViewportOverlayVisibilityFlag();
+    });
+    els.dicomOverlays?.presentation?.addEventListener("pointerdown", (event) => {
+      startViewportOverlayDrag("dicom", els.dicomOverlays.presentation, event);
+    });
+    els.dicomOverlays?.presentation?.addEventListener("contextmenu", (event) => event.preventDefault());
     els.uiModeButtons.forEach((button) => {
       button.addEventListener("click", () => setUiMode(button.dataset.uiMode));
     });
@@ -13887,6 +14039,11 @@
         resetPresentationViewportTransform();
       }
     });
+    els.presentationModeToggleButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setLayout(state.layout === "mpr" ? "presentation" : "mpr");
+    });
     els.presentationLayoutToggleButton?.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -13968,22 +14125,6 @@
       } catch (error) {
         console.error(error);
         setStatus(error.message || "Brush shrink failed.", "error");
-      }
-    });
-    els.copyRoiButton.addEventListener("click", () => {
-      try {
-        copyLatestRoi();
-      } catch (error) {
-        console.error(error);
-        setStatus(error.message || "ROI copy failed.", "error");
-      }
-    });
-    els.pasteRoiButton.addEventListener("click", () => {
-      try {
-        pasteCopiedRoi();
-      } catch (error) {
-        console.error(error);
-        setStatus(error.message || "ROI paste failed.", "error");
       }
     });
     els.syncMeasurementsButton.addEventListener("click", () => {
@@ -14432,12 +14573,22 @@
 
       if ((event.metaKey || event.ctrlKey) && (event.key === "c" || event.key === "C")) {
         event.preventDefault();
-        copyLatestRoi();
+        try {
+          copySelectedAnnotation();
+        } catch (error) {
+          console.error(error);
+          setStatus(error.message || "Annotation copy failed.", "error");
+        }
         return;
       }
       if ((event.metaKey || event.ctrlKey) && (event.key === "v" || event.key === "V")) {
         event.preventDefault();
-        pasteCopiedRoi();
+        try {
+          pasteCopiedAnnotation();
+        } catch (error) {
+          console.error(error);
+          setStatus(error.message || "Annotation paste failed.", "error");
+        }
         return;
       }
 

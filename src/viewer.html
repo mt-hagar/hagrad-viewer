@@ -348,14 +348,10 @@
                 </p>
               </div>
               <div class="tool-scope-group" data-tool-scope="freehandRoi segmentationRoi edit">
-                <div class="inline-actions">
-                  <button id="copy-roi-button" class="button tertiary" type="button">Copy ROI</button>
-                  <button id="paste-roi-button" class="button tertiary" type="button">Paste ROI</button>
-                </div>
                 <p class="hint">
                   `ROI Draw` traces freehand while you hold the left mouse button, then closes when
-                  you release. `ROI Multiple Click` places discrete points and finishes on double-click,
-                  then smooths the final contour so it does not keep polygon edges.
+                  you release. Select an annotation, press `Cmd/Ctrl+C`, switch series or slice, then
+                  press `Cmd/Ctrl+V` to paste it explicitly.
                 </p>
               </div>
               <div class="tool-scope-group" data-tool-scope="contourCorrect">
@@ -766,7 +762,8 @@
               </p>
               <p class="hint">
                 Fixed shortcuts stay the same: `Cmd/Ctrl+Z` undo, `Shift+Cmd/Ctrl+Z` redo,
-                `Cmd/Ctrl+C` copy ROI, `Cmd/Ctrl+V` paste ROI, `Delete` removes the selected annotation.
+                `Cmd/Ctrl+C` copy selected annotation, `Cmd/Ctrl+V` paste selected annotation,
+                `Delete` removes the selected annotation.
               </p>
               <p class="hint">
                 Mouse wheel scrolls slices. `Cmd/Ctrl+wheel` zooms toward the cursor. Click a viewport
@@ -833,6 +830,13 @@
                     aria-label="Reset zoom and center. In MPR, return to original planes"
                     title="Reset zoom and center. In MPR, return to original planes"
                   >⛶</button>
+                  <button
+                    id="presentation-mode-toggle-button"
+                    class="viewport-mini-button"
+                    type="button"
+                    aria-label="Switch to 4-up MPR"
+                    title="Switch to 4-up MPR"
+                  ><span class="viewport-mode-icon mode-mpr" aria-hidden="true"></span></button>
                   <button
                     id="presentation-layout-toggle-button"
                     class="viewport-mini-button"

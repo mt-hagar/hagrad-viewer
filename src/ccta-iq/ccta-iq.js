@@ -7625,9 +7625,12 @@
     if (els.presentationLayoutToggleButton) {
       const nextLayout = state.layout === "mpr" ? "presentation" : "mpr";
       const label = nextLayout === "mpr" ? "Switch to 4-up MPR" : "Switch to presentation";
+      const icon = els.presentationLayoutToggleButton.querySelector(".viewport-mode-icon");
       els.presentationLayoutToggleButton.classList.toggle("is-active", state.layout === "mpr");
       els.presentationLayoutToggleButton.title = label;
       els.presentationLayoutToggleButton.setAttribute("aria-label", label);
+      icon?.classList.toggle("mode-mpr", nextLayout === "mpr");
+      icon?.classList.toggle("mode-presentation", nextLayout === "presentation");
     }
   }
 
