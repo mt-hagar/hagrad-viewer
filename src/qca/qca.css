@@ -176,8 +176,8 @@ a {
 .viewer-header h2,
 .section-header h2 {
   margin: 0;
-  letter-spacing: -0.03em;
-  font-family: var(--font-display);
+  letter-spacing: 0;
+  font-family: var(--font-ui);
   font-weight: 700;
 }
 
@@ -383,7 +383,8 @@ a {
 }
 
 .button.tertiary {
-  padding: 8px 11px;
+  padding: 8px 10px;
+  border-radius: 10px;
   font-size: 12px;
 }
 
@@ -523,15 +524,15 @@ a {
 .section-header h2,
 .panel-header h2,
 .viewer-header h2 {
-  font-size: 17px;
-  line-height: 1.1;
+  font-size: 13.5px;
+  line-height: 1.15;
 }
 
 .section-note,
 .panel-note {
   margin: 6px 0 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -673,10 +674,10 @@ input[type="range"] {
 
 .tool-button-pair {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 38px;
+  grid-template-columns: minmax(0, 1fr) 36px;
   gap: 0;
   border: 1px solid var(--line);
-  border-radius: 11px;
+  border-radius: 10px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.03);
 }
@@ -685,13 +686,15 @@ input[type="range"] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 38px;
+  min-height: 36px;
   border: 1px solid var(--line);
-  border-radius: 11px;
-  padding: 9px 11px;
+  border-radius: 10px;
+  padding: 8px 10px;
   background: rgba(255, 255, 255, 0.03);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 12.5px;
+  font-weight: 650;
+  line-height: 1.15;
 }
 
 .tool-button.is-active {
@@ -720,7 +723,7 @@ input[type="range"] {
 
 .tool-button-icon {
   padding: 0;
-  min-width: 38px;
+  min-width: 36px;
   font-size: 15px;
   line-height: 1;
 }
