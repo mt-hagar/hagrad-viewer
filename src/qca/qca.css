@@ -966,24 +966,27 @@ input[type="range"] {
 }
 
 .viewer-header {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .viewer-header-tools {
-  display: grid;
-  justify-items: end;
-  gap: 8px;
+  display: flex;
+  justify-content: flex-end;
+  align-self: end;
+  min-width: 0;
 }
 
 .viewer-badges {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 7px;
 }
 
 .viewer-tool-row {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
   justify-content: end;
 }
@@ -1661,12 +1664,12 @@ body.is-presentation-focus .viewer-header-tools {
   width: 100%;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
 }
 
 body.is-presentation-focus .viewer-badges {
-  order: 2;
+  order: 0;
   flex: 0 0 auto;
   flex-wrap: nowrap;
   justify-content: flex-end;
@@ -1771,7 +1774,8 @@ body.is-presentation-focus .canvas-overlay-message {
   }
 
   .viewer-header-tools {
-    justify-items: start;
+    justify-content: start;
+    width: 100%;
   }
 
   .canvas-wrap {

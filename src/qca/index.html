@@ -9,7 +9,7 @@
         window.location.replace("https://localhost:3020/src/qca/index.html");
       }
     </script>
-    <link rel="stylesheet" href="./qca.css?v=20260524-weight" />
+    <link rel="stylesheet" href="./qca.css?v=20260524-qca-header" />
     <link rel="stylesheet" href="/src/shared/hagrad-shell.css?v=20260523-file-inputs" />
   </head>
   <body>
@@ -433,11 +433,11 @@
                 <h2 id="viewer-title">No frame selected</h2>
               </div>
               <div class="viewer-header-tools">
-                <div class="viewer-badges">
-                  <span class="viewer-badge" id="frame-badge">Frame 0 / 0</span>
-                  <span class="viewer-badge" id="mode-badge">Mode: Anchors</span>
-                </div>
                 <div class="viewer-tool-row">
+                  <div class="viewer-badges" aria-label="QCA frame and mode status">
+                    <span class="viewer-badge" id="frame-badge">Frame 0 / 0</span>
+                    <span class="viewer-badge" id="mode-badge">Mode: Anchors</span>
+                  </div>
                   <button id="undo-action-button" class="button tertiary" type="button" disabled>
                     Undo
                   </button>
