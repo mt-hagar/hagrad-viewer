@@ -20,8 +20,8 @@
   --circle: #f0c572;
   --shadow: 0 24px 60px rgba(0, 0, 0, 0.38);
   --radius: 18px;
-  --font-body: "Aptos", "Avenir Next", "SF Pro Text", "Segoe UI Variable Text", sans-serif;
-  --font-ui: "Aptos", "Avenir Next", "SF Pro Display", "Segoe UI Variable Text", sans-serif;
+  --font-body: "Aptos", "Segoe UI Variable", "Segoe UI", sans-serif;
+  --font-ui: "Aptos", "Segoe UI Variable", "Segoe UI", sans-serif;
   --brand-mark: url("/assets/hagrad-brand-watermark.png");
 }
 
