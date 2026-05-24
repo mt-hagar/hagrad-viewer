@@ -767,7 +767,10 @@ input[type="file"] {
   right: 14px;
   z-index: 4;
   display: grid;
+  grid-template-columns: 30px;
+  grid-auto-flow: row;
   gap: 8px;
+  justify-items: center;
 }
 
 .viewport-mini-button {
