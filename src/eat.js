@@ -237,6 +237,11 @@
     els.contourToolLabel = document.getElementById("contour-tool-label");
     els.contourToolMenu = document.getElementById("contour-tool-menu");
     els.contourToolOptions = Array.from(document.querySelectorAll("[data-contour-tool-option]"));
+    els.editToolDropdown = document.getElementById("edit-tool-dropdown");
+    els.editToolButton = document.getElementById("edit-tool-button");
+    els.editToolLabel = document.getElementById("edit-tool-label");
+    els.editToolMenu = document.getElementById("edit-tool-menu");
+    els.editToolOptions = Array.from(document.querySelectorAll("[data-edit-tool-option]"));
     els.toolbarToolSelect = document.getElementById("toolbar-tool-select");
     els.presetButtons = Array.from(document.querySelectorAll("[data-preset]"));
     els.copyPrevButton = document.getElementById("copy-prev-button");
@@ -2427,6 +2432,10 @@
     return tool === "contour" || tool === "contourClick" || tool === "refine";
   }
 
+  function isEditTool(tool) {
+    return tool === "edit" || tool === "refine" || tool === "erase";
+  }
+
   function resolveContourDrawingTool(tool) {
     if (tool === "contourClick") {
       return "contourClick";
@@ -2441,6 +2450,16 @@
     return tool === "contourClick" ? "Multiple Click" : "Draw";
   }
 
+  function getEditToolLabel(tool) {
+    if (tool === "refine") {
+      return "Redraw";
+    }
+    if (tool === "erase") {
+      return "Erase";
+    }
+    return "Adjust";
+  }
+
   function setContourToolMenuOpen(open) {
     if (!els.contourToolDropdown || !els.contourToolButton || !els.contourToolMenu) {
       return;
@@ -2453,7 +2472,24 @@
 
   function toggleContourToolMenu() {
     const isOpen = !els.contourToolMenu?.hidden;
+    setEditToolMenuOpen(false);
     setContourToolMenuOpen(!isOpen);
+  }
+
+  function setEditToolMenuOpen(open) {
+    if (!els.editToolDropdown || !els.editToolButton || !els.editToolMenu) {
+      return;
+    }
+    const isOpen = Boolean(open);
+    els.editToolDropdown.classList.toggle("is-open", isOpen);
+    els.editToolButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    els.editToolMenu.hidden = !isOpen;
+  }
+
+  function toggleEditToolMenu() {
+    const isOpen = !els.editToolMenu?.hidden;
+    setContourToolMenuOpen(false);
+    setEditToolMenuOpen(!isOpen);
   }
 
   function buildContourClickPreviewPoints(draft) {
@@ -2769,12 +2805,22 @@
       button.classList.toggle("is-active", button.dataset.tool === state.activeTool);
     });
     const isContourMode = state.activeTool === "contour" || state.activeTool === "contourClick";
+    const isEditMode = isEditTool(state.activeTool);
     els.contourToolDropdown?.classList.toggle("is-active", isContourMode);
     if (els.contourToolLabel) {
       els.contourToolLabel.textContent = getContourDrawingToolLabel(isContourMode ? state.activeTool : "contour");
     }
     els.contourToolOptions?.forEach((button) => {
       const isSelected = button.dataset.contourToolOption === (isContourMode ? state.activeTool : "contour");
+      button.classList.toggle("is-active", isSelected);
+      button.setAttribute("aria-selected", isSelected ? "true" : "false");
+    });
+    els.editToolDropdown?.classList.toggle("is-active", isEditMode);
+    if (els.editToolLabel) {
+      els.editToolLabel.textContent = getEditToolLabel(isEditMode ? state.activeTool : "edit");
+    }
+    els.editToolOptions?.forEach((button) => {
+      const isSelected = button.dataset.editToolOption === (isEditMode ? state.activeTool : "edit");
       button.classList.toggle("is-active", isSelected);
       button.setAttribute("aria-selected", isSelected ? "true" : "false");
     });
@@ -9900,9 +9946,35 @@
         }
       });
     });
+    els.editToolButton?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleEditToolMenu();
+    });
+    els.editToolButton?.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        setEditToolMenuOpen(false);
+      }
+    });
+    els.editToolOptions?.forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        setActiveTool(button.dataset.editToolOption);
+        setEditToolMenuOpen(false);
+        els.editToolButton?.focus({ preventScroll: true });
+      });
+      button.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          setEditToolMenuOpen(false);
+          els.editToolButton?.focus({ preventScroll: true });
+        }
+      });
+    });
     document.addEventListener("click", (event) => {
       if (!els.contourToolDropdown?.contains(event.target)) {
         setContourToolMenuOpen(false);
+      }
+      if (!els.editToolDropdown?.contains(event.target)) {
+        setEditToolMenuOpen(false);
       }
     });
     els.toolbarToolSelect?.addEventListener("change", () => {

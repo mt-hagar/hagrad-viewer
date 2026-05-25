@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>HAGRad Viewer – EAT Workflow</title>
-    <link rel="stylesheet" href="/src/eat.css?v=20260525-report-workspace" />
+    <link rel="stylesheet" href="/src/eat.css?v=20260525-edit-dropdown" />
     <link rel="stylesheet" href="/src/shared/hagrad-shell.css?v=20260523-file-inputs" />
   </head>
   <body>
@@ -270,9 +270,52 @@
                       </button>
                     </div>
                   </div>
-                  <button class="tool-button" data-tool="refine" type="button">Redraw (R)</button>
-                  <button class="tool-button" data-tool="edit" type="button">Adjust (A)</button>
-                  <button class="tool-button" data-tool="erase" type="button">Erase (E)</button>
+                  <div class="tool-dropdown" id="edit-tool-dropdown">
+                    <button
+                      class="tool-dropdown-button"
+                      id="edit-tool-button"
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded="false"
+                      aria-controls="edit-tool-menu"
+                    >
+                      <span class="tool-dropdown-title">Edit</span>
+                      <span class="tool-dropdown-value" id="edit-tool-label">Adjust</span>
+                      <span class="dropdown-caret" aria-hidden="true"></span>
+                    </button>
+                    <div class="tool-dropdown-menu" id="edit-tool-menu" role="listbox" hidden>
+                      <button
+                        class="tool-dropdown-option"
+                        data-edit-tool-option="edit"
+                        role="option"
+                        type="button"
+                        aria-selected="false"
+                      >
+                        <span>Adjust</span>
+                        <kbd>A</kbd>
+                      </button>
+                      <button
+                        class="tool-dropdown-option"
+                        data-edit-tool-option="refine"
+                        role="option"
+                        type="button"
+                        aria-selected="false"
+                      >
+                        <span>Redraw</span>
+                        <kbd>R</kbd>
+                      </button>
+                      <button
+                        class="tool-dropdown-option"
+                        data-edit-tool-option="erase"
+                        role="option"
+                        type="button"
+                        aria-selected="false"
+                      >
+                        <span>Erase</span>
+                        <kbd>E</kbd>
+                      </button>
+                    </div>
+                  </div>
                 </div>
                 <div class="range-grid">
                   <label class="number-field" for="threshold-min-input">
@@ -787,6 +830,6 @@
     <script src="/src/shared/hagrad-zip.js"></script>
     <script src="/src/shared/hagrad-workflow-switcher.js?v=20260519-workflow-shell"></script>
     <script src="/src/eat-shared.js"></script>
-    <script src="/src/eat.js?v=20260525-report-workspace"></script>
+    <script src="/src/eat.js?v=20260525-edit-dropdown"></script>
   </body>
 </html>
