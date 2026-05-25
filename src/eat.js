@@ -122,6 +122,7 @@
     renderQueued: false,
     dragging: null,
     contourClickDraft: null,
+    autoReturnContourTool: null,
     rangeHandleDrag: null,
     eraseBrushRadius: 12,
     hoverImagePoint: null,
@@ -2352,6 +2353,7 @@
     );
     if (state.currentSliceIndex !== previousSliceIndex) {
       clearContourClickDraft({ render: false });
+      restoreContourDrawingAfterSliceChange();
     }
     updateSliceNavigationUi();
     updateCurrentSliceUi();
@@ -2371,6 +2373,14 @@
 
   function getContourClickDraftForSlice(sliceIndex) {
     return state.contourClickDraft?.sliceIndex === sliceIndex ? state.contourClickDraft : null;
+  }
+
+  function isContourDrawingTool(tool) {
+    return tool === "contour" || tool === "contourClick";
+  }
+
+  function resolveContourDrawingTool(tool) {
+    return tool === "contourClick" ? "contourClick" : "contour";
   }
 
   function buildContourClickPreviewPoints(draft) {
@@ -2434,11 +2444,14 @@
     commitRangeSelection({ markConfigured: true });
   }
 
-  function setActiveTool(tool) {
+  function setActiveTool(tool, options = {}) {
     const nextTool =
       tool === "contourClick" || tool === "edit" || tool === "pan" || tool === "erase" || tool === "zoom" || tool === "windowLevel"
         ? tool
         : "contour";
+    if (!options.preserveAutoReturn) {
+      state.autoReturnContourTool = null;
+    }
     if (state.activeTool === "contourClick" && nextTool !== "contourClick") {
       clearContourClickDraft();
     }
@@ -2449,6 +2462,21 @@
     }
     updateToolButtons();
     requestRender();
+  }
+
+  function enterPostContourAdjustMode(contourTool) {
+    state.autoReturnContourTool = resolveContourDrawingTool(contourTool);
+    setActiveTool("edit", { preserveAutoReturn: true });
+  }
+
+  function restoreContourDrawingAfterSliceChange() {
+    const returnTool = isContourDrawingTool(state.autoReturnContourTool)
+      ? state.autoReturnContourTool
+      : null;
+    state.autoReturnContourTool = null;
+    if (returnTool && state.activeTool === "edit") {
+      setActiveTool(returnTool, { preserveAutoReturn: true });
+    }
   }
 
   function returnToPrimaryTool() {
@@ -4140,7 +4168,8 @@
     }
     setContour(state.currentSliceIndex, draft.points, getStoredContour(state.currentSliceIndex) ? "edited" : "drawn");
     state.contourClickDraft = null;
-    setStatus(`Saved multiple-click contour for slice ${state.currentSliceIndex + 1}.`);
+    enterPostContourAdjustMode("contourClick");
+    setStatus(`Saved multiple-click contour for slice ${state.currentSliceIndex + 1}. Adjust handles are active; scroll to continue placing contours.`);
     return true;
   }
 
@@ -7723,7 +7752,8 @@
         return;
       }
       setContour(state.currentSliceIndex, drag.points, getStoredContour(state.currentSliceIndex) ? "edited" : "drawn");
-      setStatus(`Saved contour for slice ${state.currentSliceIndex + 1}.`);
+      enterPostContourAdjustMode("contour");
+      setStatus(`Saved contour for slice ${state.currentSliceIndex + 1}. Adjust handles are active; scroll to draw the next slice.`);
       return;
     }
 
