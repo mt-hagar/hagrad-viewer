@@ -2369,6 +2369,28 @@
     }
   }
 
+  function getContourClickDraftForSlice(sliceIndex) {
+    return state.contourClickDraft?.sliceIndex === sliceIndex ? state.contourClickDraft : null;
+  }
+
+  function buildContourClickPreviewPoints(draft) {
+    if (!draft?.points?.length) {
+      return [];
+    }
+    const points = cloneContourPoints(draft.points);
+    if (draft.hoverPoint) {
+      const lastPoint = points[points.length - 1];
+      if (!lastPoint || distanceBetweenPoints(lastPoint, draft.hoverPoint) >= 0.5) {
+        points.push(clampPointToImage(draft.hoverPoint));
+      }
+    }
+    if (points.length < 3) {
+      return points;
+    }
+    const smoothed = normalizeContourPoints(points);
+    return smoothed.length >= 3 ? smoothed : points;
+  }
+
   function applyRangeInputs() {
     if (!state.volume || !els.topSliceInput || !els.bottomSliceInput) {
       return;
@@ -2614,7 +2636,7 @@
             ? "Zoom"
           : state.activeTool === "erase"
             ? "Rubber"
-            : "Contour";
+            : "Draw";
     els.toolSummary.textContent = toolLabel;
     if (els.toolHud) {
       els.toolHud.textContent =
@@ -4054,10 +4076,13 @@
 
   function getDraftContourForSlice(sliceIndex) {
     if (!state.dragging || state.dragging.sliceIndex !== sliceIndex) {
-      return state.contourClickDraft?.sliceIndex === sliceIndex ? state.contourClickDraft.points : null;
+      return buildContourClickPreviewPoints(getContourClickDraftForSlice(sliceIndex));
     }
     if (state.dragging.type === "draw") {
       return state.dragging.points;
+    }
+    if (state.dragging.type === "contourClickDraftHandle" || state.dragging.type === "contourClickDraftTranslate") {
+      return buildContourClickPreviewPoints(getContourClickDraftForSlice(sliceIndex));
     }
     if (state.dragging.type === "handle" || state.dragging.type === "translate") {
       return state.dragging.previewPoints;
@@ -4094,6 +4119,7 @@
       return;
     }
     state.contourClickDraft.points.push(nextPoint);
+    state.contourClickDraft.hoverPoint = nextPoint;
     setStatus(
       state.contourClickDraft.points.length < 3
         ? "Place at least three contour points, then double-click to finish."
@@ -5578,6 +5604,18 @@
     return best;
   }
 
+  function findDirectPointHit(points, imagePoint, geometry) {
+    const threshold = 12 / geometry.scale;
+    let best = null;
+    (points || []).forEach((point, pointIndex) => {
+      const distance = distanceBetweenPoints(point, imagePoint);
+      if (distance <= threshold && (!best || distance < best.distance)) {
+        best = { pointIndex, distance };
+      }
+    });
+    return best;
+  }
+
   function translateContourPoints(points, delta) {
     return points.map((point) =>
       clampPointToImage({
@@ -5585,6 +5623,63 @@
         y: point.y + delta.y,
       })
     );
+  }
+
+  function beginStoredContourAdjustment(event, imagePoint, geometry) {
+    const contour = getStoredContour(state.currentSliceIndex);
+    if (!contour) {
+      return false;
+    }
+
+    const handleHit = findHandleHit(contour.points, imagePoint, geometry);
+    const insideContour = pointInPolygon(contour.points, imagePoint.x, imagePoint.y);
+    if (!handleHit && !insideContour) {
+      return false;
+    }
+
+    event.preventDefault();
+    state.dragging = {
+      type: handleHit ? "handle" : "translate",
+      pointerId: event.pointerId,
+      sliceIndex: state.currentSliceIndex,
+      startImagePoint: clampPointToImage(imagePoint),
+      pointIndex: handleHit?.pointIndex,
+      originalPoints: cloneContourPoints(contour.points),
+      previewPoints: cloneContourPoints(contour.points),
+      source: "rightClick",
+    };
+    els.canvas.setPointerCapture?.(event.pointerId);
+    updateCanvasCursor();
+    requestRender();
+    return true;
+  }
+
+  function beginContourClickDraftAdjustment(event, imagePoint, geometry) {
+    const draft = getContourClickDraftForSlice(state.currentSliceIndex);
+    if (!draft?.points?.length) {
+      return false;
+    }
+
+    const pointHit = findDirectPointHit(draft.points, imagePoint, geometry);
+    const previewPoints = buildContourClickPreviewPoints({ points: draft.points });
+    const insideDraft = previewPoints.length >= 3 && pointInPolygon(previewPoints, imagePoint.x, imagePoint.y);
+    if (!pointHit && !insideDraft) {
+      return false;
+    }
+
+    event.preventDefault();
+    state.dragging = {
+      type: pointHit ? "contourClickDraftHandle" : "contourClickDraftTranslate",
+      pointerId: event.pointerId,
+      sliceIndex: state.currentSliceIndex,
+      startImagePoint: clampPointToImage(imagePoint),
+      pointIndex: pointHit?.pointIndex,
+      originalPoints: cloneContourPoints(draft.points),
+    };
+    els.canvas.setPointerCapture?.(event.pointerId);
+    updateCanvasCursor();
+    requestRender();
+    return true;
   }
 
   function moveContourHandle(points, targetIndex, delta) {
@@ -5618,12 +5713,33 @@
         ctx.lineTo(canvasPoint.x, canvasPoint.y);
       }
     });
-    ctx.closePath();
-    ctx.fillStyle = contour.status === "draft" ? "rgba(110, 228, 255, 0.10)" : "rgba(110, 228, 255, 0.07)";
-    ctx.strokeStyle = contour.status === "draft" ? "rgba(110, 228, 255, 0.7)" : "#6ee4ff";
+    if (contour.points.length >= 3) {
+      ctx.closePath();
+      ctx.fillStyle = contour.status === "draft" ? "rgba(110, 228, 255, 0.10)" : "rgba(110, 228, 255, 0.07)";
+      ctx.fill();
+    }
+    ctx.strokeStyle = contour.status === "draft" ? "rgba(110, 228, 255, 0.78)" : "#6ee4ff";
     ctx.lineWidth = 2;
-    ctx.fill();
     ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawContourClickDraftAnchors(ctx, geometry, draft) {
+    if (!draft?.points?.length) {
+      return;
+    }
+
+    ctx.save();
+    draft.points.forEach((point, index) => {
+      const canvasPoint = imageToCanvasPoint(point, geometry);
+      ctx.beginPath();
+      ctx.arc(canvasPoint.x, canvasPoint.y, 4.8, 0, Math.PI * 2);
+      ctx.fillStyle = "#081018";
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = index === draft.points.length - 1 ? "#f7c87f" : "rgba(247, 200, 127, 0.86)";
+      ctx.stroke();
+    });
     ctx.restore();
   }
 
@@ -5777,6 +5893,7 @@
     }
 
     if (options?.interactive) {
+      drawContourClickDraftAnchors(ctx, geometry, getContourClickDraftForSlice(currentSliceIndex));
       drawEraseBrushPreview(ctx, geometry);
     }
     drawCanvasOverlayLabels(ctx, viewportSize, reconstruction, currentSliceIndex);
@@ -5825,7 +5942,12 @@
       els.canvas.style.cursor = "ns-resize";
       return;
     }
-    if (draggingType === "handle" || draggingType === "translate") {
+    if (
+      draggingType === "handle" ||
+      draggingType === "translate" ||
+      draggingType === "contourClickDraftHandle" ||
+      draggingType === "contourClickDraftTranslate"
+    ) {
       els.canvas.style.cursor = "move";
       return;
     }
@@ -7611,6 +7733,12 @@
       return;
     }
 
+    if (drag.type === "contourClickDraftHandle" || drag.type === "contourClickDraftTranslate") {
+      setStatus("Multiple-click contour adjusted. Double-click to finish.");
+      requestRender();
+      return;
+    }
+
     if (drag.type === "erase") {
       if (drag.changed) {
         refreshContourOutputs();
@@ -7639,6 +7767,15 @@
     const imagePoint = canvasToImagePoint(canvasPoint, geometry, state.volume);
 
     if (event.button === 2) {
+      if (imagePoint?.inside) {
+        const clampedPoint = clampPointToImage(imagePoint);
+        if (
+          beginContourClickDraftAdjustment(event, clampedPoint, geometry) ||
+          beginStoredContourAdjustment(event, clampedPoint, geometry)
+        ) {
+          return;
+        }
+      }
       state.dragging = {
         type: "secondaryPending",
         pointerId: event.pointerId,
@@ -7813,6 +7950,11 @@
     state.hoverImagePoint = rawImagePoint?.inside ? clampPointToImage(rawImagePoint) : null;
 
     if (!state.dragging || state.dragging.pointerId !== event.pointerId) {
+      const draft = getContourClickDraftForSlice(state.currentSliceIndex);
+      if (state.activeTool === "contourClick" && draft) {
+        draft.hoverPoint = state.hoverImagePoint;
+        requestRender();
+      }
       if (state.activeTool === "erase") {
         requestRender();
       }
@@ -7892,6 +8034,35 @@
         state.dragging.points.push(imagePoint);
         requestRender();
       }
+      return;
+    }
+
+    if (
+      state.dragging.type === "contourClickDraftHandle" ||
+      state.dragging.type === "contourClickDraftTranslate"
+    ) {
+      const draft = getContourClickDraftForSlice(state.dragging.sliceIndex);
+      if (!draft || !state.dragging.originalPoints?.length) {
+        return;
+      }
+      const delta = {
+        x: imagePoint.x - state.dragging.startImagePoint.x,
+        y: imagePoint.y - state.dragging.startImagePoint.y,
+      };
+      if (state.dragging.type === "contourClickDraftHandle") {
+        draft.points = state.dragging.originalPoints.map((point, index) =>
+          index === state.dragging.pointIndex
+            ? clampPointToImage({
+                x: point.x + delta.x,
+                y: point.y + delta.y,
+              })
+            : { x: point.x, y: point.y }
+        );
+      } else {
+        draft.points = translateContourPoints(state.dragging.originalPoints, delta);
+      }
+      draft.hoverPoint = null;
+      requestRender();
       return;
     }
 
@@ -8594,7 +8765,7 @@
         setCurrentSliceIndex(state.currentSliceIndex + 1);
       } else if (lowerKey === "w") {
         setActiveTool("windowLevel");
-      } else if (lowerKey === "c") {
+      } else if (lowerKey === "d") {
         setActiveTool("contour");
       } else if (lowerKey === "q") {
         setActiveTool("contourClick");
