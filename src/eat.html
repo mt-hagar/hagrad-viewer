@@ -191,37 +191,25 @@
                   <h2>Slice Range</h2>
                   <span class="section-note" id="range-summary">No study loaded</span>
                 </div>
-                <div class="range-grid">
-                  <label class="number-field" for="top-slice-input">
-                    <span>Top</span>
-                    <input id="top-slice-input" type="number" min="1" step="1" value="1" disabled />
-                  </label>
-                  <label class="number-field" for="bottom-slice-input">
-                    <span>Bottom</span>
-                    <input id="bottom-slice-input" type="number" min="1" step="1" value="1" disabled />
-                  </label>
-                </div>
-                <div class="inline-actions">
-                  <button id="set-top-button" class="button tertiary" type="button">Current -> Top ([)</button>
-                  <button id="set-bottom-button" class="button tertiary" type="button">Current -> Bottom (])</button>
-                </div>
-                <div class="inline-actions">
-                  <button id="range-reset-button" class="button tertiary" type="button">Full Stack (F)</button>
-                  <button id="next-pending-button" class="button tertiary" type="button">Next Pending (N)</button>
-                </div>
                 <p class="hint">
-                  Slice numbers are 1-based. The export range is the inclusive span between top and
-                  bottom.
+                  Use the two range handles on the slice scrubber to crop the active EAT slab. Once set,
+                  scrolling is limited to that selected band.
                 </p>
               </section>
 
               <section class="sidebar-section" id="sidebar-section-eat-mode">
                 <div class="section-header">
                   <h2>EAT Mode</h2>
-                  <span class="section-note">Semi-auto, automatic, model assist</span>
+                  <span class="section-note">Contour, adjust, clean</span>
                 </div>
                 <div class="tool-grid">
-                  <button class="tool-button is-active" data-tool="contour" type="button">Contour</button>
+                  <label class="tool-dropdown is-active" id="contour-tool-dropdown">
+                    <span>Contour</span>
+                    <select id="contour-tool-select" aria-label="Contour drawing mode">
+                      <option value="contour">Draw</option>
+                      <option value="contourClick">Multiple Click</option>
+                    </select>
+                  </label>
                   <button class="tool-button" data-tool="edit" type="button">Adjust</button>
                   <button class="tool-button" data-tool="erase" type="button">Rubber</button>
                   <button class="tool-button" data-tool="pan" type="button">Pan (M)</button>
@@ -260,21 +248,12 @@
                     </button>
                   </div>
                 </div>
-                <div class="inline-actions">
-                  <button id="copy-prev-button" class="button tertiary" type="button">Copy Previous (,)</button>
-                  <button id="copy-next-button" class="button tertiary" type="button">Copy Next (.)</button>
-                  <button id="segment-button" class="button tertiary is-active" type="button">
+                <div class="inline-actions full-width-actions">
+                  <button id="segment-button" class="button tertiary is-active full-width-action" type="button">
                     Let's Go Segment (G)
                   </button>
-                  <button id="auto-eat-button" class="button tertiary" type="button">Automatic EAT (A)</button>
                 </div>
-                <div class="inline-actions">
-                  <button id="ai-segment-button" class="button tertiary" type="button">Model Assist (I)</button>
-                  <button id="send-training-button" class="button tertiary" type="button">
-                    Store Reference (K)
-                  </button>
-                </div>
-                <dl class="meta-list" id="ai-backend-metrics">
+                <dl class="meta-list" id="ai-backend-metrics" hidden>
                   <div class="meta-row">
                     <dt>Local Model</dt>
                     <dd id="ai-backend-status">Checking local AI backend...</dd>
@@ -298,27 +277,16 @@
                   </button>
                 </div>
                 <p class="hint">
-                  In `Contour`, click and drag to trace a closed loop. In `Adjust`, drag a handle to
-                  refine the contour or drag inside the contour to translate it. In `Rubber`, brush
-                  over unwanted pixels to exclude them from the EAT count.
+                  `Draw` traces a contour while you hold the mouse button. `Multiple Click` places
+                  contour points one by one; double-click to finish.
                 </p>
                 <p class="hint">
-                  `Pan (M)` moves the image. `Zoom (Z)` lets you zoom with drag or mouse wheel. `Let's Go Segment`
-                  uses your existing contoured slices as anchors, while `Automatic EAT (A)` tries an image-only
-                  first pass across the slab. Both leave every slice editable afterward.
+                  `Adjust` refines handles or translates an existing contour. `Rubber` excludes unwanted
+                  pixels from the EAT count. `Let's Go Segment` uses your contoured slices as anchors.
                 </p>
                 <p class="hint">
-                  `Model Assist (I)` uses the local Python backend and a trained heart-localization model when
-                  available, then imports editable pericardial starting contours back into this review workflow.
-                </p>
-                <p class="hint">
-                  `Store Reference (K)` stores the active reconstruction and your confirmed manual contours as a
-                  local reference bundle, then updates the local contour profile used by future model-assisted runs.
-                </p>
-                <p class="hint">
-                  More shortcuts: `[` top, `]` bottom, `F` full stack, `,`/`.` copy prev/next, `O`
-                  overlay, `V` compare, `T` transfer, `X` clear contour, `Shift+X` clear rubber, `A`
-                  for Automatic EAT, `I` for Model Assist, and `K` for Store Reference.
+                  Shortcuts: `C` draw contour, `Q` multiple click, `E` adjust, `R` rubber, `O`
+                  overlay, `V` compare, `T` transfer, `X` clear contour, and `Shift+X` clear rubber.
                 </p>
               </section>
 
@@ -499,7 +467,16 @@
                 Threshold <strong id="threshold-readout">-190 to -30 HU</strong>
               </div>
               <div class="viewer-pill">
-                Tool <strong id="tool-summary">Contour</strong>
+                Tool
+                <select id="toolbar-tool-select" class="toolbar-tool-select" aria-label="Active EAT tool">
+                  <option value="contour">Draw</option>
+                  <option value="contourClick">Multiple Click</option>
+                  <option value="edit">Adjust</option>
+                  <option value="erase">Rubber</option>
+                  <option value="pan">Pan</option>
+                  <option value="zoom">Zoom</option>
+                </select>
+                <strong id="tool-summary" class="sr-only">Draw</strong>
               </div>
             </div>
 
@@ -551,15 +528,40 @@
                   <div class="viewport-tool-hud" id="eat-tool-hud">Contour · middle mouse pans</div>
                   <div class="viewport-fast-scroll">
                     <label for="presentation-fast-scroll-slider">Slice</label>
-                    <input
-                      id="presentation-fast-scroll-slider"
-                      type="range"
-                      min="0"
-                      max="0"
-                      step="1"
-                      value="0"
-                      disabled
-                    />
+                    <div class="range-scrubber" id="range-scrubber">
+                      <div class="range-scrubber-track" aria-hidden="true">
+                        <div class="range-scrubber-window" id="range-scrubber-window"></div>
+                      </div>
+                      <input
+                        id="presentation-fast-scroll-slider"
+                        type="range"
+                        min="0"
+                        max="0"
+                        step="1"
+                        value="0"
+                        disabled
+                      />
+                      <button
+                        id="range-start-handle"
+                        class="range-handle range-handle-start"
+                        type="button"
+                        aria-label="Set EAT range start"
+                        title="Drag to set top range slice"
+                        disabled
+                      >
+                        <span>Top</span>
+                      </button>
+                      <button
+                        id="range-end-handle"
+                        class="range-handle range-handle-end"
+                        type="button"
+                        aria-label="Set EAT range end"
+                        title="Drag to set bottom range slice"
+                        disabled
+                      >
+                        <span>Bottom</span>
+                      </button>
+                    </div>
                     <span id="presentation-fast-scroll-value">0 / 0</span>
                   </div>
                   <div class="empty-state" id="empty-state">

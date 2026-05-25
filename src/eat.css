@@ -65,7 +65,8 @@ body.is-modal-open {
 
 button,
 input,
-a {
+a,
+select {
   font: inherit;
 }
 
@@ -76,6 +77,18 @@ a {
 
 a {
   text-decoration: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .app {
@@ -691,6 +704,7 @@ a {
 }
 
 .tool-button,
+.tool-dropdown,
 .pill-button {
   width: 100%;
   min-height: 33px;
@@ -706,14 +720,62 @@ a {
 }
 
 .tool-button:hover,
+.tool-dropdown:hover,
 .pill-button:hover {
   transform: translateY(-1px);
 }
 
 .tool-button.is-active,
+.tool-dropdown.is-active,
 .pill-button.is-active {
   border-color: var(--line-strong);
   background: linear-gradient(180deg, rgba(94, 214, 195, 0.18), rgba(23, 157, 136, 0.12));
+}
+
+.tool-dropdown {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  align-items: center;
+  color: var(--text);
+}
+
+.tool-dropdown span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-dropdown select,
+.toolbar-tool-select {
+  appearance: none;
+  min-width: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--text);
+  font-weight: 750;
+  line-height: 1.1;
+  cursor: pointer;
+}
+
+.tool-dropdown select {
+  max-width: 112px;
+  padding: 3px 18px 3px 8px;
+  font-size: 11px;
+}
+
+.toolbar-tool-select {
+  max-width: 138px;
+  padding: 2px 18px 2px 8px;
+  font-size: 12px;
+}
+
+.tool-dropdown select:focus-visible,
+.toolbar-tool-select:focus-visible {
+  outline: 2px solid rgba(94, 214, 195, 0.42);
+  outline-offset: 2px;
 }
 
 .inline-actions {
@@ -721,6 +783,14 @@ a {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 7px;
+}
+
+.full-width-actions {
+  display: block;
+}
+
+.full-width-action {
+  width: 100%;
 }
 
 .number-field {
@@ -1193,9 +1263,103 @@ a {
   white-space: nowrap;
 }
 
-.viewport-fast-scroll input[type="range"] {
+.range-scrubber {
+  --range-start: 0%;
+  --range-end: 100%;
+  position: relative;
+  min-width: 0;
+  height: 34px;
+  display: flex;
+  align-items: center;
+}
+
+.range-scrubber-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 8px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.13);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
+.range-scrubber-window {
+  position: absolute;
+  left: var(--range-start);
+  width: calc(var(--range-end) - var(--range-start));
+  min-width: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(247, 200, 127, 0.64), rgba(94, 214, 195, 0.72));
+  box-shadow: 0 0 16px rgba(94, 214, 195, 0.2);
+}
+
+.range-scrubber input[type="range"] {
+  position: relative;
+  z-index: 2;
   width: 100%;
+  margin: 0;
+  background: transparent;
   accent-color: var(--accent);
+}
+
+.range-handle {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  width: 18px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid rgba(247, 200, 127, 0.72);
+  background: linear-gradient(180deg, rgba(247, 200, 127, 0.95), rgba(202, 145, 62, 0.92));
+  color: #231a0d;
+  transform: translate(-50%, -50%);
+  cursor: ew-resize;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+}
+
+.range-handle:disabled {
+  opacity: 0.36;
+  cursor: default;
+}
+
+.range-handle-start {
+  left: var(--range-start);
+}
+
+.range-handle-end {
+  left: var(--range-end);
+}
+
+.range-handle span {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(247, 200, 127, 0.3);
+  background: rgba(5, 10, 14, 0.86);
+  color: var(--warning);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(3px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.range-handle:hover span,
+.range-handle:focus-visible span,
+.range-handle.is-dragging span {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 #eat-canvas,

@@ -48,6 +48,7 @@
   };
   const TOOL_CURSORS = {
     contour: "crosshair",
+    contourClick: "crosshair",
     edit: "default",
     erase: "crosshair",
     windowLevel: "crosshair",
@@ -120,6 +121,8 @@
     contourRevisionSequence: 0,
     renderQueued: false,
     dragging: null,
+    contourClickDraft: null,
+    rangeHandleDrag: null,
     eraseBrushRadius: 12,
     hoverImagePoint: null,
     view: {
@@ -203,6 +206,9 @@
     els.nextPendingButton = document.getElementById("next-pending-button");
     els.rangeSummary = document.getElementById("range-summary");
     els.toolButtons = Array.from(document.querySelectorAll("[data-tool]"));
+    els.contourToolDropdown = document.getElementById("contour-tool-dropdown");
+    els.contourToolSelect = document.getElementById("contour-tool-select");
+    els.toolbarToolSelect = document.getElementById("toolbar-tool-select");
     els.presetButtons = Array.from(document.querySelectorAll("[data-preset]"));
     els.copyPrevButton = document.getElementById("copy-prev-button");
     els.copyNextButton = document.getElementById("copy-next-button");
@@ -255,6 +261,10 @@
     els.sliceSummary = document.getElementById("slice-summary");
     els.presentationFastScrollSlider = document.getElementById("presentation-fast-scroll-slider");
     els.presentationFastScrollValue = document.getElementById("presentation-fast-scroll-value");
+    els.rangeScrubber = document.getElementById("range-scrubber");
+    els.rangeScrubberWindow = document.getElementById("range-scrubber-window");
+    els.rangeStartHandle = document.getElementById("range-start-handle");
+    els.rangeEndHandle = document.getElementById("range-end-handle");
     els.toolHud = document.getElementById("eat-tool-hud");
     els.activeReconstructionReadout = document.getElementById("active-reconstruction-readout");
     els.compareReadout = document.getElementById("compare-readout");
@@ -2318,19 +2328,49 @@
     return Boolean(bounds && sliceIndex >= bounds.start && sliceIndex <= bounds.end);
   }
 
+  function getCurrentSliceNavigationBounds() {
+    const sliceCount = getSliceCount();
+    if (!sliceCount) {
+      return null;
+    }
+    if (state.rangeConfigured) {
+      return getSliceBounds() || { start: 0, end: sliceCount - 1, count: sliceCount };
+    }
+    return { start: 0, end: sliceCount - 1, count: sliceCount };
+  }
+
   function setCurrentSliceIndex(index) {
     if (!state.volume) {
       return;
     }
-    state.currentSliceIndex = clamp(Math.round(index), 0, state.volume.depth - 1);
+    const navigationBounds = getCurrentSliceNavigationBounds();
+    const previousSliceIndex = state.currentSliceIndex;
+    state.currentSliceIndex = clamp(
+      Math.round(index),
+      navigationBounds?.start ?? 0,
+      navigationBounds?.end ?? state.volume.depth - 1
+    );
+    if (state.currentSliceIndex !== previousSliceIndex) {
+      clearContourClickDraft({ render: false });
+    }
     updateSliceNavigationUi();
     updateCurrentSliceUi();
     renderSliceList();
     requestRender();
   }
 
+  function clearContourClickDraft(options = {}) {
+    if (!state.contourClickDraft) {
+      return;
+    }
+    state.contourClickDraft = null;
+    if (options.render !== false) {
+      requestRender();
+    }
+  }
+
   function applyRangeInputs() {
-    if (!state.volume) {
+    if (!state.volume || !els.topSliceInput || !els.bottomSliceInput) {
       return;
     }
     const maxSlice = state.volume.depth;
@@ -2358,7 +2398,7 @@
     updateSummaryUi();
     renderSliceList();
     requestRender();
-    if (options?.markConfigured) {
+    if (options?.markConfigured && !options?.skipHistory) {
       pushHistorySnapshot("Updated slice range");
     }
   }
@@ -2373,10 +2413,15 @@
   }
 
   function setActiveTool(tool) {
-    state.activeTool =
-      tool === "edit" || tool === "pan" || tool === "erase" || tool === "zoom" || tool === "windowLevel"
+    const nextTool =
+      tool === "contourClick" || tool === "edit" || tool === "pan" || tool === "erase" || tool === "zoom" || tool === "windowLevel"
         ? tool
         : "contour";
+    if (state.activeTool === "contourClick" && nextTool !== "contourClick") {
+      clearContourClickDraft();
+    }
+    state.activeTool =
+      nextTool;
     if (state.activeTool !== "erase") {
       state.hoverImagePoint = null;
     }
@@ -2548,8 +2593,18 @@
     els.toolButtons.forEach((button) => {
       button.classList.toggle("is-active", button.dataset.tool === state.activeTool);
     });
-    els.toolSummary.textContent =
-      state.activeTool === "edit"
+    const isContourMode = state.activeTool === "contour" || state.activeTool === "contourClick";
+    els.contourToolDropdown?.classList.toggle("is-active", isContourMode);
+    if (els.contourToolSelect) {
+      els.contourToolSelect.value = isContourMode ? state.activeTool : "contour";
+    }
+    if (els.toolbarToolSelect) {
+      els.toolbarToolSelect.value = state.activeTool;
+    }
+    const toolLabel =
+      state.activeTool === "contourClick"
+        ? "Multiple Click"
+        : state.activeTool === "edit"
         ? "Adjust"
         : state.activeTool === "windowLevel"
           ? "WW/WL"
@@ -2560,6 +2615,13 @@
           : state.activeTool === "erase"
             ? "Rubber"
             : "Contour";
+    els.toolSummary.textContent = toolLabel;
+    if (els.toolHud) {
+      els.toolHud.textContent =
+        state.activeTool === "contourClick"
+          ? "Multiple Click: place points, double-click to finish"
+          : `${toolLabel} · middle mouse pans`;
+    }
     updateCanvasCursor();
   }
 
@@ -2697,15 +2759,15 @@
     } else if (!state.rangeConfigured) {
       currentStepIndex = 1;
       title = "Confirm the slice range";
-      copy = "Set the top and bottom of the shared EAT slab, or use the full stack if that is your intended range.";
+      copy = "Drag the two handles on the slice scrubber to crop the shared EAT slab.";
     } else if (!summary.reviewed) {
       currentStepIndex = 2;
       title = "Choose a starting mode";
-      copy = `Draw ${recommendedAnchors || 1} anchor contour${recommendedAnchors === 1 ? "" : "s"} for Let's Go Segment, run Automatic EAT for an image-only first pass, or use Model Assist when the local model backend is available.`;
+      copy = `Draw ${recommendedAnchors || 1} anchor contour${recommendedAnchors === 1 ? "" : "s"} with Draw or Multiple Click, then use Let's Go Segment.`;
     } else if (summary.reviewed < summary.rangeCount) {
       currentStepIndex = 3;
       title = "Run or review segmentation";
-      copy = `${summary.missing} slice${summary.missing === 1 ? "" : "s"} still need contours. Use Let's Go Segment for anchor-driven propagation, Automatic EAT for the browser heuristic pass, or Model Assist for the local model-assisted pass, then review the result.`;
+      copy = `${summary.missing} slice${summary.missing === 1 ? "" : "s"} still need contours. Use Let's Go Segment for anchor-driven propagation, then review and adjust the result.`;
     } else if (needsTransfer) {
       currentStepIndex = 4;
       title = "Copy to the other reconstructions";
@@ -2734,7 +2796,7 @@
             : index === 2
               ? summary.reviewed
                 ? `${anchorCount} anchors • ${summary.reviewed} started`
-                : "Anchors or Automatic EAT"
+                : "Draw or multi-click"
               : index === 3
                 ? `${summary.reviewed} / ${summary.rangeCount} reviewed`
                 : index === 4
@@ -3110,25 +3172,29 @@
       els.aiBackendTraining.textContent = describeTrainingCorpus(status?.trainingCorpus);
     }
 
-    els.aiSegmentButton.disabled =
-      !activeReconstruction ||
-      !state.volume ||
-      state.backend.trainingSubmitting ||
-      state.backend.aiSegmenting ||
-      state.backend.checking ||
-      !status?.ready;
-    els.aiSegmentButton.textContent = state.backend.aiSegmenting ? "Model Assist: Running..." : "Model Assist (I)";
-    els.sendTrainingButton.disabled =
-      !activeReconstruction ||
-      !state.volume ||
-      !trainingReady ||
-      state.backend.trainingSubmitting ||
-      state.backend.aiSegmenting ||
-      state.backend.checking ||
-      !canStoreFeedback;
-    els.sendTrainingButton.textContent = state.backend.trainingSubmitting
-      ? "Store Reference: Uploading..."
-      : "Store Reference (K)";
+    if (els.aiSegmentButton) {
+      els.aiSegmentButton.disabled =
+        !activeReconstruction ||
+        !state.volume ||
+        state.backend.trainingSubmitting ||
+        state.backend.aiSegmenting ||
+        state.backend.checking ||
+        !status?.ready;
+      els.aiSegmentButton.textContent = state.backend.aiSegmenting ? "Model Assist: Running..." : "Model Assist (I)";
+    }
+    if (els.sendTrainingButton) {
+      els.sendTrainingButton.disabled =
+        !activeReconstruction ||
+        !state.volume ||
+        !trainingReady ||
+        state.backend.trainingSubmitting ||
+        state.backend.aiSegmenting ||
+        state.backend.checking ||
+        !canStoreFeedback;
+      els.sendTrainingButton.textContent = state.backend.trainingSubmitting
+        ? "Store Reference: Uploading..."
+        : "Store Reference (K)";
+    }
     if (els.aiBackendRefreshButton) {
       els.aiBackendRefreshButton.disabled =
         state.backend.checking || state.backend.aiSegmenting || state.backend.trainingSubmitting;
@@ -3740,11 +3806,51 @@
       !activeReconstruction || state.reconstructions.length < 2 || !hasTransferredSegmentation(activeReconstruction);
   }
 
+  function rangePercent(sliceIndex, sliceCount) {
+    if (!sliceCount || sliceCount <= 1) {
+      return 0;
+    }
+    return clamp((sliceIndex / (sliceCount - 1)) * 100, 0, 100);
+  }
+
+  function updateRangeScrubberUi() {
+    const sliceCount = getSliceCount();
+    const hasVolume = Boolean(state.volume && sliceCount);
+    const bounds = hasVolume ? getSliceBounds() : null;
+    const startPercent = bounds ? rangePercent(bounds.start, sliceCount) : 0;
+    const endPercent = bounds ? rangePercent(bounds.end, sliceCount) : 100;
+    if (els.rangeScrubber) {
+      els.rangeScrubber.style.setProperty("--range-start", `${startPercent}%`);
+      els.rangeScrubber.style.setProperty("--range-end", `${endPercent}%`);
+      els.rangeScrubber.classList.toggle("is-configured", Boolean(state.rangeConfigured));
+    }
+    if (els.rangeStartHandle) {
+      els.rangeStartHandle.disabled = !hasVolume;
+      els.rangeStartHandle.setAttribute(
+        "aria-label",
+        bounds ? `Set EAT range top slice, currently ${bounds.start + 1}` : "Set EAT range top slice"
+      );
+      els.rangeStartHandle.querySelector("span").textContent = bounds ? `Top ${bounds.start + 1}` : "Top";
+    }
+    if (els.rangeEndHandle) {
+      els.rangeEndHandle.disabled = !hasVolume;
+      els.rangeEndHandle.setAttribute(
+        "aria-label",
+        bounds ? `Set EAT range bottom slice, currently ${bounds.end + 1}` : "Set EAT range bottom slice"
+      );
+      els.rangeEndHandle.querySelector("span").textContent = bounds ? `Bottom ${bounds.end + 1}` : "Bottom";
+    }
+  }
+
   function updateRangeUi() {
     const sliceCount = getSliceCount();
     const hasVolume = Boolean(state.volume);
-    els.topSliceInput.disabled = !hasVolume;
-    els.bottomSliceInput.disabled = !hasVolume;
+    if (els.topSliceInput) {
+      els.topSliceInput.disabled = !hasVolume;
+    }
+    if (els.bottomSliceInput) {
+      els.bottomSliceInput.disabled = !hasVolume;
+    }
     if (els.sliceSlider) {
       els.sliceSlider.disabled = !hasVolume;
     }
@@ -3754,8 +3860,12 @@
     els.clearEraseButton.disabled = !hasVolume;
 
     if (!hasVolume) {
-      els.topSliceInput.value = "1";
-      els.bottomSliceInput.value = "1";
+      if (els.topSliceInput) {
+        els.topSliceInput.value = "1";
+      }
+      if (els.bottomSliceInput) {
+        els.bottomSliceInput.value = "1";
+      }
       els.rangeSummary.textContent = "No study loaded";
       els.sliceReviewCount.textContent = "0 slices";
       if (els.sliceSlider) {
@@ -3766,15 +3876,22 @@
       if (els.sliceNumberInput) {
         els.sliceNumberInput.value = "1";
       }
+      updateRangeScrubberUi();
       return;
     }
 
     const bounds = getSliceBounds();
-    els.topSliceInput.max = String(sliceCount);
-    els.bottomSliceInput.max = String(sliceCount);
-    els.topSliceInput.value = String(state.topSliceIndex + 1);
-    els.bottomSliceInput.value = String(state.bottomSliceIndex + 1);
-    els.rangeSummary.textContent = `Slices ${bounds.start + 1}-${bounds.end + 1} (${bounds.count} total)`;
+    if (els.topSliceInput) {
+      els.topSliceInput.max = String(sliceCount);
+      els.topSliceInput.value = String(state.topSliceIndex + 1);
+    }
+    if (els.bottomSliceInput) {
+      els.bottomSliceInput.max = String(sliceCount);
+      els.bottomSliceInput.value = String(state.bottomSliceIndex + 1);
+    }
+    els.rangeSummary.textContent = state.rangeConfigured
+      ? `Slices ${bounds.start + 1}-${bounds.end + 1} (${bounds.count} total)`
+      : "Use the scrubber handles to set range";
     els.sliceReviewCount.textContent = `${bounds.count} slice${bounds.count === 1 ? "" : "s"}`;
     if (els.sliceSlider) {
       els.sliceSlider.min = "0";
@@ -3785,6 +3902,7 @@
       els.sliceNumberInput.max = String(sliceCount);
       els.sliceNumberInput.value = String(state.currentSliceIndex + 1);
     }
+    updateRangeScrubberUi();
   }
 
   function updateSliceNavigationUi() {
@@ -3818,6 +3936,7 @@
     if (els.sliceNumberInput) {
       els.sliceNumberInput.value = String(state.currentSliceIndex + 1);
     }
+    updateRangeScrubberUi();
   }
 
   function renderDefinitionRows(container, rows) {
@@ -3935,7 +4054,7 @@
 
   function getDraftContourForSlice(sliceIndex) {
     if (!state.dragging || state.dragging.sliceIndex !== sliceIndex) {
-      return null;
+      return state.contourClickDraft?.sliceIndex === sliceIndex ? state.contourClickDraft.points : null;
     }
     if (state.dragging.type === "draw") {
       return state.dragging.points;
@@ -3948,15 +4067,55 @@
 
   function getRenderableContour(sliceIndex) {
     const draftPoints = getDraftContourForSlice(sliceIndex);
-    if (draftPoints && draftPoints.length >= 3) {
+    if (draftPoints && draftPoints.length >= 2) {
       return {
         points: draftPoints,
-        status: state.dragging.type === "draw" ? "draft" : "edited",
+        status: state.dragging?.type === "draw" || state.contourClickDraft ? "draft" : "edited",
         revision: -1,
       };
     }
 
     return getStoredContour(sliceIndex);
+  }
+
+  function addContourClickPoint(point) {
+    if (!state.volume) {
+      return;
+    }
+    if (!state.contourClickDraft || state.contourClickDraft.sliceIndex !== state.currentSliceIndex) {
+      state.contourClickDraft = {
+        sliceIndex: state.currentSliceIndex,
+        points: [],
+      };
+    }
+    const nextPoint = clampPointToImage(point);
+    const lastPoint = state.contourClickDraft.points[state.contourClickDraft.points.length - 1];
+    if (lastPoint && distanceBetweenPoints(lastPoint, nextPoint) < 0.5) {
+      return;
+    }
+    state.contourClickDraft.points.push(nextPoint);
+    setStatus(
+      state.contourClickDraft.points.length < 3
+        ? "Place at least three contour points, then double-click to finish."
+        : "Double-click to finish the multiple-click contour."
+    );
+    requestRender();
+  }
+
+  function finishContourClickDraft() {
+    const draft = state.contourClickDraft;
+    if (!draft || draft.sliceIndex !== state.currentSliceIndex) {
+      return false;
+    }
+    if (draft.points.length < 3 || polygonArea(draft.points) < 30) {
+      setStatus("Place at least three points around a larger contour before finishing.", "warning");
+      requestRender();
+      return false;
+    }
+    setContour(state.currentSliceIndex, draft.points, getStoredContour(state.currentSliceIndex) ? "edited" : "drawn");
+    state.contourClickDraft = null;
+    setStatus(`Saved multiple-click contour for slice ${state.currentSliceIndex + 1}.`);
+    return true;
   }
 
   function describeContourStatus(contour) {
@@ -7598,6 +7757,11 @@
       return;
     }
 
+    if (state.activeTool === "contourClick") {
+      addContourClickPoint(imagePoint);
+      return;
+    }
+
     if (state.activeTool === "edit") {
       const contour = getStoredContour(state.currentSliceIndex);
       if (!contour) {
@@ -7759,6 +7923,14 @@
     finalizePointerInteraction();
   }
 
+  function handleCanvasDoubleClick(event) {
+    if (state.activeTool !== "contourClick") {
+      return;
+    }
+    event.preventDefault();
+    finishContourClickDraft();
+  }
+
   function handleCanvasPointerLeave() {
     if (state.activeTool === "erase" && !state.dragging) {
       state.hoverImagePoint = null;
@@ -7777,6 +7949,73 @@
     }
     const direction = event.deltaY > 0 ? 1 : -1;
     setCurrentSliceIndex(state.currentSliceIndex + direction);
+  }
+
+  function sliceIndexFromScrubberClientX(clientX) {
+    const sliceCount = getSliceCount();
+    const box = els.rangeScrubber?.getBoundingClientRect();
+    if (!sliceCount || !box?.width) {
+      return 0;
+    }
+    const ratio = clamp((clientX - box.left) / box.width, 0, 1);
+    return clamp(Math.round(ratio * (sliceCount - 1)), 0, sliceCount - 1);
+  }
+
+  function setRangeHandleSlice(handle, sliceIndex, options = {}) {
+    if (!state.volume) {
+      return;
+    }
+    const sliceCount = getSliceCount();
+    const nextSlice = clamp(Math.round(sliceIndex), 0, Math.max(0, sliceCount - 1));
+    const bounds = getSliceBounds() || { start: 0, end: Math.max(0, sliceCount - 1) };
+    if (handle === "start") {
+      state.topSliceIndex = clamp(nextSlice, 0, bounds.end);
+    } else {
+      state.bottomSliceIndex = clamp(nextSlice, bounds.start, Math.max(0, sliceCount - 1));
+    }
+    commitRangeSelection({ markConfigured: true, skipHistory: true });
+    if (options.announce) {
+      const nextBounds = getSliceBounds();
+      setStatus(`EAT range set to slices ${nextBounds.start + 1}-${nextBounds.end + 1}.`);
+    }
+  }
+
+  function beginRangeHandleDrag(handle, event) {
+    if (!state.volume) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    state.rangeHandleDrag = { handle };
+    const target = handle === "start" ? els.rangeStartHandle : els.rangeEndHandle;
+    target?.classList.add("is-dragging");
+    target?.setPointerCapture?.(event.pointerId);
+    setRangeHandleSlice(handle, sliceIndexFromScrubberClientX(event.clientX));
+  }
+
+  function updateRangeHandleDrag(event) {
+    if (!state.rangeHandleDrag) {
+      return;
+    }
+    event.preventDefault();
+    setRangeHandleSlice(state.rangeHandleDrag.handle, sliceIndexFromScrubberClientX(event.clientX));
+  }
+
+  function finishRangeHandleDrag(event) {
+    if (!state.rangeHandleDrag) {
+      return;
+    }
+    const handle = state.rangeHandleDrag.handle;
+    state.rangeHandleDrag = null;
+    els.rangeStartHandle?.classList.remove("is-dragging");
+    els.rangeEndHandle?.classList.remove("is-dragging");
+    const target = handle === "start" ? els.rangeStartHandle : els.rangeEndHandle;
+    target?.releasePointerCapture?.(event.pointerId);
+    const bounds = getSliceBounds();
+    if (bounds) {
+      pushHistorySnapshot("Updated slice range");
+      setStatus(`EAT range set to slices ${bounds.start + 1}-${bounds.end + 1}.`);
+    }
   }
 
   function bindStaticEvents() {
@@ -8021,14 +8260,14 @@
       }
     });
     els.transferReconstructionsButton.addEventListener("click", transferSegmentationWithFeedback);
-    els.setTopButton.addEventListener("click", setCurrentSliceAsTop);
-    els.setBottomButton.addEventListener("click", setCurrentSliceAsBottom);
-    els.rangeResetButton.addEventListener("click", useFullStackRange);
-    els.nextPendingButton.addEventListener("click", jumpToNextPendingSlice);
+    els.setTopButton?.addEventListener("click", setCurrentSliceAsTop);
+    els.setBottomButton?.addEventListener("click", setCurrentSliceAsBottom);
+    els.rangeResetButton?.addEventListener("click", useFullStackRange);
+    els.nextPendingButton?.addEventListener("click", jumpToNextPendingSlice);
 
     ["change", "blur"].forEach((eventName) => {
-      els.topSliceInput.addEventListener(eventName, applyRangeInputs);
-      els.bottomSliceInput.addEventListener(eventName, applyRangeInputs);
+      els.topSliceInput?.addEventListener(eventName, applyRangeInputs);
+      els.bottomSliceInput?.addEventListener(eventName, applyRangeInputs);
       els.eraseRadiusInput.addEventListener(eventName, () => {
         try {
           setEraseRadius(els.eraseRadiusInput.value);
@@ -8134,6 +8373,12 @@
     els.toolButtons.forEach((button) => {
       button.addEventListener("click", () => setActiveTool(button.dataset.tool));
     });
+    els.contourToolSelect?.addEventListener("change", () => {
+      setActiveTool(els.contourToolSelect.value);
+    });
+    els.toolbarToolSelect?.addEventListener("change", () => {
+      setActiveTool(els.toolbarToolSelect.value);
+    });
 
     els.presetButtons.forEach((button) => {
       button.addEventListener("click", () => applyPreset(button.dataset.preset));
@@ -8149,12 +8394,12 @@
       });
     });
 
-    els.copyPrevButton.addEventListener("click", () => copyContourWithFeedback(-1));
-    els.copyNextButton.addEventListener("click", () => copyContourWithFeedback(1));
+    els.copyPrevButton?.addEventListener("click", () => copyContourWithFeedback(-1));
+    els.copyNextButton?.addEventListener("click", () => copyContourWithFeedback(1));
     els.segmentButton.addEventListener("click", runAutoSegmentationWithFeedback);
-    els.autoEatButton.addEventListener("click", runAutomaticEatWithFeedback);
-    els.aiSegmentButton.addEventListener("click", runAiAutoSegmentationWithFeedback);
-    els.sendTrainingButton.addEventListener("click", sendTrainingFeedbackWithFeedback);
+    els.autoEatButton?.addEventListener("click", runAutomaticEatWithFeedback);
+    els.aiSegmentButton?.addEventListener("click", runAiAutoSegmentationWithFeedback);
+    els.sendTrainingButton?.addEventListener("click", sendTrainingFeedbackWithFeedback);
     els.aiBackendRefreshButton?.addEventListener("click", () => {
       refreshEatBackendStatus().catch((error) => {
         console.error(error);
@@ -8253,10 +8498,19 @@
     els.canvas.addEventListener("pointerleave", handleCanvasPointerLeave);
     els.canvas.addEventListener("pointerup", handleCanvasPointerUp);
     els.canvas.addEventListener("pointercancel", handleCanvasPointerUp);
+    els.canvas.addEventListener("dblclick", handleCanvasDoubleClick);
     els.canvas.addEventListener("contextmenu", (event) => {
       event.preventDefault();
     });
     els.canvas.addEventListener("wheel", handleCanvasWheel, { passive: false });
+
+    els.rangeStartHandle?.addEventListener("pointerdown", (event) => beginRangeHandleDrag("start", event));
+    els.rangeEndHandle?.addEventListener("pointerdown", (event) => beginRangeHandleDrag("end", event));
+    [els.rangeStartHandle, els.rangeEndHandle].filter(Boolean).forEach((handle) => {
+      handle.addEventListener("pointermove", updateRangeHandleDrag);
+      handle.addEventListener("pointerup", finishRangeHandleDrag);
+      handle.addEventListener("pointercancel", finishRangeHandleDrag);
+    });
 
     ["dragenter", "dragover"].forEach((eventName) => {
       els.canvasShell.addEventListener(eventName, (event) => {
@@ -8342,6 +8596,8 @@
         setActiveTool("windowLevel");
       } else if (lowerKey === "c") {
         setActiveTool("contour");
+      } else if (lowerKey === "q") {
+        setActiveTool("contourClick");
       } else if (lowerKey === "e") {
         setActiveTool("edit");
       } else if (lowerKey === "r") {
@@ -8350,33 +8606,9 @@
         setActiveTool("pan");
       } else if (lowerKey === "z") {
         setActiveTool("zoom");
-      } else if (key === "," || key === "<") {
-        event.preventDefault();
-        copyContourWithFeedback(-1);
-      } else if (key === "." || key === ">") {
-        event.preventDefault();
-        copyContourWithFeedback(1);
-      } else if (key === "[") {
-        event.preventDefault();
-        setCurrentSliceAsTop();
-      } else if (key === "]") {
-        event.preventDefault();
-        setCurrentSliceAsBottom();
-      } else if (lowerKey === "f") {
-        event.preventDefault();
-        useFullStackRange();
       } else if (lowerKey === "g") {
         event.preventDefault();
         runAutoSegmentationWithFeedback();
-      } else if (lowerKey === "a") {
-        event.preventDefault();
-        runAutomaticEatWithFeedback();
-      } else if (lowerKey === "i") {
-        event.preventDefault();
-        runAiAutoSegmentationWithFeedback();
-      } else if (lowerKey === "k") {
-        event.preventDefault();
-        sendTrainingFeedbackWithFeedback();
       } else if (lowerKey === "t") {
         event.preventDefault();
         transferSegmentationWithFeedback();
@@ -8386,9 +8618,6 @@
       } else if (lowerKey === "o") {
         event.preventDefault();
         toggleThresholdOverlay();
-      } else if (lowerKey === "n") {
-        event.preventDefault();
-        jumpToNextPendingSlice();
       } else if (lowerKey === "x" && event.shiftKey) {
         event.preventDefault();
         clearCurrentSliceExclusions();
@@ -8406,6 +8635,11 @@
         resetView();
       } else if (key === "Escape") {
         event.preventDefault();
+        if (state.activeTool === "contourClick" && state.contourClickDraft?.points?.length) {
+          clearContourClickDraft();
+          setStatus("Multiple-click contour cancelled.");
+          return;
+        }
         if (state.presentationFocus && state.activeTool === "contour") {
           setPresentationFocus(false);
         } else {
