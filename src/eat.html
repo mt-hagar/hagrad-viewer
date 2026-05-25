@@ -270,9 +270,9 @@
                       </button>
                     </div>
                   </div>
-                  <button class="tool-button" data-tool="refine" type="button">Redraw</button>
-                  <button class="tool-button" data-tool="edit" type="button">Adjust</button>
-                  <button class="tool-button" data-tool="erase" type="button">Rubber</button>
+                  <button class="tool-button" data-tool="refine" type="button">Redraw (R)</button>
+                  <button class="tool-button" data-tool="edit" type="button">Adjust (A)</button>
+                  <button class="tool-button" data-tool="erase" type="button">Erase (E)</button>
                 </div>
                 <div class="range-grid">
                   <label class="number-field" for="threshold-min-input">
@@ -286,11 +286,11 @@
                 </div>
                 <div class="range-grid">
                   <label class="number-field" for="erase-radius-input">
-                    <span>Rubber Radius (px)</span>
+                    <span>Erase Radius (px)</span>
                     <input id="erase-radius-input" type="number" min="2" max="80" step="1" value="12" />
                   </label>
                   <div class="number-field">
-                    <span>Rubber Size</span>
+                    <span>Erase Size</span>
                     <div class="pill-grid">
                       <button class="pill-button is-active" data-erase-preset="normal" type="button">
                         Normal
@@ -301,9 +301,9 @@
                 </div>
                 <div class="range-grid">
                   <div class="number-field">
-                    <span>Rubber Action</span>
+                    <span>Erase Action</span>
                     <button id="clear-erase-button" class="button tertiary" type="button">
-                      Clear Rubber (Shift+X)
+                      Clear Erase (Shift+X)
                     </button>
                   </div>
                 </div>
@@ -346,13 +346,13 @@
                 </p>
                 <p class="hint">
                   `Redraw` replaces the nearest contour arc with a freehand correction. `Adjust` refines
-                  handles or translates an existing contour. `Rubber` excludes unwanted pixels from the
+                  handles or translates an existing contour. `Erase` excludes unwanted pixels from the
                   EAT count. `Let's Go Segment` uses corrected slices as local anchors, then `Copy To All
                   Other Recons` transfers the completed contour set.
                 </p>
                 <p class="hint">
-                  Shortcuts: `D` draw contour, `Q` multiple click, `A` redraw, `E` adjust, `R` rubber, `O`
-                  overlay, `V` compare, `T` transfer, `X` clear contour, and `Shift+X` clear rubber.
+                  Shortcuts: `D` draw contour, `Q` multiple click, `R` redraw, `A` adjust, `E` erase, `O`
+                  overlay, `V` compare, `T` transfer, `X` clear contour, and `Shift+X` clear erase.
                   Pan and zoom stay available with `M`, `Z`, middle mouse, and Cmd/Ctrl + wheel.
                 </p>
               </section>
@@ -452,7 +452,7 @@
                     <dd>-</dd>
                   </div>
                   <div class="meta-row">
-                    <dt>Rubber Excluded</dt>
+                    <dt>Erase Excluded</dt>
                     <dd>-</dd>
                   </div>
                   <div class="meta-row">
@@ -540,7 +540,7 @@
                   <option value="contourClick">Multiple Click</option>
                   <option value="refine">Redraw</option>
                   <option value="edit">Adjust</option>
-                  <option value="erase">Rubber</option>
+                  <option value="erase">Erase</option>
                   <option value="pan">Pan</option>
                   <option value="zoom">Zoom</option>
                 </select>

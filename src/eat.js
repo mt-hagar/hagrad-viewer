@@ -2749,7 +2749,7 @@
           : state.activeTool === "zoom"
             ? "Zoom"
           : state.activeTool === "erase"
-            ? "Rubber"
+            ? "Erase"
             : "Draw";
     els.toolSummary.textContent = toolLabel;
     if (els.toolHud) {
@@ -2800,7 +2800,7 @@
   function setEraseRadius(value) {
     const parsed = clamp(Math.round(Number(value)), 2, 80);
     if (!Number.isFinite(parsed)) {
-      throw new Error("Rubber radius must be a valid number.");
+      throw new Error("Erase radius must be a valid number.");
     }
     state.eraseBrushRadius = parsed;
     updateEraseUi();
@@ -3305,7 +3305,7 @@
     } else if (activeReconstruction && state.volume && !trainingReady) {
       els.aiBackendTraining.textContent = `${describeTrainingCorpus(
         status?.trainingCorpus
-      )} Add at least 1 manual or rubber-corrected slice in the active slab to store a reference case.`;
+      )} Add at least 1 manual or erase-corrected slice in the active slab to store a reference case.`;
     } else if (cacheEntry?.available) {
       els.aiBackendTraining.textContent = `${describeTrainingCorpus(
         status?.trainingCorpus
@@ -3396,7 +3396,7 @@
 
     if (!contourSummary.confirmedSliceCount) {
       throw new Error(
-        "Store Reference only uses manual or rubber-corrected slices. Adjust at least one slice in the selected slab first."
+        "Store Reference only uses manual or erase-corrected slices. Adjust at least one slice in the selected slab first."
       );
     }
 
@@ -5690,7 +5690,7 @@
       { label: "Contour Area", value: metrics ? `${formatNumber(metrics.contourAreaMm2, 1)} mm²` : "-" },
       { label: "EAT Area", value: metrics ? `${formatNumber(metrics.fatAreaMm2, 1)} mm²` : "-" },
       { label: "EAT Volume", value: metrics ? `${formatNumber(metrics.fatVolumeMl, 3)} mL` : "-" },
-      { label: "Rubber Excluded", value: metrics ? `${formatNumber(metrics.excludedVolumeMl, 3)} mL` : "-" },
+      { label: "Erase Excluded", value: metrics ? `${formatNumber(metrics.excludedVolumeMl, 3)} mL` : "-" },
       { label: "Mean Density", value: metrics?.meanHu != null ? formatNumber(metrics.meanHu, 1) : "-" },
       { label: "Density SD", value: metrics?.stdDevHu != null ? formatNumber(metrics.stdDevHu, 1) : "-" },
       { label: "Density Range", value: metrics?.minHu != null ? `${formatNumber(metrics.minHu, 0)} to ${formatNumber(metrics.maxHu, 0)}` : "-" },
@@ -5705,7 +5705,7 @@
       { label: "Total EAT Volume", value: summary.rangeCount ? `${formatNumber(summary.totalVolumeMl, 3)} mL` : "-" },
       { label: "Mean Density", value: summary.meanHu != null ? formatNumber(summary.meanHu, 1) : "-" },
       { label: "Density SD", value: summary.stdDevHu != null ? formatNumber(summary.stdDevHu, 1) : "-" },
-      { label: "Rubber Excluded", value: summary.rangeCount ? `${formatNumber(summary.totalExcludedVolumeMl, 3)} mL` : "-" },
+      { label: "Erase Excluded", value: summary.rangeCount ? `${formatNumber(summary.totalExcludedVolumeMl, 3)} mL` : "-" },
       { label: "Reviewed", value: `${summary.reviewed}` },
       { label: "Missing", value: `${summary.missing}` },
       { label: "Recon Ready", value: `${exportableReconstructions.length} / ${state.reconstructions.length}` },
@@ -6567,7 +6567,7 @@
     pushHistorySnapshot("Anchor-segmented slab");
     setStatus(
       autoCount
-        ? `Let's Go Segment refreshed ${autoCount} slice${autoCount === 1 ? "" : "s"} using your latest contour and rubber anchors${localCorrectionCount ? `, including ${localCorrectionCount} neighboring local correction${localCorrectionCount === 1 ? "" : "s"}` : ""}.`
+        ? `Let's Go Segment refreshed ${autoCount} slice${autoCount === 1 ? "" : "s"} using your latest contour and erase anchors${localCorrectionCount ? `, including ${localCorrectionCount} neighboring local correction${localCorrectionCount === 1 ? "" : "s"}` : ""}.`
         : "Every slice in the selected range is already acting as an anchor from your latest corrections."
     );
   }
@@ -7225,7 +7225,7 @@
         storeRangeStateOnReconstruction(target, mappedTransfer.rangeState);
         target.transferMode = "approximate";
         target.transferWarning = sourceReconstruction.exclusionMasks.size
-          ? "Best-effort contour transfer skipped the rubber exclusions. Review and adjust on this reconstruction."
+          ? "Best-effort contour transfer skipped the erase exclusions. Review and adjust on this reconstruction."
           : "Best-effort contour transfer completed. Review and adjust on this reconstruction.";
         approximateCount += 1;
         if (sourceReconstruction.exclusionMasks.size) {
@@ -7253,7 +7253,7 @@
       segments.push(`${approximateCount} best-effort`);
     }
     const suffix = skippedExclusionTargets
-      ? " Rubber exclusions were not copied to best-effort reconstructions."
+      ? " Erase exclusions were not copied to best-effort reconstructions."
       : "";
     setStatus(
       `Transferred segmentation from ${sourceReconstruction.label} to ${targets.length} reconstruction${targets.length === 1 ? "" : "s"} (${segments.join(", ")}).${suffix}`
@@ -7859,7 +7859,7 @@
       metricsY + 66
     );
     ctx.fillText(
-      `Rubber Excluded: ${row?.rubber_excluded_volume_ml != null ? `${formatNumber(row.rubber_excluded_volume_ml, 3)} mL` : "-"}`,
+      `Erase Excluded: ${row?.rubber_excluded_volume_ml != null ? `${formatNumber(row.rubber_excluded_volume_ml, 3)} mL` : "-"}`,
       x + panelPadding,
       metricsY + 88
     );
@@ -8024,7 +8024,7 @@
     ctx.fillText(`Research Study: ${reportSet.researchStudyDisplay || "-"}`, 76, 432 + tableHeight);
     ctx.fillText(`Threshold: ${report.summary.threshold_min_hu} to ${report.summary.threshold_max_hu} HU`, 76, 458 + tableHeight);
     ctx.fillText(`Voxel Size: ${formatNumber(report.summary.row_spacing_mm, 3)} x ${formatNumber(report.summary.column_spacing_mm, 3)} x ${formatNumber(report.summary.slice_spacing_mm, 3)} mm`, 76, 484 + tableHeight);
-    ctx.fillText(`Rubber Excluded: ${formatNumber(report.summary.total_rubber_excluded_volume_ml, 3)} mL`, 76, 510 + tableHeight);
+    ctx.fillText(`Erase Excluded: ${formatNumber(report.summary.total_rubber_excluded_volume_ml, 3)} mL`, 76, 510 + tableHeight);
     ctx.fillText(`Reference Reconstruction: ${report.reconstruction_label}`, 550, 406 + tableHeight);
     ctx.fillText(`Density SD: ${report.summary.sd_eat_density_hu != null ? `${formatNumber(report.summary.sd_eat_density_hu, 1)} HU` : "-"}`, 550, 432 + tableHeight);
     ctx.fillText(`Transfer Mode: ${formatTransferModeLabel(report.transfer_mode)}`, 900, 432 + tableHeight);
@@ -8182,8 +8182,8 @@
     if (drag.type === "erase") {
       if (drag.changed) {
         refreshContourOutputs();
-        pushHistorySnapshot("Updated rubber exclusions");
-        setStatus(`Rubber exclusions updated for slice ${state.currentSliceIndex + 1}.`);
+        pushHistorySnapshot("Updated erase exclusions");
+        setStatus(`Erase exclusions updated for slice ${state.currentSliceIndex + 1}.`);
       } else {
         requestRender();
       }
@@ -8297,7 +8297,7 @@
 
     if (state.activeTool === "erase") {
       if (!getStoredContour(state.currentSliceIndex)) {
-        setStatus("Copy, segment, or draw a contour before using the Rubber tool.", "warning");
+        setStatus("Copy, segment, or draw a contour before using the Erase tool.", "warning");
         return;
       }
 
@@ -8766,12 +8766,12 @@
         return;
       }
       if (!clearSliceExclusions(state.currentSliceIndex)) {
-        setStatus(`No rubber exclusions to clear on slice ${state.currentSliceIndex + 1}.`, "warning");
+        setStatus(`No erase exclusions to clear on slice ${state.currentSliceIndex + 1}.`, "warning");
         return;
       }
       refreshContourOutputs();
-      pushHistorySnapshot("Cleared rubber exclusions");
-      setStatus(`Cleared rubber exclusions for slice ${state.currentSliceIndex + 1}.`);
+      pushHistorySnapshot("Cleared erase exclusions");
+      setStatus(`Cleared erase exclusions for slice ${state.currentSliceIndex + 1}.`);
     };
 
     const clearCurrentSliceContour = () => {
@@ -8920,7 +8920,7 @@
           setEraseRadius(els.eraseRadiusInput.value);
         } catch (error) {
           console.error(error);
-          setStatus(error.message || "Invalid rubber radius.", "error");
+          setStatus(error.message || "Invalid erase radius.", "error");
           updateEraseUi();
         }
       });
@@ -9062,7 +9062,7 @@
           return;
         }
         setEraseRadius(presetRadius);
-        setStatus(`Rubber size set to ${button.textContent.trim().toLowerCase()} (${presetRadius}px).`);
+        setStatus(`Erase size set to ${button.textContent.trim().toLowerCase()} (${presetRadius}px).`);
       });
     });
 
@@ -9271,11 +9271,11 @@
         setActiveTool("contour");
       } else if (lowerKey === "q") {
         setActiveTool("contourClick");
-      } else if (lowerKey === "a") {
-        setActiveTool("refine");
-      } else if (lowerKey === "e") {
-        setActiveTool("edit");
       } else if (lowerKey === "r") {
+        setActiveTool("refine");
+      } else if (lowerKey === "a") {
+        setActiveTool("edit");
+      } else if (lowerKey === "e") {
         setActiveTool("erase");
       } else if (lowerKey === "m" || lowerKey === "p") {
         setActiveTool("pan");
