@@ -234,13 +234,42 @@
                   <span class="section-note">Contour, adjust, clean</span>
                 </div>
                 <div class="tool-grid">
-                  <label class="tool-dropdown is-active" id="contour-tool-dropdown">
-                    <span>Contour</span>
-                    <select id="contour-tool-select" aria-label="Contour drawing mode">
-                      <option value="contour">Draw</option>
-                      <option value="contourClick">Multiple Click</option>
-                    </select>
-                  </label>
+                  <div class="tool-dropdown is-active" id="contour-tool-dropdown">
+                    <button
+                      class="tool-dropdown-button"
+                      id="contour-tool-button"
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded="false"
+                      aria-controls="contour-tool-menu"
+                    >
+                      <span class="tool-dropdown-title">Contour</span>
+                      <span class="tool-dropdown-value" id="contour-tool-label">Draw</span>
+                      <span class="dropdown-caret" aria-hidden="true"></span>
+                    </button>
+                    <div class="tool-dropdown-menu" id="contour-tool-menu" role="listbox" hidden>
+                      <button
+                        class="tool-dropdown-option"
+                        data-contour-tool-option="contour"
+                        role="option"
+                        type="button"
+                        aria-selected="true"
+                      >
+                        <span>Draw</span>
+                        <kbd>D</kbd>
+                      </button>
+                      <button
+                        class="tool-dropdown-option"
+                        data-contour-tool-option="contourClick"
+                        role="option"
+                        type="button"
+                        aria-selected="false"
+                      >
+                        <span>Multiple Click</span>
+                        <kbd>Q</kbd>
+                      </button>
+                    </div>
+                  </div>
                   <button class="tool-button" data-tool="edit" type="button">Adjust</button>
                   <button class="tool-button" data-tool="erase" type="button">Rubber</button>
                   <button class="tool-button" data-tool="pan" type="button">Pan (M)</button>

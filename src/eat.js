@@ -218,7 +218,10 @@
     els.rangeSummary = document.getElementById("range-summary");
     els.toolButtons = Array.from(document.querySelectorAll("[data-tool]"));
     els.contourToolDropdown = document.getElementById("contour-tool-dropdown");
-    els.contourToolSelect = document.getElementById("contour-tool-select");
+    els.contourToolButton = document.getElementById("contour-tool-button");
+    els.contourToolLabel = document.getElementById("contour-tool-label");
+    els.contourToolMenu = document.getElementById("contour-tool-menu");
+    els.contourToolOptions = Array.from(document.querySelectorAll("[data-contour-tool-option]"));
     els.toolbarToolSelect = document.getElementById("toolbar-tool-select");
     els.presetButtons = Array.from(document.querySelectorAll("[data-preset]"));
     els.copyPrevButton = document.getElementById("copy-prev-button");
@@ -2393,6 +2396,25 @@
     return tool === "contourClick" ? "contourClick" : "contour";
   }
 
+  function getContourDrawingToolLabel(tool) {
+    return tool === "contourClick" ? "Multiple Click" : "Draw";
+  }
+
+  function setContourToolMenuOpen(open) {
+    if (!els.contourToolDropdown || !els.contourToolButton || !els.contourToolMenu) {
+      return;
+    }
+    const isOpen = Boolean(open);
+    els.contourToolDropdown.classList.toggle("is-open", isOpen);
+    els.contourToolButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    els.contourToolMenu.hidden = !isOpen;
+  }
+
+  function toggleContourToolMenu() {
+    const isOpen = !els.contourToolMenu?.hidden;
+    setContourToolMenuOpen(!isOpen);
+  }
+
   function buildContourClickPreviewPoints(draft) {
     if (!draft?.points?.length) {
       return [];
@@ -2407,7 +2429,7 @@
     if (points.length < 3) {
       return points;
     }
-    const smoothed = normalizeContourPoints(points);
+    const smoothed = buildContourClickCurvePoints(points);
     return smoothed.length >= 3 ? smoothed : points;
   }
 
@@ -2687,9 +2709,14 @@
     });
     const isContourMode = state.activeTool === "contour" || state.activeTool === "contourClick";
     els.contourToolDropdown?.classList.toggle("is-active", isContourMode);
-    if (els.contourToolSelect) {
-      els.contourToolSelect.value = isContourMode ? state.activeTool : "contour";
+    if (els.contourToolLabel) {
+      els.contourToolLabel.textContent = getContourDrawingToolLabel(isContourMode ? state.activeTool : "contour");
     }
+    els.contourToolOptions?.forEach((button) => {
+      const isSelected = button.dataset.contourToolOption === (isContourMode ? state.activeTool : "contour");
+      button.classList.toggle("is-active", isSelected);
+      button.setAttribute("aria-selected", isSelected ? "true" : "false");
+    });
     if (els.toolbarToolSelect) {
       els.toolbarToolSelect.value = state.activeTool;
     }
@@ -4213,12 +4240,13 @@
     if (!draft || draft.sliceIndex !== state.currentSliceIndex) {
       return false;
     }
-    if (draft.points.length < 3 || polygonArea(draft.points) < 30) {
+    const contourPoints = buildContourClickCurvePoints(draft.points);
+    if (contourPoints.length < 3 || polygonArea(contourPoints) < 30) {
       setStatus("Place at least three points around a larger contour before finishing.", "warning");
       requestRender();
       return false;
     }
-    setContour(state.currentSliceIndex, draft.points, getStoredContour(state.currentSliceIndex) ? "edited" : "drawn");
+    setContour(state.currentSliceIndex, contourPoints, getStoredContour(state.currentSliceIndex) ? "edited" : "drawn");
     state.contourClickDraft = null;
     enterPostContourAdjustMode("contourClick");
     setStatus(`Saved multiple-click contour for slice ${state.currentSliceIndex + 1}. Adjust handles are active; scroll to continue placing contours.`);
@@ -4520,6 +4548,50 @@
       });
     }
     return smoothed;
+  }
+
+  function interpolateHermitePoint(p0, p1, p2, p3, t) {
+    const tension = 0.52;
+    const t2 = t * t;
+    const t3 = t2 * t;
+    const h00 = 2 * t3 - 3 * t2 + 1;
+    const h10 = t3 - 2 * t2 + t;
+    const h01 = -2 * t3 + 3 * t2;
+    const h11 = t3 - t2;
+    const m1 = {
+      x: (p2.x - p0.x) * tension,
+      y: (p2.y - p0.y) * tension,
+    };
+    const m2 = {
+      x: (p3.x - p1.x) * tension,
+      y: (p3.y - p1.y) * tension,
+    };
+    return clampPointToImage({
+      x: h00 * p1.x + h10 * m1.x + h01 * p2.x + h11 * m2.x,
+      y: h00 * p1.y + h10 * m1.y + h01 * p2.y + h11 * m2.y,
+    });
+  }
+
+  function buildContourClickCurvePoints(points) {
+    const anchors = dedupeContourPoints(points);
+    if (anchors.length < 3 || polygonArea(anchors) < 12) {
+      return [];
+    }
+
+    const samplesPerSegment = clamp(Math.ceil(RESAMPLED_CONTOUR_POINTS / anchors.length), 8, 18);
+    const curvedPoints = [];
+    for (let index = 0; index < anchors.length; index += 1) {
+      const p0 = anchors[(index + anchors.length - 1) % anchors.length];
+      const p1 = anchors[index];
+      const p2 = anchors[(index + 1) % anchors.length];
+      const p3 = anchors[(index + 2) % anchors.length];
+      for (let sample = 0; sample < samplesPerSegment; sample += 1) {
+        curvedPoints.push(interpolateHermitePoint(p0, p1, p2, p3, sample / samplesPerSegment));
+      }
+    }
+
+    const resampled = resampleClosedPolygon(curvedPoints, RESAMPLED_CONTOUR_POINTS);
+    return smoothClosedPolygon(resampled, 2);
   }
 
   function normalizeContourPoints(points) {
@@ -8629,8 +8701,33 @@
     els.toolButtons.forEach((button) => {
       button.addEventListener("click", () => setActiveTool(button.dataset.tool));
     });
-    els.contourToolSelect?.addEventListener("change", () => {
-      setActiveTool(els.contourToolSelect.value);
+    els.contourToolButton?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleContourToolMenu();
+    });
+    els.contourToolButton?.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        setContourToolMenuOpen(false);
+      }
+    });
+    els.contourToolOptions?.forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        setActiveTool(button.dataset.contourToolOption);
+        setContourToolMenuOpen(false);
+        els.contourToolButton?.focus({ preventScroll: true });
+      });
+      button.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          setContourToolMenuOpen(false);
+          els.contourToolButton?.focus({ preventScroll: true });
+        }
+      });
+    });
+    document.addEventListener("click", (event) => {
+      if (!els.contourToolDropdown?.contains(event.target)) {
+        setContourToolMenuOpen(false);
+      }
     });
     els.toolbarToolSelect?.addEventListener("change", () => {
       setActiveTool(els.toolbarToolSelect.value);
