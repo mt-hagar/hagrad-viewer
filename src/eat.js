@@ -100,6 +100,16 @@
     radiusSmoothingWindow: 2,
     radiusSmoothingPasses: 2,
   };
+  const EXPORT_REPORT_PALETTE = [
+    "#5ed6c3",
+    "#ffd27f",
+    "#6ee4ff",
+    "#f58f84",
+    "#c99bff",
+    "#a6e36e",
+    "#ffb36e",
+    "#9fb7ff",
+  ];
 
   const state = {
     reconstructions: [],
@@ -172,6 +182,8 @@
       currentStudyId: "",
       studies: [],
       busy: false,
+      reportPrefs: {},
+      reportDragId: null,
     },
   };
 
@@ -314,6 +326,18 @@
     els.projectCaseLabelInput = document.getElementById("project-case-label-input");
     els.projectStatusNote = document.getElementById("project-status-note");
     els.projectCaseList = document.getElementById("project-case-list");
+    els.stage = document.querySelector(".stage");
+    els.exportWorkspace = document.getElementById("eat-export-workspace");
+    els.exportWorkspaceNote = document.getElementById("eat-export-workspace-note");
+    els.exportWorkspacePdfButton = document.getElementById("export-workspace-pdf-button");
+    els.exportWorkspaceCsvButton = document.getElementById("export-workspace-csv-button");
+    els.exportSeriesControls = document.getElementById("eat-export-series-controls");
+    els.exportSeriesSummary = document.getElementById("eat-export-series-summary");
+    els.exportPreviewCanvas = document.getElementById("eat-export-preview-canvas");
+    els.exportPreviewTitle = document.getElementById("eat-export-preview-title");
+    els.exportPreviewMetrics = document.getElementById("eat-export-preview-metrics");
+    els.exportResultsTable = document.getElementById("eat-export-results-table");
+    els.exportTableSummary = document.getElementById("eat-export-table-summary");
     els.viewerGrid = document.getElementById("viewer-grid");
     els.primaryPanelLabel = document.getElementById("primary-panel-label");
     els.comparePanel = document.getElementById("compare-panel");
@@ -1664,11 +1688,13 @@
         contentTime: safeString(dataSet.string("x00080033")),
         modality: safeString(dataSet.string("x00080060")),
         accessionNumber: safeString(dataSet.string("x00080050")),
+        protocolName: safeString(dataSet.string("x00181030")),
         seriesDescription: safeString(dataSet.string("x0008103e")),
         sopInstanceUID: safeString(dataSet.string("x00080018")),
         studyInstanceUID: safeString(dataSet.string("x0020000d")),
         seriesInstanceUID: safeString(dataSet.string("x0020000e")),
         frameOfReferenceUID: safeString(dataSet.string("x00200052")),
+        seriesNumber: readDicomNumber(dataSet, "x00200011"),
         instanceNumber: readDicomNumber(dataSet, "x00200013"),
         numberOfFrames: readDicomNumber(dataSet, "x00280008"),
         rows: readDicomNumber(dataSet, "x00280010"),
@@ -1681,6 +1707,9 @@
         pixelDataHasFragments: Boolean(pixelDataElement?.fragments?.length),
         pixelSpacing: parseNumericArray(dataSet.string("x00280030")),
         sliceThickness: parseFirstNumber(dataSet.string("x00180050")),
+        spacingBetweenSlices: parseFirstNumber(dataSet.string("x00180088")),
+        kvp: parseFirstNumber(dataSet.string("x00180060")),
+        convolutionKernel: safeString(dataSet.string("x00181210")),
         imagePositionPatient: parseNumericArray(dataSet.string("x00200032")),
         imageOrientationPatient,
         rowDirection: normalize(imageOrientationPatient.slice(0, 3)),
@@ -2208,6 +2237,7 @@
     }
 
     state.reconstructions = nextReconstructions;
+    syncExportReportPrefs();
     state.dragging = null;
     state.hoverImagePoint = null;
 
@@ -2315,6 +2345,8 @@
     state.export.action = null;
     state.export.studyId = "";
     state.export.busy = false;
+    state.export.reportPrefs = {};
+    state.export.reportDragId = null;
     resetHistory();
     setStatus("Ready for axial CT reconstructions");
     refreshUi();
@@ -2554,8 +2586,17 @@
     return `sidebar-page-${normalizeSidebarPage(page)}`;
   }
 
+  function updateExportWorkspaceVisibility() {
+    const showExportWorkspace = state.activeSidebarPage === "export" && !state.presentationFocus;
+    els.stage?.classList.toggle("is-hidden", showExportWorkspace);
+    els.exportWorkspace?.classList.toggle("is-hidden", !showExportWorkspace);
+  }
+
   function setSidebarPage(page) {
     const nextPage = normalizeSidebarPage(page);
+    if (nextPage === "export" && state.presentationFocus) {
+      setPresentationFocus(false);
+    }
     state.activeSidebarPage = nextPage;
     state.activeFocusGroupId = sidebarPageId(nextPage);
     els.sidebarPageTabs?.forEach((button) => {
@@ -2571,6 +2612,10 @@
         panel.open = true;
       }
     });
+    updateExportWorkspaceVisibility();
+    if (nextPage === "export") {
+      updateExportWorkspaceUi();
+    }
     updatePresentationFocusUi();
   }
 
@@ -2588,6 +2633,7 @@
     document.body.classList.toggle("is-focus-sidebar-open", state.presentationFocus && state.focusSidebarOpen);
     els.app?.classList.toggle("is-presentation-focus", state.presentationFocus);
     els.app?.classList.toggle("is-focus-sidebar-open", state.presentationFocus && state.focusSidebarOpen);
+    updateExportWorkspaceVisibility();
     if (els.presentationFocusToggleButton) {
       els.presentationFocusToggleButton.classList.toggle("is-active", state.presentationFocus);
       els.presentationFocusToggleButton.textContent = state.presentationFocus ? "×" : "⤢";
@@ -2916,7 +2962,7 @@
       copy =
         state.reconstructions.length > 1
           ? "The workflow is ready for simultaneous multi-reconstruction export."
-          : "The workflow is ready for final PNG and CSV export.";
+          : "The workflow is ready for final PDF-ready report and CSV export.";
     }
 
     const steps = GUIDE_STEPS.map((label, index) => ({
@@ -3567,11 +3613,13 @@
 
   function updateProjectUi() {
     const exportBusy = state.project.appendingExport || state.project.savingSession || state.export.busy;
-    const disableExports = exportBusy || !state.reconstructions.length;
+    const exportableCount = getOrderedReportReconstructions({ onlyIncluded: true, onlyExportable: true }).length;
+    const disableExports = exportBusy || !exportableCount;
     els.finishCloseButton.disabled = disableExports;
     els.finishCloseButton.textContent = state.export.busy && state.export.action === "finish-close" ? "Finishing..." : "Finish & Close";
     els.exportCsvButton.disabled = disableExports;
     els.exportImageButton.disabled = disableExports;
+    els.exportImageButton.textContent = "Print PDF Report";
 
     const exportStudy = getSelectedExportStudyMetadata();
     if (els.projectSummary) {
@@ -3579,7 +3627,7 @@
     }
     if (els.projectStatusNote) {
       els.projectStatusNote.textContent = exportStudy.id
-        ? `Finish & Close will also mirror PNG and CSV exports into ${getExportStudyDirectoryLabel(exportStudy.id)}.`
+        ? `Finish & Close will open a PDF-ready report and mirror CSV exports into ${getExportStudyDirectoryLabel(exportStudy.id)}.`
         : "Choose or create the research study in the Finish & Close popup to mirror exports into a dedicated outbox folder.";
     }
   }
@@ -4141,9 +4189,18 @@
       const button = document.createElement("button");
       button.type = "button";
       button.className = "slice-row";
+      button.draggable = true;
+      button.dataset.reconstructionId = reconstruction.id;
       if (activeReconstruction?.id === reconstruction.id) {
         button.classList.add("is-active");
       }
+      button.addEventListener("dragstart", (event) => {
+        event.dataTransfer?.setData("application/x-hagrad-reconstruction-id", reconstruction.id);
+        event.dataTransfer?.setData("text/plain", reconstruction.id);
+        if (event.dataTransfer) {
+          event.dataTransfer.effectAllowed = "copy";
+        }
+      });
       button.addEventListener("click", () => {
         const compatibility = getReconstructionCompatibility(activeReconstruction, reconstruction);
         activateReconstruction(reconstruction.id, {
@@ -5794,6 +5851,7 @@
     updateSummaryUi();
     renderReconstructionList();
     renderSliceList();
+    updateExportWorkspaceUi();
     updateStudyMetadataUi();
     updateEmptyState();
     updateHistoryUi();
@@ -7261,13 +7319,13 @@
   }
 
   function getExportActionConfig(action) {
-    if (action === "image") {
+    if (action === "pdf") {
       return {
-        title: "Export PNG Report",
-        copy: "Assign a Study ID to print on the PNG report before the export starts.",
-        hint: "The Study ID is shown on the report header and in the export parameters.",
-        confirmLabel: "Export PNG",
-        busyLabel: "Exporting PNG...",
+        title: "Print PDF Report",
+        copy: "Assign a Study ID to print on the PDF-ready EAT report before the report opens.",
+        hint: "The Study ID is shown on the report header and in the export parameters. Choose Save as PDF in the print dialog.",
+        confirmLabel: "Open Report",
+        busyLabel: "Building Report...",
       };
     }
     if (action === "csv") {
@@ -7281,8 +7339,8 @@
     }
     return {
       title: "Finish & Close",
-      copy: "Assign a Study ID, export the PNG report and CSV together, then clear the current patient from the viewer.",
-      hint: "Finish & Close exports both files, mirrors them into the selected research study outbox when chosen, and resets the viewer for the next patient.",
+      copy: "Assign a Study ID, open the PDF-ready report, export CSV, then clear the current patient from the viewer.",
+      hint: "Finish & Close opens the report print dialog, mirrors CSV into the selected research study outbox when chosen, and resets the viewer for the next patient.",
       confirmLabel: "Finish & Close",
       busyLabel: "Finishing...",
     };
@@ -7406,8 +7464,12 @@
       setStatus("Load a study before exporting.", "warning");
       return;
     }
+    if (!getOrderedReportReconstructions({ onlyIncluded: true, onlyExportable: true }).length) {
+      setStatus("Segment and include at least one reconstruction before exporting.", "warning");
+      return;
+    }
 
-    state.export.action = action || "image";
+    state.export.action = action || "pdf";
     if (!safeString(state.export.studyId)) {
       state.export.studyId = getSuggestedStudyId();
     }
@@ -7444,7 +7506,7 @@
     state.export.busy = true;
     updateExportPromptUi();
     try {
-      await runExportAction(state.export.action || "image", studyId);
+      await runExportAction(state.export.action || "pdf", studyId);
       state.export.promptOpen = false;
       state.export.action = null;
     } finally {
@@ -7545,9 +7607,12 @@
       throw new Error("Load a study before exporting.");
     }
 
-    const exportableReconstructions = getExportableReconstructions();
+    const exportableReconstructions = getOrderedReportReconstructions({
+      onlyIncluded: true,
+      onlyExportable: true,
+    });
     if (!exportableReconstructions.length) {
-      throw new Error("Transfer or draw segmentation on at least one reconstruction before exporting.");
+      throw new Error("Include at least one segmented reconstruction before exporting.");
     }
 
     const currentActiveReconstruction = getActiveReconstruction();
@@ -7557,6 +7622,13 @@
       const reconstruction = exportableReconstructions[index];
       setStatus(`Preparing export ${index + 1} / ${exportableReconstructions.length}...`);
       const report = await withReconstructionContext(reconstruction, () => buildActiveExportReport());
+      const pref = getExportReportPref(reconstruction, state.reconstructions.indexOf(reconstruction));
+      report.source_reconstruction_label = report.reconstruction_label;
+      report.reconstruction_label = pref?.label || report.reconstruction_label;
+      report.report_color = pref?.color || EXPORT_REPORT_PALETTE[index % EXPORT_REPORT_PALETTE.length];
+      report.report_order = pref?.order ?? index;
+      report.series_number = getSeriesNumberLabel(reconstruction, state.reconstructions.indexOf(reconstruction));
+      report.dicom_rows = getImportantDicomRows(reconstruction);
       reports.push(report);
       await waitForAnimationFrame();
     }
@@ -7712,6 +7784,642 @@
     }
     return "Local";
   }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function escapeAttr(value) {
+    return escapeHtml(value).replace(/`/g, "&#96;");
+  }
+
+  function getReportPrefKey(reconstruction) {
+    return safeString(reconstruction?.id) || "";
+  }
+
+  function getSeriesNumberLabel(reconstruction, fallbackIndex) {
+    const record = reconstruction?.records?.[0] || {};
+    if (Number.isFinite(record.seriesNumber)) {
+      return `S${record.seriesNumber}`;
+    }
+    return `R${fallbackIndex + 1}`;
+  }
+
+  function buildDefaultReportLabel(reconstruction, index) {
+    const record = reconstruction?.records?.[0] || {};
+    const seriesNumber = getSeriesNumberLabel(reconstruction, index);
+    const description = safeString(record.seriesDescription) || safeString(reconstruction?.label) || "EAT reconstruction";
+    return `${seriesNumber} · ${description}`;
+  }
+
+  function ensureExportReportPref(reconstruction, index) {
+    const key = getReportPrefKey(reconstruction);
+    if (!key) {
+      return null;
+    }
+
+    const existing = state.export.reportPrefs[key] || {};
+    const next = {
+      label: safeString(existing.label) || buildDefaultReportLabel(reconstruction, index),
+      color: safeString(existing.color) || EXPORT_REPORT_PALETTE[index % EXPORT_REPORT_PALETTE.length],
+      included: existing.included !== false,
+      order: Number.isFinite(existing.order) ? existing.order : index,
+    };
+    state.export.reportPrefs[key] = next;
+    return next;
+  }
+
+  function syncExportReportPrefs() {
+    const nextPrefs = {};
+    state.reconstructions.forEach((reconstruction, index) => {
+      const key = getReportPrefKey(reconstruction);
+      if (!key) {
+        return;
+      }
+      nextPrefs[key] = state.export.reportPrefs[key] || {};
+      state.export.reportPrefs = {
+        ...state.export.reportPrefs,
+        [key]: nextPrefs[key],
+      };
+      nextPrefs[key] = ensureExportReportPref(reconstruction, index);
+    });
+    state.export.reportPrefs = nextPrefs;
+    normalizeExportReportOrders();
+  }
+
+  function getExportReportPref(reconstruction, index) {
+    return ensureExportReportPref(reconstruction, index ?? state.reconstructions.indexOf(reconstruction));
+  }
+
+  function normalizeExportReportOrders() {
+    const ordered = state.reconstructions
+      .slice()
+      .sort((left, right) => {
+        const leftPref = getExportReportPref(left, state.reconstructions.indexOf(left));
+        const rightPref = getExportReportPref(right, state.reconstructions.indexOf(right));
+        return (leftPref?.order ?? 0) - (rightPref?.order ?? 0);
+      });
+    ordered.forEach((reconstruction, index) => {
+      const pref = getExportReportPref(reconstruction, index);
+      if (pref) {
+        pref.order = index;
+      }
+    });
+  }
+
+  function getOrderedReportReconstructions(options = {}) {
+    syncExportReportPrefs();
+    return state.reconstructions
+      .slice()
+      .sort((left, right) => {
+        const leftPref = getExportReportPref(left, state.reconstructions.indexOf(left));
+        const rightPref = getExportReportPref(right, state.reconstructions.indexOf(right));
+        return (leftPref?.order ?? 0) - (rightPref?.order ?? 0);
+      })
+      .filter((reconstruction, index) => {
+        const pref = getExportReportPref(reconstruction, index);
+        if (options.onlyIncluded && pref?.included === false) {
+          return false;
+        }
+        if (options.onlyExportable && !hasTransferredSegmentation(reconstruction)) {
+          return false;
+        }
+        return true;
+      });
+  }
+
+  function moveReportReconstruction(reconstructionId, direction) {
+    const ordered = getOrderedReportReconstructions();
+    const currentIndex = ordered.findIndex((reconstruction) => reconstruction.id === reconstructionId);
+    if (currentIndex < 0) {
+      return;
+    }
+    const nextIndex = clamp(currentIndex + direction, 0, ordered.length - 1);
+    if (nextIndex === currentIndex) {
+      return;
+    }
+    const [moved] = ordered.splice(currentIndex, 1);
+    ordered.splice(nextIndex, 0, moved);
+    ordered.forEach((reconstruction, index) => {
+      const pref = getExportReportPref(reconstruction, index);
+      if (pref) {
+        pref.order = index;
+      }
+    });
+    updateExportWorkspaceUi();
+  }
+
+  function dropReportReconstructionBefore(sourceId, targetId) {
+    if (!sourceId || !targetId || sourceId === targetId) {
+      return;
+    }
+    const ordered = getOrderedReportReconstructions();
+    const sourceIndex = ordered.findIndex((reconstruction) => reconstruction.id === sourceId);
+    const targetIndex = ordered.findIndex((reconstruction) => reconstruction.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0) {
+      return;
+    }
+    const [moved] = ordered.splice(sourceIndex, 1);
+    ordered.splice(targetIndex, 0, moved);
+    ordered.forEach((reconstruction, index) => {
+      const pref = getExportReportPref(reconstruction, index);
+      if (pref) {
+        pref.order = index;
+      }
+    });
+    updateExportWorkspaceUi();
+  }
+
+  function getReportSummaryForReconstruction(reconstruction) {
+    if (!reconstruction?.volume) {
+      return {
+        bounds: null,
+        summary: null,
+      };
+    }
+    try {
+      return withReconstructionSync(reconstruction, () => ({
+        bounds: getSliceBounds(),
+        summary: buildStudySummary(),
+      }));
+    } catch (error) {
+      console.warn("Could not summarize EAT reconstruction", error);
+      return {
+        bounds: null,
+        summary: null,
+      };
+    }
+  }
+
+  function formatSliceRange(bounds) {
+    return bounds ? `${bounds.start + 1}-${bounds.end + 1}` : "-";
+  }
+
+  function formatHuRange() {
+    return `${state.huThreshold.min} to ${state.huThreshold.max} HU`;
+  }
+
+  function formatMetricValue(value, suffix, digits = 1) {
+    return Number.isFinite(value) ? `${formatNumber(value, digits)}${suffix ? ` ${suffix}` : ""}` : "-";
+  }
+
+  function describeReportStatus(reconstruction, summaryInfo) {
+    if (!state.reconstructions.length) {
+      return "No study";
+    }
+    if (!hasTransferredSegmentation(reconstruction)) {
+      return "Pending segmentation";
+    }
+    if (summaryInfo?.summary?.missing > 0) {
+      return "Review missing slices";
+    }
+    return "Ready";
+  }
+
+  function getReportReferenceReconstruction() {
+    const active = getActiveReconstruction();
+    const includedReady = getOrderedReportReconstructions({ onlyIncluded: true, onlyExportable: true });
+    if (active && includedReady.some((reconstruction) => reconstruction.id === active.id)) {
+      return active;
+    }
+    return includedReady[0] || active || state.reconstructions[0] || null;
+  }
+
+  function renderExportSeriesControls() {
+    if (!els.exportSeriesControls) {
+      return;
+    }
+    const ordered = getOrderedReportReconstructions();
+    const includedReady = getOrderedReportReconstructions({ onlyIncluded: true, onlyExportable: true });
+    if (els.exportSeriesSummary) {
+      els.exportSeriesSummary.textContent = `${includedReady.length} included`;
+    }
+
+    if (!ordered.length) {
+      els.exportSeriesControls.innerHTML = '<p class="hint">Load EAT reconstructions to prepare a report.</p>';
+      return;
+    }
+
+    els.exportSeriesControls.innerHTML = ordered
+      .map((reconstruction, rowIndex) => {
+        const originalIndex = state.reconstructions.indexOf(reconstruction);
+        const pref = getExportReportPref(reconstruction, originalIndex);
+        const summaryInfo = getReportSummaryForReconstruction(reconstruction);
+        const ready = hasTransferredSegmentation(reconstruction);
+        const metaParts = [
+          ready ? "Ready" : "Pending",
+          `${reconstruction.volume?.depth || 0} slices`,
+          formatSliceRange(summaryInfo.bounds),
+        ];
+        if (summaryInfo.summary?.reviewed != null) {
+          metaParts.push(`${summaryInfo.summary.reviewed} reviewed`);
+        }
+        return `
+          <div
+            class="eat-export-series-row"
+            data-report-reconstruction-id="${escapeAttr(reconstruction.id)}"
+            draggable="true"
+          >
+            <div class="eat-export-order">
+              <span class="eat-export-index">#${rowIndex + 1}</span>
+              <span class="eat-export-order-buttons">
+                <button class="mini-button" type="button" data-report-move="up" ${rowIndex === 0 ? "disabled" : ""}>Up</button>
+                <button class="mini-button" type="button" data-report-move="down" ${rowIndex === ordered.length - 1 ? "disabled" : ""}>Dn</button>
+              </span>
+            </div>
+            <input
+              class="eat-export-include"
+              type="checkbox"
+              aria-label="Include ${escapeAttr(pref?.label || reconstruction.label)}"
+              ${pref?.included === false ? "" : "checked"}
+              ${ready ? "" : "disabled"}
+            />
+            <input
+              class="eat-export-color"
+              type="color"
+              value="${escapeAttr(pref?.color || EXPORT_REPORT_PALETTE[rowIndex % EXPORT_REPORT_PALETTE.length])}"
+              aria-label="Report color"
+            />
+            <input
+              class="eat-export-label"
+              type="text"
+              value="${escapeAttr(pref?.label || buildDefaultReportLabel(reconstruction, rowIndex))}"
+              aria-label="Report label"
+              spellcheck="false"
+            />
+            <div class="eat-export-row-meta">${metaParts
+              .map((part) => `<span class="badge ${ready ? "is-ready" : "is-pending-recon"}">${escapeHtml(part)}</span>`)
+              .join("")}</div>
+          </div>
+        `;
+      })
+      .join("");
+
+    bindExportSeriesControls();
+  }
+
+  function bindExportSeriesControls() {
+    els.exportSeriesControls?.querySelectorAll(".eat-export-series-row").forEach((row) => {
+      const reconstructionId = row.dataset.reportReconstructionId;
+      const reconstruction = getReconstructionById(reconstructionId);
+      if (!reconstruction) {
+        return;
+      }
+      const pref = getExportReportPref(reconstruction);
+      row.addEventListener("dragstart", (event) => {
+        state.export.reportDragId = reconstructionId;
+        row.classList.add("is-dragging");
+        event.dataTransfer?.setData("application/x-hagrad-eat-report-reconstruction-id", reconstructionId);
+        event.dataTransfer?.setData("text/plain", reconstructionId);
+        if (event.dataTransfer) {
+          event.dataTransfer.effectAllowed = "move";
+        }
+      });
+      row.addEventListener("dragend", () => {
+        state.export.reportDragId = null;
+        row.classList.remove("is-dragging");
+      });
+      row.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        row.classList.add("is-drop-target");
+        if (event.dataTransfer) {
+          event.dataTransfer.dropEffect = "move";
+        }
+      });
+      row.addEventListener("dragleave", () => row.classList.remove("is-drop-target"));
+      row.addEventListener("drop", (event) => {
+        event.preventDefault();
+        row.classList.remove("is-drop-target");
+        const sourceId =
+          event.dataTransfer?.getData("application/x-hagrad-eat-report-reconstruction-id") ||
+          event.dataTransfer?.getData("text/plain") ||
+          state.export.reportDragId;
+        dropReportReconstructionBefore(sourceId, reconstructionId);
+      });
+      row.querySelectorAll("[data-report-move]").forEach((button) => {
+        button.addEventListener("click", () => {
+          moveReportReconstruction(reconstructionId, button.dataset.reportMove === "up" ? -1 : 1);
+        });
+      });
+      row.querySelector(".eat-export-include")?.addEventListener("change", (event) => {
+        pref.included = Boolean(event.target.checked);
+        updateExportWorkspaceUi();
+      });
+      row.querySelector(".eat-export-color")?.addEventListener("input", (event) => {
+        pref.color = event.target.value;
+        if (els.exportResultsTable) {
+          els.exportResultsTable.innerHTML = buildExportResultsTable();
+        }
+        updateExportPreview();
+      });
+      row.querySelector(".eat-export-label")?.addEventListener("input", (event) => {
+        pref.label = event.target.value;
+        if (els.exportResultsTable) {
+          els.exportResultsTable.innerHTML = buildExportResultsTable();
+        }
+        updateExportPreview();
+      });
+    });
+  }
+
+  function chooseRepresentativeSliceIndex(reconstruction) {
+    if (!reconstruction?.volume) {
+      return 0;
+    }
+    return withReconstructionSync(reconstruction, () => {
+      const bounds = getSliceBounds() || { start: 0, end: Math.max(0, state.volume.depth - 1) };
+      const midpoint = Math.round((bounds.start + bounds.end) / 2);
+      const contoured = Array.from(state.contours.keys())
+        .filter((sliceIndex) => sliceIndex >= bounds.start && sliceIndex <= bounds.end)
+        .sort((left, right) => Math.abs(left - midpoint) - Math.abs(right - midpoint));
+      if (contoured.length) {
+        return contoured[0];
+      }
+      if (reconstruction.id === state.activeReconstructionId && state.currentSliceIndex >= bounds.start && state.currentSliceIndex <= bounds.end) {
+        return state.currentSliceIndex;
+      }
+      return midpoint;
+    });
+  }
+
+  function drawReconstructionPreview(ctx, viewportSize, reconstruction, options = {}) {
+    ctx.save();
+    ctx.clearRect(0, 0, viewportSize.width, viewportSize.height);
+    ctx.fillStyle = "#020609";
+    ctx.fillRect(0, 0, viewportSize.width, viewportSize.height);
+    if (!reconstruction?.volume) {
+      ctx.fillStyle = "#a5bbc9";
+      ctx.font = "600 16px Aptos, Segoe UI, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("No reconstruction selected", viewportSize.width / 2, viewportSize.height / 2);
+      ctx.restore();
+      return null;
+    }
+
+    const sliceIndex = options.sliceIndex ?? chooseRepresentativeSliceIndex(reconstruction);
+    return withReconstructionSync(reconstruction, () => {
+      const margin = options.margin ?? 24;
+      const scale = Math.min(
+        Math.max(10, viewportSize.width - margin * 2) / state.volume.columns,
+        Math.max(10, viewportSize.height - margin * 2) / state.volume.rows
+      );
+      const drawWidth = state.volume.columns * scale;
+      const drawHeight = state.volume.rows * scale;
+      const geometry = {
+        scale,
+        drawWidth,
+        drawHeight,
+        originX: (viewportSize.width - drawWidth) / 2,
+        originY: (viewportSize.height - drawHeight) / 2,
+      };
+
+      const sliceCanvas = renderSlicePixels(sliceIndex, state.volume);
+      ctx.drawImage(sliceCanvas, geometry.originX, geometry.originY, geometry.drawWidth, geometry.drawHeight);
+      const contour = getStoredContour(sliceIndex);
+      if (contour?.points?.length) {
+        const metrics = computeSliceMetricsForPoints(sliceIndex, contour.points, { createOverlay: true });
+        drawThresholdOverlay(ctx, geometry, metrics);
+        drawContour(ctx, geometry, contour);
+      }
+      ctx.fillStyle = "rgba(2, 6, 9, 0.7)";
+      ctx.fillRect(14, 14, Math.min(viewportSize.width - 28, 430), 34);
+      ctx.fillStyle = "#f4f8fb";
+      ctx.font = "700 13px Aptos, Segoe UI, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(`${options.label || reconstruction.label} · Slice ${sliceIndex + 1}`, 26, 36);
+      ctx.restore();
+      return { sliceIndex, contour };
+    });
+  }
+
+  function createReportPreviewDataUrl(reconstruction, label) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1000;
+    canvas.height = 720;
+    const ctx = canvas.getContext("2d");
+    drawReconstructionPreview(ctx, { width: canvas.width, height: canvas.height }, reconstruction, {
+      label,
+      margin: 36,
+    });
+    return canvas.toDataURL("image/png");
+  }
+
+  function updateExportPreview() {
+    if (!els.exportPreviewCanvas) {
+      return;
+    }
+    const reconstruction = getReportReferenceReconstruction();
+    const pref = reconstruction ? getExportReportPref(reconstruction) : null;
+    const summaryInfo = reconstruction ? getReportSummaryForReconstruction(reconstruction) : null;
+
+    if (els.exportPreviewTitle) {
+      els.exportPreviewTitle.textContent = reconstruction ? pref?.label || reconstruction.label : "No reconstruction selected";
+    }
+    if (els.exportPreviewMetrics) {
+      const summary = summaryInfo?.summary || {};
+      els.exportPreviewMetrics.innerHTML = [
+        ["Total EAT Volume", formatMetricValue(summary.totalVolumeMl, "mL", 3)],
+        ["Mean EAT HU", formatMetricValue(summary.meanHu, "HU", 1)],
+        ["SD EAT HU", formatMetricValue(summary.stdDevHu, "HU", 1)],
+        ["Reviewed", `${summary.reviewed || 0} / ${summary.rangeCount || 0}`],
+        ["Missing Slices", String(summary.missing || 0)],
+        ["Threshold", formatHuRange()],
+      ]
+        .map(
+          ([label, value]) => `
+            <div class="export-metric-card">
+              <span>${escapeHtml(label)}</span>
+              <strong>${escapeHtml(value)}</strong>
+            </div>
+          `
+        )
+        .join("");
+    }
+
+    const canvas = els.exportPreviewCanvas;
+    const shell = canvas.parentElement || canvas;
+    const rect = shell.getBoundingClientRect();
+    const width = Math.max(360, Math.round(rect.width || 720));
+    const height = Math.max(320, Math.round(rect.height || 420));
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawReconstructionPreview(ctx, { width, height }, reconstruction, {
+      label: pref?.label || reconstruction?.label,
+    });
+  }
+
+  function buildExportResultsTable() {
+    const rows = getOrderedReportReconstructions();
+    if (!rows.length) {
+      return '<p class="hint">Load and segment EAT reconstructions to populate the report table.</p>';
+    }
+    const body = rows
+      .map((reconstruction, rowIndex) => {
+        const record = reconstruction.records?.[0] || {};
+        const pref = getExportReportPref(reconstruction, rowIndex);
+        const summaryInfo = getReportSummaryForReconstruction(reconstruction);
+        const summary = summaryInfo.summary || {};
+        const status = describeReportStatus(reconstruction, summaryInfo);
+        const statusClass = hasTransferredSegmentation(reconstruction) ? "status-ready" : "status-pending";
+        return `
+          <tr>
+            <td>${escapeHtml(getSeriesNumberLabel(reconstruction, rowIndex))}</td>
+            <td><span class="eat-results-color-chip" style="background:${escapeAttr(pref?.color || "#5ed6c3")}"></span>${escapeHtml(pref?.label || reconstruction.label)}</td>
+            <td>${escapeHtml(record.seriesDescription || reconstruction.label || "-")}</td>
+            <td>${escapeHtml(formatSliceRange(summaryInfo.bounds))}</td>
+            <td>${escapeHtml(String(summary.reviewed || 0))}</td>
+            <td>${escapeHtml(String(summary.missing || 0))}</td>
+            <td>${escapeHtml(formatMetricValue(summary.totalVolumeMl, "mL", 3))}</td>
+            <td>${escapeHtml(formatMetricValue(summary.meanHu, "HU", 1))}</td>
+            <td>${escapeHtml(formatMetricValue(summary.stdDevHu, "HU", 1))}</td>
+            <td>${escapeHtml(formatMetricValue(summary.totalExcludedVolumeMl, "mL", 3))}</td>
+            <td>${escapeHtml(formatTransferModeLabel(reconstruction.transferMode || "local"))}</td>
+            <td>${escapeHtml(reconstruction.transferSourceLabel || "Local")}</td>
+            <td class="${statusClass}">${escapeHtml(reconstruction.transferWarning || status)}</td>
+          </tr>
+        `;
+      })
+      .join("");
+    return `
+      <table class="eat-results-table">
+        <thead>
+          <tr>
+            <th>Series</th>
+            <th>Report Label</th>
+            <th>Description</th>
+            <th>Slice Range</th>
+            <th>Reviewed</th>
+            <th>Missing</th>
+            <th>EAT Volume</th>
+            <th>Mean HU</th>
+            <th>SD HU</th>
+            <th>Erase Excluded</th>
+            <th>Transfer</th>
+            <th>Source</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    `;
+  }
+
+  function updateExportWorkspaceUi() {
+    syncExportReportPrefs();
+    updateExportWorkspaceVisibility();
+    const includedReady = getOrderedReportReconstructions({ onlyIncluded: true, onlyExportable: true });
+    const disableExports = state.export.busy || !includedReady.length;
+    if (els.exportImageButton) {
+      els.exportImageButton.disabled = disableExports;
+    }
+    if (els.exportCsvButton) {
+      els.exportCsvButton.disabled = disableExports;
+    }
+    if (els.finishCloseButton) {
+      els.finishCloseButton.disabled = disableExports;
+    }
+    if (els.exportWorkspacePdfButton) {
+      els.exportWorkspacePdfButton.disabled = disableExports;
+    }
+    if (els.exportWorkspaceCsvButton) {
+      els.exportWorkspaceCsvButton.disabled = disableExports;
+    }
+
+    if (state.activeSidebarPage !== "export") {
+      return;
+    }
+    renderExportSeriesControls();
+    if (els.exportResultsTable) {
+      els.exportResultsTable.innerHTML = buildExportResultsTable();
+    }
+    if (els.exportTableSummary) {
+      const total = state.reconstructions.length;
+      els.exportTableSummary.textContent = `${includedReady.length} included / ${total} loaded`;
+    }
+    updateExportPreview();
+  }
+
+  function getImportantDicomRows(reconstruction) {
+    const record = reconstruction?.records?.[0] || {};
+    const volume = reconstruction?.volume || {};
+    const spacing = record.pixelSpacing?.length >= 2 ? formatSpacing(record.pixelSpacing) : `${formatDimension(volume.rowSpacing)} x ${formatDimension(volume.columnSpacing)}`;
+    return [
+      ["Patient", record.patientName || "Anonymous"],
+      ["Patient ID", record.patientId || "-"],
+      ["Study Date/Time", combineDateTime(record)],
+      ["Series Number", Number.isFinite(record.seriesNumber) ? record.seriesNumber : "-"],
+      ["Series Description", record.seriesDescription || reconstruction?.label || "-"],
+      ["Protocol", record.protocolName || "-"],
+      ["Kernel", record.convolutionKernel || "-"],
+      ["kVp", Number.isFinite(record.kvp) ? `${formatNumber(record.kvp, 0)} kV` : "-"],
+      ["Slice Thickness", formatDimension(record.sliceThickness)],
+      ["Slice Increment", formatDimension(record.spacingBetweenSlices || volume.sliceSpacing)],
+      ["Pixel Spacing", spacing],
+      ["Matrix", `${volume.columns || record.columns || "-"} x ${volume.rows || record.rows || "-"} x ${volume.depth || "-"}`],
+      ["Rescale Slope/Intercept", `${formatNumber(record.rescaleSlope ?? 1, 4)} / ${formatNumber(record.rescaleIntercept ?? 0, 4)}`],
+      ["Transfer Syntax", record.transferSyntaxUID || "-"],
+    ];
+  }
+
+  function buildDicomRowsHtml(rows) {
+    return `<dl class="dicom-info-grid">${rows
+      .map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`)
+      .join("")}</dl>`;
+  }
+
+  function buildReportTableHtml(reportSet) {
+    return `
+      <table>
+        <thead>
+          <tr>
+            <th>Series</th>
+            <th>Report Label</th>
+            <th>Description</th>
+            <th>Slice Range</th>
+            <th>Reviewed</th>
+            <th>Missing</th>
+            <th>Total EAT Volume</th>
+            <th>Mean HU</th>
+            <th>SD HU</th>
+            <th>Erase Excluded</th>
+            <th>Transfer</th>
+            <th>Warning</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${reportSet.reports
+            .map(
+              (report) => `
+                <tr>
+                  <td>${escapeHtml(report.series_number || "")}</td>
+                  <td>${escapeHtml(report.reconstruction_label)}</td>
+                  <td>${escapeHtml(report.source_reconstruction_label || report.summary.series || "")}</td>
+                  <td>${escapeHtml(`${report.summary.top_slice}-${report.summary.bottom_slice}`)}</td>
+                  <td>${escapeHtml(report.summary.reviewed_slices)}</td>
+                  <td>${escapeHtml(report.summary.missing_slices)}</td>
+                  <td>${escapeHtml(formatMetricValue(report.summary.total_eat_volume_ml, "mL", 3))}</td>
+                  <td>${escapeHtml(formatMetricValue(report.summary.mean_eat_density_hu, "HU", 1))}</td>
+                  <td>${escapeHtml(formatMetricValue(report.summary.sd_eat_density_hu, "HU", 1))}</td>
+                  <td>${escapeHtml(formatMetricValue(report.summary.total_rubber_excluded_volume_ml, "mL", 3))}</td>
+                  <td>${escapeHtml(formatTransferModeLabel(report.transfer_mode))}</td>
+                  <td>${escapeHtml(report.transfer_warning || "")}</td>
+                </tr>
+              `
+            )
+            .join("")}
+        </tbody>
+      </table>
+    `;
+  }
+
 
   function getRepresentativeSliceIndices() {
     const bounds = getSliceBounds();
@@ -8067,6 +8775,155 @@
     };
   }
 
+  function buildPrintReportFigures(reportSet) {
+    return reportSet.reports
+      .map((report) => {
+        const reconstruction = getReconstructionById(report.reconstruction_id);
+        if (!reconstruction) {
+          return null;
+        }
+        return {
+          title: report.reconstruction_label,
+          color: report.report_color || "#5ed6c3",
+          src: createReportPreviewDataUrl(reconstruction, report.reconstruction_label),
+          caption: `${report.series_number || ""} · ${report.summary.reviewed_slices} reviewed, ${report.summary.missing_slices} missing · ${formatTransferModeLabel(report.transfer_mode)}`,
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function buildPrintReportHtml(reportSet, figures) {
+    const reference = reportSet.referenceReport || reportSet.reports[0];
+    const generated = new Date().toISOString();
+    const researchStudy = reportSet.researchStudyDisplay || reportSet.researchStudyLabel || reportSet.researchStudyId || "-";
+    const studyId = reportSet.studyId || "unspecified";
+    const dicomRows = reference?.dicom_rows || [];
+    const summaryCards = [
+      ["Total EAT Volume", formatMetricValue(reference?.summary?.total_eat_volume_ml, "mL", 3)],
+      ["Mean EAT HU", formatMetricValue(reference?.summary?.mean_eat_density_hu, "HU", 1)],
+      ["SD EAT HU", formatMetricValue(reference?.summary?.sd_eat_density_hu, "HU", 1)],
+      [
+        "Reviewed Coverage",
+        `${reference?.summary?.reviewed_slices || 0} / ${
+          (reference?.summary?.reviewed_slices || 0) + (reference?.summary?.missing_slices || 0)
+        }`,
+      ],
+    ];
+    return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>HAGRad EAT Report ${escapeHtml(studyId)}</title>
+    <style>
+      @page { size: A4; margin: 0.45in; }
+      * { box-sizing: border-box; }
+      body { margin: 0; color: #111820; background: #fff; font-family: "Aptos", "Avenir Next", "Segoe UI", sans-serif; font-size: 10.5pt; }
+      h1, h2, h3 { margin: 0; color: #0f1822; }
+      h1 { font-size: 24pt; }
+      h2 { margin: 18pt 0 8pt; font-size: 14pt; border-bottom: 1px solid #cfd8e3; padding-bottom: 4pt; }
+      h3 { margin: 8pt 0 4pt; font-size: 10.5pt; }
+      p { margin: 4pt 0 8pt; line-height: 1.35; }
+      table { width: 100%; border-collapse: collapse; margin: 6pt 0 12pt; font-size: 8.4pt; }
+      th, td { border-bottom: 1px solid #dbe3ec; padding: 4pt 5pt; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+      th { color: #182635; background: #edf2f7; font-size: 7.6pt; text-transform: uppercase; letter-spacing: 0.03em; }
+      .cover { display: grid; grid-template-columns: 1fr auto; gap: 14pt; align-items: start; margin-bottom: 10pt; }
+      .meta-box { border: 1px solid #cfd8e3; border-radius: 6pt; padding: 8pt; min-width: 220pt; }
+      .meta-box div { display: grid; grid-template-columns: 82pt 1fr; gap: 5pt; margin: 2pt 0; }
+      .note { color: #506174; }
+      .dicom-info-grid { display: grid; grid-template-columns: 115pt 1fr; gap: 3pt 9pt; margin: 6pt 0 12pt; }
+      .dicom-info-grid dt { color: #38506a; font-weight: 700; }
+      .dicom-info-grid dd { margin: 0; overflow-wrap: anywhere; }
+      .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8pt; margin: 10pt 0 12pt; }
+      .summary-card { border: 1px solid #d7e0ea; border-radius: 6pt; padding: 8pt; break-inside: avoid; }
+      .summary-card span { display: block; color: #506174; font-size: 7.8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+      .summary-card strong { display: block; margin-top: 4pt; color: #0f1822; font-size: 16pt; }
+      .figure { break-inside: avoid; margin: 10pt 0 16pt; }
+      .figure img { display: block; width: 100%; max-height: 6.4in; object-fit: contain; border: 1px solid #d7e0ea; border-radius: 6pt; }
+      .figure-caption { color: #506174; font-size: 9pt; margin-top: 4pt; }
+      .color-dot { display: inline-block; width: 8pt; height: 8pt; margin-right: 4pt; border-radius: 99pt; vertical-align: baseline; }
+      footer { margin-top: 18pt; color: #506174; font-size: 8.5pt; border-top: 1px solid #dbe3ec; padding-top: 6pt; }
+      .print-actions { position: sticky; top: 0; z-index: 10; display: flex; justify-content: flex-end; gap: 8pt; padding: 8pt; margin: -0.45in -0.45in 10pt; background: #f7fafc; border-bottom: 1px solid #dbe3ec; }
+      .print-actions button { padding: 6pt 10pt; border: 1px solid #9eb2c4; border-radius: 5pt; background: #fff; color: #0f1822; font: inherit; font-weight: 700; }
+      @media print {
+        .print-actions { display: none; }
+        .figure { page-break-inside: avoid; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="print-actions">
+      <button type="button" onclick="window.print()">Print / Save PDF</button>
+    </div>
+    <section class="cover">
+      <div>
+        <p class="note">HAGRad Viewer · Research use only</p>
+        <h1>HAGRad EAT Report</h1>
+        <p>Epicardial adipose tissue segmentation summary from local DICOM source pixels. Not for clinical diagnosis or patient care.</p>
+      </div>
+      <div class="meta-box">
+        <div><strong>Study ID</strong><span>${escapeHtml(studyId)}</span></div>
+        <div><strong>Research Study</strong><span>${escapeHtml(researchStudy)}</span></div>
+        <div><strong>Reconstructions</strong><span>${escapeHtml(reportSet.reports.length)}</span></div>
+        <div><strong>Threshold</strong><span>${escapeHtml(`${reference?.summary?.threshold_min_hu ?? ""} to ${reference?.summary?.threshold_max_hu ?? ""} HU`)}</span></div>
+        <div><strong>Generated</strong><span>${escapeHtml(generated)}</span></div>
+      </div>
+    </section>
+    <h2>Important DICOM Header</h2>
+    ${buildDicomRowsHtml(dicomRows)}
+    <h2>EAT Summary</h2>
+    <div class="summary-grid">
+      ${summaryCards
+        .map(
+          ([label, value]) => `
+            <div class="summary-card">
+              <span>${escapeHtml(label)}</span>
+              <strong>${escapeHtml(value)}</strong>
+            </div>
+          `
+        )
+        .join("")}
+    </div>
+    <h2>Reconstruction Results</h2>
+    ${buildReportTableHtml(reportSet)}
+    <h2>Representative EAT Images</h2>
+    ${figures
+      .map(
+        (figure) => `
+          <figure class="figure">
+            <h3><span class="color-dot" style="background:${escapeAttr(figure.color)}"></span>${escapeHtml(figure.title)}</h3>
+            <img src="${figure.src}" alt="${escapeAttr(figure.title)}" />
+            <figcaption class="figure-caption">${escapeHtml(figure.caption || "")}</figcaption>
+          </figure>
+        `
+      )
+      .join("")}
+    <footer>
+      EAT contours, threshold overlays, and volume values are generated locally inside HAGRad Viewer from loaded DICOM files. Transfer warnings indicate best-effort geometry mapping and should be reviewed before research export.
+    </footer>
+    <script>
+      window.addEventListener("load", () => setTimeout(() => window.print(), 350));
+    </script>
+  </body>
+</html>`;
+  }
+
+  async function printPdfReport(studyId, options) {
+    setStatus("Building PDF-ready EAT report...");
+    const reportSet = options?.reportSet || (await buildCombinedExportReportSet({ studyId }));
+    const figures = buildPrintReportFigures(reportSet);
+    const reportWindow = window.open("", "_blank");
+    if (!reportWindow) {
+      throw new Error("The report window was blocked. Allow pop-ups for this local app and try again.");
+    }
+    reportWindow.document.open();
+    reportWindow.document.write(buildPrintReportHtml(reportSet, figures));
+    reportWindow.document.close();
+    if (!options?.silent) {
+      setStatus("Print report opened. Choose Save as PDF in the print dialog.");
+    }
+    return reportSet;
+  }
+
   async function exportImage(studyId, options) {
     setStatus("Preparing PNG report...");
     const reportSet = options?.reportSet || (await buildCombinedExportReportSet({ studyId }));
@@ -8096,8 +8953,8 @@
   async function runExportAction(action, studyId) {
     state.export.studyId = studyId;
 
-    if (action === "image") {
-      await exportImage(studyId);
+    if (action === "pdf") {
+      await printPdfReport(studyId);
       return;
     }
     if (action === "csv") {
@@ -8105,17 +8962,17 @@
       return;
     }
 
-    setStatus("Preparing PNG and CSV export...");
+    setStatus("Preparing PDF-ready report and CSV export...");
     const reportSet = await buildCombinedExportReportSet({ studyId });
-    const imageFile = await exportReportImage(reportSet);
+    await printPdfReport(studyId, { reportSet, silent: true });
     const csvFile = await exportReportCsv(reportSet);
     await downloadExportBundle(
-      [imageFile, csvFile],
+      [csvFile],
       buildExportFilename("hagrad_eat_finish_close", "zip", studyId),
       { patientStudyId: studyId }
     );
     clearStudy();
-    setStatus(`Finished Study ID ${studyId}. ZIP bundle exported, and the current patient was closed.`);
+    setStatus(`Finished Study ID ${studyId}. Report opened, CSV ZIP exported, and the current patient was closed.`);
   }
 
   async function exportSession() {
@@ -9151,8 +10008,10 @@
     });
 
     els.finishCloseButton.addEventListener("click", () => openExportPrompt("finish-close"));
-    els.exportImageButton.addEventListener("click", () => openExportPrompt("image"));
+    els.exportImageButton.addEventListener("click", () => openExportPrompt("pdf"));
     els.exportCsvButton.addEventListener("click", () => openExportPrompt("csv"));
+    els.exportWorkspacePdfButton?.addEventListener("click", () => openExportPrompt("pdf"));
+    els.exportWorkspaceCsvButton?.addEventListener("click", () => openExportPrompt("csv"));
     els.exportDialogCancel.addEventListener("click", closeExportPrompt);
     els.exportDialogConfirm.addEventListener("click", () => {
       confirmExportPrompt().catch((error) => {

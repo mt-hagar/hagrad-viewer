@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>HAGRad Viewer – EAT Workflow</title>
-    <link rel="stylesheet" href="/src/eat.css?v=20260523-harmonized" />
+    <link rel="stylesheet" href="/src/eat.css?v=20260525-report-workspace" />
     <link rel="stylesheet" href="/src/shared/hagrad-shell.css?v=20260523-file-inputs" />
   </head>
   <body>
@@ -462,15 +462,15 @@
                 </dl>
                 <div class="inline-actions">
                   <button id="finish-close-button" class="button primary" type="button">Finish &amp; Close</button>
-                  <button id="export-image-button" class="button tertiary" type="button">Export PNG Report</button>
+                  <button id="export-image-button" class="button tertiary" type="button">Print PDF Report</button>
                   <button id="export-csv-button" class="button tertiary" type="button">Export CSV</button>
                 </div>
                 <p class="hint">
-                  The PNG report includes representative slices from the active reconstruction plus a
-                  table of all transferred reconstructions. The CSV includes summary and slice-level
-                  EAT measurements, including density SD, for every transferred reconstruction. Export
-                  prompts for a required Study ID, writes it into the PNG and CSV, and mirrors both
-                  files into the selected research study outbox when you choose one in the popup.
+                  The PDF-ready report opens a print window with DICOM metadata, representative EAT
+                  images, summary values, and the reconstruction table. The CSV includes summary and
+                  slice-level EAT measurements, including density SD, for every included reconstruction.
+                  Export prompts for a required Study ID and mirrors exported CSV files into the
+                  selected research study outbox when you choose one in the popup.
                 </p>
               </section>
 
@@ -676,6 +676,58 @@
             </div>
           </div>
 
+          <section class="export-workspace card is-hidden" id="eat-export-workspace" aria-label="EAT report workspace">
+            <div class="export-workspace-header">
+              <div>
+                <p class="section-eyebrow">EAT Export</p>
+                <h2>Report Workspace</h2>
+                <p id="eat-export-workspace-note">
+                  Include, label, color, and order completed reconstructions before printing the
+                  PDF-ready report or exporting CSV data.
+                </p>
+              </div>
+              <div class="export-workspace-actions">
+                <button id="export-workspace-pdf-button" class="button primary" type="button">
+                  Print PDF Report
+                </button>
+                <button id="export-workspace-csv-button" class="button tertiary" type="button">Export CSV</button>
+              </div>
+            </div>
+
+            <section class="export-report-panel" aria-labelledby="eat-export-series-title">
+              <div class="section-header">
+                <h2 id="eat-export-series-title">Series Controls</h2>
+                <span class="section-note" id="eat-export-series-summary">0 included</span>
+              </div>
+              <p class="hint">
+                Reordering or excluding a row changes only the report and CSV export. Loaded DICOM
+                reconstructions stay available in the workflow sidebar.
+              </p>
+              <div class="eat-export-series-controls" id="eat-export-series-controls"></div>
+            </section>
+
+            <section class="export-report-panel export-preview-panel" aria-labelledby="eat-export-preview-heading">
+              <div class="section-header">
+                <h2 id="eat-export-preview-heading">Report Preview</h2>
+                <span class="section-note" id="eat-export-preview-title">No reconstruction selected</span>
+              </div>
+              <div class="export-preview-layout">
+                <div class="export-preview-canvas-shell">
+                  <canvas id="eat-export-preview-canvas" aria-label="Representative EAT report image preview"></canvas>
+                </div>
+                <div class="export-preview-metrics" id="eat-export-preview-metrics"></div>
+              </div>
+            </section>
+
+            <section class="export-report-panel" aria-labelledby="eat-export-table-heading">
+              <div class="section-header">
+                <h2 id="eat-export-table-heading">EAT Results</h2>
+                <span class="section-note" id="eat-export-table-summary">No report rows</span>
+              </div>
+              <div class="eat-results-table-wrap" id="eat-export-results-table"></div>
+            </section>
+          </section>
+
         </section>
       </section>
     </main>
@@ -690,7 +742,7 @@
           <button id="export-dialog-cancel" class="button tertiary" type="button">Cancel</button>
         </div>
         <p class="modal-copy" id="export-dialog-copy">
-          Enter the Study ID to print on the PNG report and prepend to the CSV export.
+          Enter the Study ID to print on the report and prepend to the CSV export.
         </p>
         <label class="number-field modal-field" for="export-study-select">
           <span>Research Study</span>
@@ -735,6 +787,6 @@
     <script src="/src/shared/hagrad-zip.js"></script>
     <script src="/src/shared/hagrad-workflow-switcher.js?v=20260519-workflow-shell"></script>
     <script src="/src/eat-shared.js"></script>
-    <script src="/src/eat.js"></script>
+    <script src="/src/eat.js?v=20260525-report-workspace"></script>
   </body>
 </html>

@@ -1146,6 +1146,287 @@ a {
     padding 260ms ease, border-color 220ms ease, box-shadow 260ms ease;
 }
 
+.stage.is-hidden,
+.export-workspace.is-hidden {
+  display: none;
+}
+
+.export-workspace {
+  min-height: clamp(640px, 72vh, 900px);
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  padding: 20px;
+  background:
+    radial-gradient(circle at top left, rgba(94, 214, 195, 0.08), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0));
+}
+
+.export-workspace-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.section-eyebrow {
+  margin: 0 0 6px;
+  color: var(--warm);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.export-workspace-header h2 {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: -0.02em;
+}
+
+.export-workspace-header p {
+  max-width: 68ch;
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.export-workspace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: min(100%, 340px);
+}
+
+.export-report-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--panel-radius);
+  background: rgba(9, 17, 23, 0.7);
+}
+
+.eat-export-series-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.eat-export-series-row {
+  display: grid;
+  grid-template-columns: 64px 40px 48px minmax(180px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.eat-export-series-row[draggable="true"] {
+  cursor: grab;
+}
+
+.eat-export-series-row.is-dragging {
+  opacity: 0.52;
+}
+
+.eat-export-series-row.is-drop-target {
+  border-color: var(--line-strong);
+  background: var(--accent-soft);
+}
+
+.eat-export-order {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px;
+  align-items: center;
+}
+
+.eat-export-index {
+  display: grid;
+  min-height: 42px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted-strong);
+  font-weight: 700;
+}
+
+.eat-export-order-buttons {
+  display: grid;
+  gap: 4px;
+}
+
+.mini-button {
+  min-width: 34px;
+  min-height: 20px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--muted-strong);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mini-button:disabled {
+  opacity: 0.36;
+  cursor: not-allowed;
+}
+
+.eat-export-include {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.eat-export-color {
+  width: 40px;
+  height: 40px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.eat-export-label {
+  min-width: 0;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(2, 6, 9, 0.78);
+  color: var(--text);
+  font-weight: 650;
+}
+
+.eat-export-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.export-preview-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.64fr) minmax(240px, 0.36fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.export-preview-canvas-shell {
+  min-height: 360px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(6, 12, 16, 0.94), rgba(6, 12, 16, 0.88)),
+    radial-gradient(circle at center, rgba(94, 214, 195, 0.06), transparent 46%);
+}
+
+#eat-export-preview-canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 360px;
+  display: block;
+}
+
+.export-preview-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-content: start;
+}
+
+.export-metric-card {
+  min-height: 94px;
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.export-metric-card span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.export-metric-card strong {
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1.05;
+}
+
+.eat-results-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+.eat-results-table {
+  width: 100%;
+  min-width: 1120px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.eat-results-table th,
+.eat-results-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(122, 162, 184, 0.12);
+  text-align: left;
+  vertical-align: top;
+}
+
+.eat-results-table th {
+  color: var(--warm);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.eat-results-table td {
+  color: var(--muted-strong);
+}
+
+.eat-results-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.eat-results-table .status-ready {
+  color: #b6ffd7;
+}
+
+.eat-results-table .status-pending {
+  color: #fbe8ae;
+}
+
+.eat-results-color-chip {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+
 .viewer-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -1739,6 +2020,20 @@ body.is-presentation-focus .viewport-tool-hud {
     min-height: 820px;
   }
 
+  .export-workspace-header,
+  .export-preview-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .export-workspace-actions {
+    justify-content: stretch;
+  }
+
+  .export-workspace-actions .button {
+    flex: 1 1 180px;
+  }
+
   .viewer-grid.is-compare {
     grid-template-columns: 1fr;
   }
@@ -1769,6 +2064,19 @@ body.is-presentation-focus .viewport-tool-hud {
 
   .viewer-column {
     min-height: 680px;
+  }
+
+  .eat-export-series-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .eat-export-row-meta {
+    justify-content: flex-start;
+  }
+
+  .export-preview-metrics {
+    grid-template-columns: 1fr;
   }
 
   body.is-presentation-focus .focus-action-dock {
