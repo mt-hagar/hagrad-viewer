@@ -7,31 +7,37 @@
   const GUIDE_STEP_TARGETS = {
     0: {
       groupId: "sidebar-group-workflow",
+      page: "workflow",
       sectionId: "sidebar-section-reconstructions",
       label: "Reconstructions",
     },
     1: {
       groupId: "sidebar-group-segmentation",
+      page: "eat",
       sectionId: "sidebar-section-range",
       label: "Slice Range",
     },
     2: {
       groupId: "sidebar-group-segmentation",
+      page: "eat",
       sectionId: "sidebar-section-eat-mode",
       label: "EAT Mode",
     },
     3: {
       groupId: "sidebar-group-review",
+      page: "eat",
       sectionId: "sidebar-section-slice-review",
       label: "Slice Review",
     },
     4: {
-      groupId: "sidebar-group-workflow",
-      sectionId: "sidebar-section-reconstructions",
-      label: "Reconstructions",
+      groupId: "sidebar-group-segmentation",
+      page: "eat",
+      sectionId: "sidebar-section-eat-mode",
+      label: "Transfer",
     },
     5: {
       groupId: "sidebar-group-export",
+      page: "export",
       sectionId: "sidebar-section-export-summary",
       label: "Export Summary",
     },
@@ -108,7 +114,8 @@
     presentationFocus: false,
     focusSidebarOpen: false,
     focusReturnScroll: { x: 0, y: 0 },
-    activeFocusGroupId: "sidebar-group-workflow",
+    activeSidebarPage: "workflow",
+    activeFocusGroupId: "sidebar-page-workflow",
     huThreshold: { ...DEFAULT_HU_THRESHOLD },
     showThresholdOverlay: true,
     showViewportOverlays: true,
@@ -193,6 +200,8 @@
     els.undoButton = document.getElementById("undo-button");
     els.redoButton = document.getElementById("redo-button");
     els.saveSessionButton = document.getElementById("save-session-button");
+    els.sidebarPageTabs = Array.from(document.querySelectorAll("[data-sidebar-page]"));
+    els.sidebarPagePanels = Array.from(document.querySelectorAll("[data-sidebar-page-panel]"));
     els.reconstructionSummary = document.getElementById("reconstruction-summary");
     els.transferReconstructionsButton = document.getElementById("transfer-recons-button");
     els.segmentTransferButton = document.getElementById("segment-transfer-button");
@@ -2500,6 +2509,34 @@
     }
   }
 
+  function normalizeSidebarPage(page) {
+    return page === "eat" || page === "export" ? page : "workflow";
+  }
+
+  function sidebarPageId(page) {
+    return `sidebar-page-${normalizeSidebarPage(page)}`;
+  }
+
+  function setSidebarPage(page) {
+    const nextPage = normalizeSidebarPage(page);
+    state.activeSidebarPage = nextPage;
+    state.activeFocusGroupId = sidebarPageId(nextPage);
+    els.sidebarPageTabs?.forEach((button) => {
+      const isActive = normalizeSidebarPage(button.dataset.sidebarPage) === nextPage;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
+    els.sidebarPagePanels?.forEach((panel) => {
+      const isActive = normalizeSidebarPage(panel.dataset.sidebarPagePanel) === nextPage;
+      panel.hidden = !isActive;
+      panel.classList.toggle("is-sidebar-page-active", isActive);
+      if (isActive && "open" in panel) {
+        panel.open = true;
+      }
+    });
+    updatePresentationFocusUi();
+  }
+
   function scheduleFocusLayoutRender() {
     requestRender();
     window.requestAnimationFrame(() => {
@@ -2566,10 +2603,14 @@
   }
 
   function handleFocusSidebarGroup(groupId) {
-    const group = document.getElementById(groupId);
-    const normalizedGroupId = group?.classList?.contains("sidebar-group") ? groupId : "sidebar-group-workflow";
-    state.activeFocusGroupId = normalizedGroupId;
-    const activeGroup = document.getElementById(normalizedGroupId);
+    const requestedPage = typeof groupId === "string" && groupId.startsWith("sidebar-page-")
+      ? groupId.replace("sidebar-page-", "")
+      : document.getElementById(groupId)?.dataset.sidebarPagePanel;
+    const nextPage = normalizeSidebarPage(requestedPage);
+    setSidebarPage(nextPage);
+    const activeGroup = els.sidebarPagePanels.find(
+      (panel) => normalizeSidebarPage(panel.dataset.sidebarPagePanel) === nextPage
+    );
     if (activeGroup) {
       activeGroup.open = true;
     }
@@ -2931,6 +2972,7 @@
       return;
     }
 
+    setSidebarPage(target.page);
     group.open = true;
     window.requestAnimationFrame(() => {
       section.scrollIntoView({
@@ -2945,6 +2987,9 @@
           behavior: "smooth",
         });
       }
+      document.querySelectorAll(".sidebar-section.is-guide-target").forEach((activeSection) => {
+        activeSection.classList.remove("is-guide-target");
+      });
       section.classList.add("is-guide-target");
       if (guideTargetHighlightTimer) {
         window.clearTimeout(guideTargetHighlightTimer);
@@ -3855,7 +3900,9 @@
     els.reconstructionSummary.textContent = `${state.reconstructions.length} loaded`;
     const transferDisabled =
       !activeReconstruction || state.reconstructions.length < 2 || !hasTransferredSegmentation(activeReconstruction);
-    els.transferReconstructionsButton.disabled = transferDisabled;
+    if (els.transferReconstructionsButton) {
+      els.transferReconstructionsButton.disabled = transferDisabled;
+    }
     if (els.segmentTransferButton) {
       els.segmentTransferButton.disabled = transferDisabled;
     }
@@ -8401,6 +8448,9 @@
     });
 
     els.clearButton.addEventListener("click", clearStudy);
+    els.sidebarPageTabs?.forEach((button) => {
+      button.addEventListener("click", () => setSidebarPage(button.dataset.sidebarPage));
+    });
     els.undoButton.addEventListener("click", undoHistory);
     els.redoButton.addEventListener("click", redoHistory);
     els.saveSessionButton.addEventListener("click", async () => {
@@ -8465,7 +8515,7 @@
         setStatus(`Comparison reconstruction set to ${compareReconstruction.label}.`);
       }
     });
-    els.transferReconstructionsButton.addEventListener("click", transferSegmentationWithFeedback);
+    els.transferReconstructionsButton?.addEventListener("click", transferSegmentationWithFeedback);
     els.setTopButton?.addEventListener("click", setCurrentSliceAsTop);
     els.setBottomButton?.addEventListener("click", setCurrentSliceAsBottom);
     els.rangeResetButton?.addEventListener("click", useFullStackRange);
@@ -8866,6 +8916,7 @@
     cacheElements();
     initializeDecoderFallback();
     bindStaticEvents();
+    setSidebarPage(state.activeSidebarPage);
     updatePresentationFocusUi();
     refreshUi();
     setStatus("Ready for axial CT reconstructions");

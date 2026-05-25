@@ -102,7 +102,43 @@
           >
             <span aria-hidden="true">&lsaquo;</span>
           </button>
-          <details class="sidebar-group" id="sidebar-group-workflow" open>
+          <div class="sidebar-tabs eat-sidebar-tabs" role="tablist" aria-label="EAT workflow pages">
+            <button
+              id="sidebar-tab-workflow"
+              class="sidebar-tab is-active"
+              data-sidebar-page="workflow"
+              role="tab"
+              type="button"
+              aria-controls="sidebar-group-workflow"
+              aria-selected="true"
+            >
+              Workflow
+            </button>
+            <button
+              id="sidebar-tab-eat"
+              class="sidebar-tab"
+              data-sidebar-page="eat"
+              role="tab"
+              type="button"
+              aria-controls="sidebar-group-segmentation"
+              aria-selected="false"
+            >
+              EAT
+            </button>
+            <button
+              id="sidebar-tab-export"
+              class="sidebar-tab"
+              data-sidebar-page="export"
+              role="tab"
+              type="button"
+              aria-controls="sidebar-group-export"
+              aria-selected="false"
+            >
+              Export
+            </button>
+          </div>
+
+          <details class="sidebar-group is-sidebar-page-active" id="sidebar-group-workflow" data-sidebar-page-panel="workflow" open>
             <summary class="sidebar-group-summary">
               <div class="sidebar-group-copy">
                 <strong>Workflow</strong>
@@ -144,15 +180,10 @@
                   <h2>Reconstructions</h2>
                   <span class="section-note" id="reconstruction-summary">0 loaded</span>
                 </div>
-                <div class="inline-actions">
-                  <button id="transfer-recons-button" class="button tertiary" type="button">
-                    Copy To Other Recons (T)
-                  </button>
-                </div>
                 <div class="slice-list" id="reconstruction-list"></div>
                 <p class="hint">
-                  Segment on one reconstruction, switch between loaded reconstructions for review, then
-                  copy the contour set to the other reconstructions before export.
+                  Loaded reconstructions stay here for quick switching and review. Use the EAT page to
+                  segment and transfer completed contours.
                 </p>
               </section>
 
@@ -178,7 +209,7 @@
             </div>
           </details>
 
-          <details class="sidebar-group" id="sidebar-group-segmentation" open>
+          <details class="sidebar-group" id="sidebar-group-segmentation" data-sidebar-page-panel="eat" open hidden>
             <summary class="sidebar-group-summary">
               <div class="sidebar-group-copy">
                 <strong>Segmentation</strong>
@@ -311,7 +342,7 @@
             </div>
           </details>
 
-          <details class="sidebar-group" id="sidebar-group-review">
+          <details class="sidebar-group" id="sidebar-group-review" data-sidebar-page-panel="eat" open hidden>
             <summary class="sidebar-group-summary">
               <div class="sidebar-group-copy">
                 <strong>Display & Review</strong>
@@ -357,7 +388,7 @@
             </div>
           </details>
 
-          <details class="sidebar-group" id="sidebar-group-export">
+          <details class="sidebar-group" id="sidebar-group-export" data-sidebar-page-panel="export" open hidden>
             <summary class="sidebar-group-summary">
               <div class="sidebar-group-copy">
                 <strong>Export</strong>
@@ -598,10 +629,9 @@
               </section>
             </div>
             <div class="presentation-focus-dock focus-workflow-dock" aria-label="Focus workflow controls">
-              <button class="focus-pill-button" data-focus-sidebar-group="sidebar-group-workflow" type="button">Workflow</button>
-              <button class="focus-pill-button" data-focus-sidebar-group="sidebar-group-segmentation" type="button">Segment</button>
-              <button class="focus-pill-button" data-focus-sidebar-group="sidebar-group-review" type="button">Review</button>
-              <button class="focus-pill-button" data-focus-sidebar-group="sidebar-group-export" type="button">Export</button>
+              <button class="focus-pill-button" data-focus-sidebar-group="sidebar-page-workflow" type="button">Workflow</button>
+              <button class="focus-pill-button" data-focus-sidebar-group="sidebar-page-eat" type="button">EAT</button>
+              <button class="focus-pill-button" data-focus-sidebar-group="sidebar-page-export" type="button">Export</button>
             </div>
             <div class="presentation-focus-dock focus-action-dock" aria-label="Focus case actions">
               <label class="focus-pill-button focus-file-button" for="dicom-input">Load</label>
