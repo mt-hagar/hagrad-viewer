@@ -55,6 +55,7 @@
   const TOOL_CURSORS = {
     contour: "crosshair",
     contourClick: "crosshair",
+    refine: "crosshair",
     edit: "default",
     erase: "crosshair",
     windowLevel: "crosshair",
@@ -83,6 +84,8 @@
   const DICOM_HEADER_PROGRESS_INTERVAL = 50;
   const RESAMPLED_CONTOUR_POINTS = 96;
   const HANDLE_TARGET_COUNT = 24;
+  const LOCAL_CORRECTION_RADIUS_SLICES = 4;
+  const LOCAL_CORRECTION_MAX_BLEND = 0.72;
   const AUTO_EAT_SETTINGS = {
     bodyHuThreshold: -350,
     coreHuMin: -40,
@@ -2389,11 +2392,17 @@
   }
 
   function isContourDrawingTool(tool) {
-    return tool === "contour" || tool === "contourClick";
+    return tool === "contour" || tool === "contourClick" || tool === "refine";
   }
 
   function resolveContourDrawingTool(tool) {
-    return tool === "contourClick" ? "contourClick" : "contour";
+    if (tool === "contourClick") {
+      return "contourClick";
+    }
+    if (tool === "refine") {
+      return "refine";
+    }
+    return "contour";
   }
 
   function getContourDrawingToolLabel(tool) {
@@ -2478,7 +2487,13 @@
 
   function setActiveTool(tool, options = {}) {
     const nextTool =
-      tool === "contourClick" || tool === "edit" || tool === "pan" || tool === "erase" || tool === "zoom" || tool === "windowLevel"
+      tool === "contourClick" ||
+      tool === "refine" ||
+      tool === "edit" ||
+      tool === "pan" ||
+      tool === "erase" ||
+      tool === "zoom" ||
+      tool === "windowLevel"
         ? tool
         : "contour";
     if (!options.preserveAutoReturn) {
@@ -2723,6 +2738,8 @@
     const toolLabel =
       state.activeTool === "contourClick"
         ? "Multiple Click"
+        : state.activeTool === "refine"
+        ? "Redraw"
         : state.activeTool === "edit"
         ? "Adjust"
         : state.activeTool === "windowLevel"
@@ -2739,6 +2756,8 @@
       els.toolHud.textContent =
         state.activeTool === "contourClick"
           ? "Multiple Click: place points, double-click to finish"
+          : state.activeTool === "refine"
+            ? "Redraw: trace a corrected contour edge"
           : `${toolLabel} · middle mouse pans`;
     }
     updateCanvasCursor();
@@ -4188,6 +4207,9 @@
     if (state.dragging.type === "draw") {
       return state.dragging.points;
     }
+    if (state.dragging.type === "refineStroke") {
+      return state.dragging.previewPoints || getStoredContour(sliceIndex)?.points || null;
+    }
     if (state.dragging.type === "contourClickDraftHandle" || state.dragging.type === "contourClickDraftTranslate") {
       return buildContourClickPreviewPoints(getContourClickDraftForSlice(sliceIndex));
     }
@@ -4339,6 +4361,90 @@
 
   function distanceBetweenPoints(a, b) {
     return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+
+  function getPolylineLength(points) {
+    if (!Array.isArray(points) || points.length < 2) {
+      return 0;
+    }
+    let length = 0;
+    for (let index = 1; index < points.length; index += 1) {
+      length += distanceBetweenPoints(points[index - 1], points[index]);
+    }
+    return length;
+  }
+
+  function distancePointToSegment(point, start, end) {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const lengthSquared = dx * dx + dy * dy;
+    if (!lengthSquared) {
+      return distanceBetweenPoints(point, start);
+    }
+    const t = clamp(((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared, 0, 1);
+    return Math.hypot(point.x - (start.x + dx * t), point.y - (start.y + dy * t));
+  }
+
+  function distancePointToPolyline(point, polyline) {
+    if (!Array.isArray(polyline) || !polyline.length) {
+      return Infinity;
+    }
+    if (polyline.length === 1) {
+      return distanceBetweenPoints(point, polyline[0]);
+    }
+    let bestDistance = Infinity;
+    for (let index = 1; index < polyline.length; index += 1) {
+      bestDistance = Math.min(bestDistance, distancePointToSegment(point, polyline[index - 1], polyline[index]));
+    }
+    return bestDistance;
+  }
+
+  function findNearestContourPointIndex(points, targetPoint) {
+    if (!Array.isArray(points) || !points.length || !targetPoint) {
+      return -1;
+    }
+    let bestIndex = 0;
+    let bestDistance = Infinity;
+    points.forEach((point, index) => {
+      const distance = distanceBetweenPoints(point, targetPoint);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = index;
+      }
+    });
+    return bestIndex;
+  }
+
+  function getForwardContourArc(points, startIndex, endIndex, options = {}) {
+    if (!Array.isArray(points) || !points.length || startIndex < 0 || endIndex < 0) {
+      return [];
+    }
+    const includeEndpoints = options.includeEndpoints !== false;
+    const arc = [];
+    let index = startIndex;
+    let guard = 0;
+    if (includeEndpoints) {
+      arc.push(points[index]);
+    }
+    while (index !== endIndex && guard <= points.length) {
+      index = (index + 1) % points.length;
+      if (includeEndpoints || index !== endIndex) {
+        arc.push(points[index]);
+      }
+      guard += 1;
+    }
+    return arc.map((point) => ({ x: point.x, y: point.y }));
+  }
+
+  function meanDistanceToPolyline(points, polyline) {
+    if (!Array.isArray(points) || !points.length) {
+      return Infinity;
+    }
+    let total = 0;
+    points.forEach((point) => {
+      total += distancePointToPolyline(point, polyline);
+    });
+    return total / points.length;
   }
 
   function getContourBounds(points) {
@@ -4592,6 +4698,54 @@
 
     const resampled = resampleClosedPolygon(curvedPoints, RESAMPLED_CONTOUR_POINTS);
     return smoothClosedPolygon(resampled, 2);
+  }
+
+  function buildContourWithReplacementStroke(contourPoints, strokePoints) {
+    const existing = normalizeContourPoints(contourPoints);
+    const stroke = dedupeContourPoints(strokePoints);
+    if (existing.length < 3 || stroke.length < 2) {
+      return [];
+    }
+
+    const startToEndDistance = distanceBetweenPoints(stroke[0], stroke[stroke.length - 1]);
+    const strokeLength = getPolylineLength(stroke);
+    if (stroke.length >= 6 && startToEndDistance <= Math.max(6, strokeLength * 0.12)) {
+      const closedStroke = buildContourClickCurvePoints(stroke);
+      return closedStroke.length >= 3 ? closedStroke : normalizeContourPoints(stroke);
+    }
+
+    const startIndex = findNearestContourPointIndex(existing, stroke[0]);
+    const endIndex = findNearestContourPointIndex(existing, stroke[stroke.length - 1]);
+    if (startIndex < 0 || endIndex < 0 || startIndex === endIndex) {
+      return [];
+    }
+
+    const forwardArc = getForwardContourArc(existing, startIndex, endIndex);
+    const backwardArc = getForwardContourArc(existing, endIndex, startIndex);
+    const reversedStroke = cloneContourPoints(stroke).reverse();
+    const forwardScore =
+      meanDistanceToPolyline(forwardArc, stroke) +
+      Math.abs(getPolylineLength(forwardArc) - strokeLength) * 0.02;
+    const backwardScore =
+      meanDistanceToPolyline(backwardArc, reversedStroke) +
+      Math.abs(getPolylineLength(backwardArc) - strokeLength) * 0.02;
+
+    const replacementCandidate =
+      forwardScore <= backwardScore
+        ? [
+            ...stroke,
+            ...getForwardContourArc(existing, endIndex, startIndex, { includeEndpoints: false }),
+          ]
+        : [
+            ...reversedStroke,
+            ...getForwardContourArc(existing, startIndex, endIndex, { includeEndpoints: false }),
+          ];
+
+    const orientedCandidate =
+      (polygonSignedArea(existing) >= 0) === (polygonSignedArea(replacementCandidate) >= 0)
+        ? replacementCandidate
+        : replacementCandidate.reverse();
+    return normalizeContourPoints(orientedCandidate);
   }
 
   function normalizeContourPoints(points) {
@@ -5042,6 +5196,63 @@
         invalidateSliceMetrics(sliceIndex);
       }
     }
+  }
+
+  function isLocalCorrectionAnchor(sliceIndex, contour) {
+    return Boolean(contour) && (
+      contour.status === "drawn" ||
+      contour.status === "edited" ||
+      state.exclusionMasks.has(sliceIndex)
+    );
+  }
+
+  function buildLocalCorrectionAnchors(bounds, anchors, previousContours, protectedSliceIndices) {
+    if (!bounds || !anchors?.length || !previousContours) {
+      return [];
+    }
+
+    const radius = Math.max(2, Math.min(LOCAL_CORRECTION_RADIUS_SLICES, Math.floor(bounds.count / 3) || 2));
+    const correctionsBySlice = new Map();
+    anchors.forEach((anchor) => {
+      if (!isLocalCorrectionAnchor(anchor.sliceIndex, anchor.contour)) {
+        return;
+      }
+
+      for (let offset = -radius; offset <= radius; offset += 1) {
+        if (!offset) {
+          continue;
+        }
+        const sliceIndex = anchor.sliceIndex + offset;
+        if (sliceIndex < bounds.start || sliceIndex > bounds.end || protectedSliceIndices.has(sliceIndex)) {
+          continue;
+        }
+
+        const previousContour = previousContours.get(sliceIndex);
+        if (!isAutoContour(previousContour)) {
+          continue;
+        }
+
+        const distance = Math.abs(offset);
+        const falloff = Math.max(0, 1 - distance / (radius + 1));
+        const blend = LOCAL_CORRECTION_MAX_BLEND * falloff ** 1.35;
+        const points = interpolateContourPoints(previousContour.points, anchor.contour.points, blend);
+        if (points.length < 3) {
+          continue;
+        }
+
+        const existing = correctionsBySlice.get(sliceIndex);
+        if (!existing || blend > existing.blend) {
+          correctionsBySlice.set(sliceIndex, {
+            sliceIndex,
+            points,
+            sourceSliceIndex: anchor.sliceIndex,
+            blend,
+          });
+        }
+      }
+    });
+
+    return Array.from(correctionsBySlice.values()).sort((left, right) => left.sliceIndex - right.sliceIndex);
   }
 
   function buildAutomaticEatContourForSlice(sliceIndex, priorResolution) {
@@ -5896,6 +6107,28 @@
     ctx.restore();
   }
 
+  function drawContourRefinementStroke(ctx, geometry) {
+    if (state.dragging?.type !== "refineStroke" || !state.dragging.points?.length) {
+      return;
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    state.dragging.points.forEach((point, index) => {
+      const canvasPoint = imageToCanvasPoint(point, geometry);
+      if (index === 0) {
+        ctx.moveTo(canvasPoint.x, canvasPoint.y);
+      } else {
+        ctx.lineTo(canvasPoint.x, canvasPoint.y);
+      }
+    });
+    ctx.strokeStyle = "rgba(247, 200, 127, 0.92)";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([7, 5]);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function drawThresholdOverlay(ctx, geometry, metrics) {
     if (!metrics?.overlayCanvas) {
       return;
@@ -6031,7 +6264,12 @@
       options?.interactive ? getRenderableContour(currentSliceIndex) : reconstruction.contours.get(currentSliceIndex) || null
     );
     let metrics = null;
-    if (state.showThresholdOverlay && renderableContour?.points?.length >= 3 && state.dragging?.type !== "draw") {
+    if (
+      state.showThresholdOverlay &&
+      renderableContour?.points?.length >= 3 &&
+      state.dragging?.type !== "draw" &&
+      state.dragging?.type !== "refineStroke"
+    ) {
       metrics = withReconstructionSync(reconstruction, () =>
         computeSliceMetricsForPoints(currentSliceIndex, renderableContour.points, { createOverlay: true })
       );
@@ -6047,6 +6285,7 @@
 
     if (options?.interactive) {
       drawContourClickDraftAnchors(ctx, geometry, getContourClickDraftForSlice(currentSliceIndex));
+      drawContourRefinementStroke(ctx, geometry);
       drawEraseBrushPreview(ctx, geometry);
     }
     drawCanvasOverlayLabels(ctx, viewportSize, reconstruction, currentSliceIndex);
@@ -6218,6 +6457,7 @@
       throw new Error("No slice range is active.");
     }
 
+    const previousContours = new Map(state.contours);
     const anchors = [];
     const protectedSliceIndices = new Set();
     for (let sliceIndex = bounds.start; sliceIndex <= bounds.end; sliceIndex += 1) {
@@ -6235,28 +6475,55 @@
       throw new Error("Draw or adjust at least one contour before running auto-segmentation.");
     }
 
+    const localCorrectionAnchors = buildLocalCorrectionAnchors(bounds, anchors, previousContours, protectedSliceIndices);
     setStatus(
-      `Running anchor-driven segmentation across ${bounds.count} slices from ${anchors.length} protected slice${anchors.length === 1 ? "" : "s"}, including your latest contour and rubber corrections...`
+      `Running anchor-driven segmentation across ${bounds.count} slices from ${anchors.length} protected slice${anchors.length === 1 ? "" : "s"}${localCorrectionAnchors.length ? ` plus ${localCorrectionAnchors.length} neighboring local correction${localCorrectionAnchors.length === 1 ? "" : "s"}` : ""}...`
     );
 
     clearAutoContoursInRange(bounds, protectedSliceIndices);
 
     let autoCount = 0;
-    const firstAnchor = anchors[0];
+    let localCorrectionCount = 0;
+    const segmentationAnchors = anchors.map((anchor) => ({
+      ...anchor,
+      localCorrection: false,
+    }));
+    localCorrectionAnchors.forEach((local) => {
+      const contourRecord = createContourRecord(local.points, "auto", {
+        sourceSliceIndex: local.sourceSliceIndex,
+        sourceLabel: `Local correction from slice ${local.sourceSliceIndex + 1}`,
+      });
+      storeContourRecord(local.sliceIndex, contourRecord);
+      segmentationAnchors.push({
+        sliceIndex: local.sliceIndex,
+        contour: contourRecord,
+        localCorrection: true,
+      });
+      autoCount += 1;
+      localCorrectionCount += 1;
+    });
+    segmentationAnchors.sort((left, right) => left.sliceIndex - right.sliceIndex);
+
+    const firstAnchor = segmentationAnchors[0];
     for (let sliceIndex = bounds.start; sliceIndex < firstAnchor.sliceIndex; sliceIndex += 1) {
+      const previousContour = previousContours.get(sliceIndex);
+      const sourceContour = isAutoContour(previousContour) ? previousContour : firstAnchor.contour;
+      const sourceLabel = isAutoContour(previousContour)
+        ? "Auto retained near local correction"
+        : `Auto from slice ${firstAnchor.sliceIndex + 1}`;
       storeContourRecord(
         sliceIndex,
-        createContourRecord(firstAnchor.contour.points, "auto", {
-          sourceSliceIndex: firstAnchor.sliceIndex,
-          sourceLabel: `Auto from slice ${firstAnchor.sliceIndex + 1}`,
+        createContourRecord(sourceContour.points, "auto", {
+          sourceSliceIndex: isAutoContour(previousContour) ? null : firstAnchor.sliceIndex,
+          sourceLabel,
         })
       );
       autoCount += 1;
     }
 
-    for (let anchorIndex = 0; anchorIndex < anchors.length - 1; anchorIndex += 1) {
-      const leftAnchor = anchors[anchorIndex];
-      const rightAnchor = anchors[anchorIndex + 1];
+    for (let anchorIndex = 0; anchorIndex < segmentationAnchors.length - 1; anchorIndex += 1) {
+      const leftAnchor = segmentationAnchors[anchorIndex];
+      const rightAnchor = segmentationAnchors[anchorIndex + 1];
       const gap = rightAnchor.sliceIndex - leftAnchor.sliceIndex;
       if (gap <= 1) {
         continue;
@@ -6279,13 +6546,18 @@
       }
     }
 
-    const lastAnchor = anchors[anchors.length - 1];
+    const lastAnchor = segmentationAnchors[segmentationAnchors.length - 1];
     for (let sliceIndex = lastAnchor.sliceIndex + 1; sliceIndex <= bounds.end; sliceIndex += 1) {
+      const previousContour = previousContours.get(sliceIndex);
+      const sourceContour = isAutoContour(previousContour) ? previousContour : lastAnchor.contour;
+      const sourceLabel = isAutoContour(previousContour)
+        ? "Auto retained near local correction"
+        : `Auto from slice ${lastAnchor.sliceIndex + 1}`;
       storeContourRecord(
         sliceIndex,
-        createContourRecord(lastAnchor.contour.points, "auto", {
-          sourceSliceIndex: lastAnchor.sliceIndex,
-          sourceLabel: `Auto from slice ${lastAnchor.sliceIndex + 1}`,
+        createContourRecord(sourceContour.points, "auto", {
+          sourceSliceIndex: isAutoContour(previousContour) ? null : lastAnchor.sliceIndex,
+          sourceLabel,
         })
       );
       autoCount += 1;
@@ -6295,7 +6567,7 @@
     pushHistorySnapshot("Anchor-segmented slab");
     setStatus(
       autoCount
-        ? `Let's Go Segment refreshed ${autoCount} slice${autoCount === 1 ? "" : "s"} using your latest contour and rubber anchors.`
+        ? `Let's Go Segment refreshed ${autoCount} slice${autoCount === 1 ? "" : "s"} using your latest contour and rubber anchors${localCorrectionCount ? `, including ${localCorrectionCount} neighboring local correction${localCorrectionCount === 1 ? "" : "s"}` : ""}.`
         : "Every slice in the selected range is already acting as an anchor from your latest corrections."
     );
   }
@@ -7887,6 +8159,20 @@
       return;
     }
 
+    if (drag.type === "refineStroke") {
+      const currentContour = getStoredContour(state.currentSliceIndex);
+      const refinedPoints = drag.previewPoints || buildContourWithReplacementStroke(currentContour?.points, drag.points);
+      if (!currentContour || !refinedPoints?.length || refinedPoints.length < 3 || polygonArea(refinedPoints) < 30) {
+        setStatus("Redraw stroke was too short or too far from the contour. Trace the contour edge to replace.", "warning");
+        requestRender();
+        return;
+      }
+      setContour(state.currentSliceIndex, refinedPoints, "edited");
+      enterPostContourAdjustMode("refine");
+      setStatus(`Redrew contour segment on slice ${state.currentSliceIndex + 1}. Adjust handles are active; rerun Let's Go Segment to spread the correction locally.`);
+      return;
+    }
+
     if (drag.type === "contourClickDraftHandle" || drag.type === "contourClickDraftTranslate") {
       setStatus("Multiple-click contour adjusted. Double-click to finish.");
       requestRender();
@@ -8053,6 +8339,26 @@
       return;
     }
 
+    if (state.activeTool === "refine") {
+      const contour = getStoredContour(state.currentSliceIndex);
+      if (!contour) {
+        setStatus("Draw, copy, or segment a contour before redrawing a contour edge.", "warning");
+        return;
+      }
+      state.dragging = {
+        type: "refineStroke",
+        pointerId: event.pointerId,
+        sliceIndex: state.currentSliceIndex,
+        points: [clampPointToImage(imagePoint)],
+        originalPoints: cloneContourPoints(contour.points),
+        previewPoints: cloneContourPoints(contour.points),
+      };
+      els.canvas.setPointerCapture?.(event.pointerId);
+      updateCanvasCursor();
+      requestRender();
+      return;
+    }
+
     if (state.activeTool === "edit") {
       const contour = getStoredContour(state.currentSliceIndex);
       if (!contour) {
@@ -8186,6 +8492,19 @@
       const lastPoint = state.dragging.points[state.dragging.points.length - 1];
       if (!lastPoint || distanceBetweenPoints(lastPoint, imagePoint) >= 0.8) {
         state.dragging.points.push(imagePoint);
+        requestRender();
+      }
+      return;
+    }
+
+    if (state.dragging.type === "refineStroke") {
+      const lastPoint = state.dragging.points[state.dragging.points.length - 1];
+      if (!lastPoint || distanceBetweenPoints(lastPoint, imagePoint) >= 0.8) {
+        state.dragging.points.push(imagePoint);
+        const previewPoints = buildContourWithReplacementStroke(state.dragging.originalPoints, state.dragging.points);
+        if (previewPoints.length >= 3) {
+          state.dragging.previewPoints = previewPoints;
+        }
         requestRender();
       }
       return;
@@ -8952,6 +9271,8 @@
         setActiveTool("contour");
       } else if (lowerKey === "q") {
         setActiveTool("contourClick");
+      } else if (lowerKey === "a") {
+        setActiveTool("refine");
       } else if (lowerKey === "e") {
         setActiveTool("edit");
       } else if (lowerKey === "r") {

@@ -270,6 +270,7 @@
                       </button>
                     </div>
                   </div>
+                  <button class="tool-button" data-tool="refine" type="button">Redraw</button>
                   <button class="tool-button" data-tool="edit" type="button">Adjust</button>
                   <button class="tool-button" data-tool="erase" type="button">Rubber</button>
                   <button class="tool-button" data-tool="pan" type="button">Pan (M)</button>
@@ -346,12 +347,13 @@
                   contour points one by one; double-click to finish a smoothed contour.
                 </p>
                 <p class="hint">
-                  `Adjust` refines handles or translates an existing contour. `Rubber` excludes unwanted
-                  pixels from the EAT count. `Let's Go Segment` uses your contoured slices as anchors,
-                  then `Copy To All Other Recons` transfers the completed contour set.
+                  `Redraw` replaces the nearest contour arc with a freehand correction. `Adjust` refines
+                  handles or translates an existing contour. `Rubber` excludes unwanted pixels from the
+                  EAT count. `Let's Go Segment` uses corrected slices as local anchors, then `Copy To All
+                  Other Recons` transfers the completed contour set.
                 </p>
                 <p class="hint">
-                  Shortcuts: `D` draw contour, `Q` multiple click, `E` adjust, `R` rubber, `O`
+                  Shortcuts: `D` draw contour, `Q` multiple click, `A` redraw, `E` adjust, `R` rubber, `O`
                   overlay, `V` compare, `T` transfer, `X` clear contour, and `Shift+X` clear rubber.
                 </p>
               </section>
@@ -537,6 +539,7 @@
                 <select id="toolbar-tool-select" class="toolbar-tool-select" aria-label="Active EAT tool">
                   <option value="contour">Draw</option>
                   <option value="contourClick">Multiple Click</option>
+                  <option value="refine">Redraw</option>
                   <option value="edit">Adjust</option>
                   <option value="erase">Rubber</option>
                   <option value="pan">Pan</option>
