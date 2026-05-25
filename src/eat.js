@@ -195,6 +195,7 @@
     els.saveSessionButton = document.getElementById("save-session-button");
     els.reconstructionSummary = document.getElementById("reconstruction-summary");
     els.transferReconstructionsButton = document.getElementById("transfer-recons-button");
+    els.segmentTransferButton = document.getElementById("segment-transfer-button");
     els.reconstructionList = document.getElementById("reconstruction-list");
     els.compareToggleButton = document.getElementById("compare-toggle-button");
     els.compareSelect = document.getElementById("compare-select");
@@ -3852,8 +3853,12 @@
     els.activeReconstructionReadout.textContent = activeReconstruction?.label || "-";
     els.primaryPanelLabel.textContent = activeReconstruction?.label || "-";
     els.reconstructionSummary.textContent = `${state.reconstructions.length} loaded`;
-    els.transferReconstructionsButton.disabled =
+    const transferDisabled =
       !activeReconstruction || state.reconstructions.length < 2 || !hasTransferredSegmentation(activeReconstruction);
+    els.transferReconstructionsButton.disabled = transferDisabled;
+    if (els.segmentTransferButton) {
+      els.segmentTransferButton.disabled = transferDisabled;
+    }
   }
 
   function rangePercent(sliceIndex, sliceCount) {
@@ -8598,6 +8603,7 @@
     els.copyPrevButton?.addEventListener("click", () => copyContourWithFeedback(-1));
     els.copyNextButton?.addEventListener("click", () => copyContourWithFeedback(1));
     els.segmentButton.addEventListener("click", runAutoSegmentationWithFeedback);
+    els.segmentTransferButton?.addEventListener("click", transferSegmentationWithFeedback);
     els.autoEatButton?.addEventListener("click", runAutomaticEatWithFeedback);
     els.aiSegmentButton?.addEventListener("click", runAiAutoSegmentationWithFeedback);
     els.sendTrainingButton?.addEventListener("click", sendTrainingFeedbackWithFeedback);
