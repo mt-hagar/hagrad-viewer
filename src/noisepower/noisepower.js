@@ -2388,6 +2388,18 @@
     return fallback || PLOT_PALETTE[0];
   }
 
+  function hasOwnPreference(patch, key) {
+    return Object.prototype.hasOwnProperty.call(patch || {}, key);
+  }
+
+  function ensureSeriesPrefColor(pref, index = 0) {
+    const color = normalizePlotColor(pref?.color, PLOT_PALETTE[index % PLOT_PALETTE.length]);
+    if (pref) {
+      pref.color = color;
+    }
+    return color;
+  }
+
   function getSeriesColorPaletteMarkup(selectedColor, label) {
     const normalizedSelected = normalizePlotColor(selectedColor, PLOT_PALETTE[0]);
     return `
@@ -2652,10 +2664,18 @@
     [state.seriesPrefs, state.squareProfilePrefs].forEach((prefs) => {
       Object.entries(prefs).forEach(([key, pref]) => {
         if (datasetIdFromSeriesKey(key) === datasetId) {
-          pref.label = source.label;
-          pref.color = source.color;
-          pref.visible = source.visible !== false;
-          pref.order = source.order;
+          if (safeString(source.label)) {
+            pref.label = source.label;
+          }
+          if (safeString(source.color)) {
+            pref.color = source.color;
+          }
+          if (typeof source.visible === "boolean") {
+            pref.visible = source.visible;
+          }
+          if (Number.isFinite(source.order)) {
+            pref.order = source.order;
+          }
         }
       });
     });
@@ -2667,12 +2687,20 @@
       return;
     }
     const current = state.reconstructionPrefs[datasetId] || {};
-    state.reconstructionPrefs[datasetId] = {
-      label: patch.label ?? current.label,
-      color: patch.color ?? current.color,
-      visible: patch.visible ?? current.visible ?? true,
-      order: patch.order ?? current.order ?? 0,
-    };
+    const next = { ...current };
+    if (hasOwnPreference(patch, "label") && safeString(patch.label)) {
+      next.label = patch.label;
+    }
+    if (hasOwnPreference(patch, "color") && safeString(patch.color)) {
+      next.color = normalizePlotColor(patch.color, current.color || PLOT_PALETTE[0]);
+    }
+    if (hasOwnPreference(patch, "visible")) {
+      next.visible = patch.visible !== false;
+    }
+    if (hasOwnPreference(patch, "order") && Number.isFinite(Number(patch.order))) {
+      next.order = Number(patch.order);
+    }
+    state.reconstructionPrefs[datasetId] = next;
     mirrorReconstructionPrefToSeries(datasetId);
   }
 
@@ -2842,6 +2870,7 @@
       if (!handle) {
         return;
       }
+      row.setAttribute("draggable", "true");
       handle.setAttribute("draggable", "true");
       handle.title = "Drag to reorder, or use arrow keys";
       handle.addEventListener("keydown", (event) => {
@@ -2852,16 +2881,24 @@
         event.preventDefault();
         move(key, direction);
       });
-      handle.addEventListener("dragstart", (event) => {
+      const startDrag = (event) => {
+        if (event.target !== row && event.target !== handle && event.target.closest("input, select, textarea, button:not(.series-sequence), [data-series-color-picker]")) {
+          event.preventDefault();
+          return;
+        }
         state.seriesOrderDrag = { key, rowSelector, datasetKeyName };
         row.classList.add("is-dragging");
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", key);
-      });
-      handle.addEventListener("dragend", () => {
+      };
+      const endDrag = () => {
         rows.forEach((entry) => entry.classList.remove("is-dragging"));
         state.seriesOrderDrag = null;
-      });
+      };
+      row.addEventListener("dragstart", startDrag);
+      row.addEventListener("dragend", endDrag);
+      handle.addEventListener("dragstart", startDrag);
+      handle.addEventListener("dragend", endDrag);
     });
     if (container._noisePowerSeriesOrderInstalled) {
       return;
@@ -2926,11 +2963,12 @@
             label: analysisModelLabel(model, index),
             color: PLOT_PALETTE[index % PLOT_PALETTE.length],
             visible: true,
-          };
+        };
         const labelText = ensureSeriesPrefLabel(pref, model, index);
+        const color = ensureSeriesPrefColor(pref, index);
         return {
           label: displaySeriesLabel({ ...pref, label: labelText }, index),
-          color: normalizePlotColor(pref.color, PLOT_PALETTE[model.datasetIndex % PLOT_PALETTE.length]),
+          color,
           hidden: pref.visible === false,
           points: (model.analysis.radialBins || []).map((bin) => ({
             x: bin.frequencyCenter,
@@ -2965,6 +3003,7 @@
               visible: true,
             };
           const labelText = ensureSeriesPrefLabel(pref, model, index);
+          const color = ensureSeriesPrefColor(pref, index);
           const analysis = model.analysis || {};
           return `
             <div class="series-control-row" data-series-key="${escapeAttr(key)}" data-default-label="${escapeAttr(labelText)}">
@@ -2978,7 +3017,7 @@
                 <input type="radio" class="np-series-reference" name="np-series-reference" ${state.seriesReferenceKey === key ? "checked" : ""} aria-label="Use ${escapeAttr(labelText)} as reference" />
                 <span>Ref</span>
               </label>
-              ${getSeriesColorPaletteMarkup(pref.color, labelText)}
+              ${getSeriesColorPaletteMarkup(color, labelText)}
               <input type="text" class="np-series-label" value="${escapeAttr(labelText)}" placeholder="${escapeAttr(labelText)}" data-default-label="${escapeAttr(labelText)}" aria-label="Label for ${escapeAttr(labelText)}" />
               <span class="series-metric-chip">SD ${formatMetric(analysis.noiseMagnitude, analysis.units, 1)} · fP ${formatMetric(analysis.peakFrequency, "mm^-1", 3)}</span>
             </div>
@@ -3007,7 +3046,6 @@
           state.seriesPrefs[key] = state.seriesPrefs[key] || {};
           if (!safeString(state.seriesPrefs[key].label)) {
             state.seriesPrefs[key].label = defaultLabel;
-            syncReconstructionPrefFromSeriesKey(key, { label: defaultLabel });
           }
         }
         visible?.addEventListener("change", () => {
@@ -3120,9 +3158,10 @@
       .map((model, index) => {
         const pref = state.squareProfilePrefs[squareProfileSeriesKey(model)] || {};
         const labelText = ensureSeriesPrefLabel(pref, model, index);
+        const color = ensureSeriesPrefColor(pref, index);
         return {
           label: displaySeriesLabel({ ...pref, label: labelText }, index),
-          color: normalizePlotColor(pref.color, PLOT_PALETTE[model.datasetIndex % PLOT_PALETTE.length]),
+          color,
           hidden: pref.visible === false,
           points: (model.profile.samples || []).map((sample) => ({
             x: Number.isFinite(sample.distanceMm) ? sample.distanceMm : sample.sampleIndex,
@@ -3144,6 +3183,7 @@
       .map((model, index) => {
         const pref = state.squareProfilePrefs[squareProfileSeriesKey(model)] || {};
         const labelText = ensureSeriesPrefLabel(pref, model, index);
+        const color = ensureSeriesPrefColor(pref, index);
         const ttf = model.extraction?.ttfAnalysis;
         const points =
           ttf?.valid && curveType === "esf"
@@ -3153,7 +3193,7 @@
               : [];
         return {
           label: displaySeriesLabel({ ...pref, label: labelText }, index),
-          color: normalizePlotColor(pref.color, PLOT_PALETTE[model.datasetIndex % PLOT_PALETTE.length]),
+          color,
           hidden: pref.visible === false,
           points,
         };
@@ -3190,6 +3230,7 @@
               visible: true,
             };
           const labelText = ensureSeriesPrefLabel(pref, model, index);
+          const color = ensureSeriesPrefColor(pref, index);
           const stats = model.extraction?.statsCalibrated || {};
           const ttf = model.extraction?.ttfAnalysis || {};
           const ttfMetric = ttf.valid
@@ -3209,7 +3250,7 @@
                 <input type="radio" class="np-profile-reference" name="np-profile-reference" ${state.squareProfileReferenceKey === key ? "checked" : ""} aria-label="Use ${escapeAttr(labelText)} as reference" />
                 <span>Ref</span>
               </label>
-              ${getSeriesColorPaletteMarkup(pref.color, labelText)}
+              ${getSeriesColorPaletteMarkup(color, labelText)}
               <input type="text" class="np-profile-label" value="${escapeAttr(labelText)}" placeholder="${escapeAttr(labelText)}" data-default-label="${escapeAttr(labelText)}" aria-label="Label for ${escapeAttr(labelText)}" />
               <span class="series-metric-chip">Mean ${formatMetric(stats.mean, model.extraction?.units, 2)} · SD ${formatMetric(stats.sd, model.extraction?.units, 2)}${ttfMetric}</span>
             </div>
@@ -3238,7 +3279,6 @@
           state.squareProfilePrefs[key] = state.squareProfilePrefs[key] || {};
           if (!safeString(state.squareProfilePrefs[key].label)) {
             state.squareProfilePrefs[key].label = defaultLabel;
-            syncReconstructionPrefFromSeriesKey(key, { label: defaultLabel });
           }
         }
         visible?.addEventListener("change", () => {
