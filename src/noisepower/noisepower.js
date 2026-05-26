@@ -2602,8 +2602,29 @@
     return `S${seriesNumber} · ${label}`;
   }
 
+  const SERIES_PREF_KEY_SEPARATOR = "::npkey::";
+
+  function encodeSeriesPrefKeyPart(value, fallback) {
+    return encodeURIComponent(safeString(value) || fallback);
+  }
+
+  function decodeSeriesPrefKeyPart(value) {
+    try {
+      return decodeURIComponent(value);
+    } catch (_error) {
+      return safeString(value);
+    }
+  }
+
+  function makeSeriesPrefKey(datasetId, itemId, itemFallback) {
+    return [
+      encodeSeriesPrefKeyPart(datasetId, "dataset"),
+      encodeSeriesPrefKeyPart(itemId, itemFallback),
+    ].join(SERIES_PREF_KEY_SEPARATOR);
+  }
+
   function modelSeriesKey(model) {
-    return `${model?.dataset?.id || "dataset"}::${model?.circle?.id || "circle"}`;
+    return makeSeriesPrefKey(model?.dataset?.id, model?.circle?.id, "circle");
   }
 
   function seriesDatasetKey(model) {
@@ -2611,7 +2632,16 @@
   }
 
   function datasetIdFromSeriesKey(key) {
-    return safeString(key).split("::")[0] || "";
+    const text = safeString(key);
+    if (!text) {
+      return "";
+    }
+    const separatorIndex = text.indexOf(SERIES_PREF_KEY_SEPARATOR);
+    if (separatorIndex >= 0) {
+      return decodeSeriesPrefKeyPart(text.slice(0, separatorIndex));
+    }
+    const legacySeparatorIndex = text.lastIndexOf("::");
+    return legacySeparatorIndex >= 0 ? text.slice(0, legacySeparatorIndex) : text;
   }
 
   function findExistingSeriesPref(datasetId) {
@@ -2749,7 +2779,9 @@
     prefs[key].label = source.label;
     prefs[key].color = source.color;
     prefs[key].visible = source.visible !== false;
-    prefs[key].order = source.order;
+    if (!Number.isFinite(prefs[key].order)) {
+      prefs[key].order = Number.isFinite(source.order) ? source.order : index;
+    }
     return prefs[key];
   }
 
@@ -2861,13 +2893,23 @@
       if (moveSeriesByDelta(models, prefs, keyFn, key, delta)) {
         syncReconstructionPrefsForModels(models, prefs, keyFn);
         onMoved();
+        return true;
       }
+      return false;
     };
     rows.forEach((row) => {
       const key = safeString(row.dataset[datasetKeyName]);
       const handle = row.querySelector(".series-sequence");
-      row.querySelector("[data-series-move='up']")?.addEventListener("click", () => move(key, -1));
-      row.querySelector("[data-series-move='down']")?.addEventListener("click", () => move(key, 1));
+      row.querySelector("[data-series-move='up']")?.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        move(key, -1);
+      });
+      row.querySelector("[data-series-move='down']")?.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        move(key, 1);
+      });
       if (!handle) {
         return;
       }
@@ -3128,7 +3170,7 @@
   }
 
   function squareProfileSeriesKey(model) {
-    return `${model?.dataset?.id || "dataset"}::${model?.roi?.id || "roi"}`;
+    return makeSeriesPrefKey(model?.dataset?.id, model?.roi?.id, "roi");
   }
 
   function ensureSquareProfilePrefs(models) {
