@@ -155,7 +155,9 @@
     imageBufferCanvas: null,
     historyEntries: [],
     historyIndex: -1,
+    historySignatureSequence: 0,
     restoringHistory: false,
+    segmentationTransferBusy: false,
     backend: {
       checking: false,
       aiSegmenting: false,
@@ -1287,8 +1289,9 @@
     };
   }
 
-  function createHistorySignature(snapshot) {
-    return JSON.stringify(snapshot);
+  function createHistorySignature() {
+    state.historySignatureSequence += 1;
+    return `history-${state.historySignatureSequence}`;
   }
 
   function resetHistory() {
@@ -1309,7 +1312,7 @@
     }
 
     const snapshot = serializeMutableState();
-    const signature = createHistorySignature(snapshot);
+    const signature = createHistorySignature();
     const current = state.historyEntries[state.historyIndex];
     if (current?.signature === signature) {
       updateHistoryUi();
@@ -2631,6 +2634,10 @@
 
   function setSidebarPage(page) {
     const nextPage = normalizeSidebarPage(page);
+    if (nextPage === "export" && state.segmentationTransferBusy) {
+      setStatus("Finish the segmentation transfer before opening export.", "warning");
+      return;
+    }
     if (nextPage === "export" && state.presentationFocus) {
       setPresentationFocus(false);
     }
@@ -4052,12 +4059,18 @@
     els.primaryPanelLabel.textContent = activeReconstruction?.label || "-";
     els.reconstructionSummary.textContent = `${state.reconstructions.length} loaded`;
     const transferDisabled =
-      !activeReconstruction || state.reconstructions.length < 2 || !hasTransferredSegmentation(activeReconstruction);
+      state.segmentationTransferBusy ||
+      !activeReconstruction ||
+      state.reconstructions.length < 2 ||
+      !hasTransferredSegmentation(activeReconstruction);
     if (els.transferReconstructionsButton) {
       els.transferReconstructionsButton.disabled = transferDisabled;
     }
     if (els.segmentTransferButton) {
       els.segmentTransferButton.disabled = transferDisabled;
+      els.segmentTransferButton.textContent = state.segmentationTransferBusy
+        ? "Copying To Other Recons..."
+        : "Copy To All Other Recons (T)";
     }
   }
 
@@ -7036,7 +7049,7 @@
     }
   }
 
-  function transferSegmentationToCompatibleReconstructions() {
+  async function transferSegmentationToCompatibleReconstructions() {
     const sourceReconstruction = getActiveReconstruction();
     if (!sourceReconstruction || !state.volume) {
       throw new Error("Load a study before transferring segmentation.");
@@ -7045,6 +7058,18 @@
     if (!hasTransferredSegmentation(sourceReconstruction)) {
       throw new Error("Draw or segment at least one contour before transferring to other reconstructions.");
     }
+
+    if (state.segmentationTransferBusy) {
+      setStatus("Segmentation transfer is already running.", "warning");
+      return;
+    }
+
+    const transferProfile = window.HAGRadCore?.createLoadProfiler?.("EAT segmentation transfer", {
+      workflow: "eat",
+      targetCount: Math.max(0, state.reconstructions.length - 1),
+      sourceContourCount: sourceReconstruction.contours?.size || 0,
+      sourceExclusionCount: sourceReconstruction.exclusionMasks?.size || 0,
+    });
 
     function imagePointToPatientPoint(record, point) {
       if (!hasTransferGeometry(record) || !point) {
@@ -7317,14 +7342,20 @@
       };
     }
 
-    const targets = state.reconstructions.filter((reconstruction) => {
-      if (reconstruction.id === sourceReconstruction.id) {
-        return false;
-      }
-      return getReconstructionCompatibility(sourceReconstruction, reconstruction).compatible;
+    const finishCompatibilityScan = transferProfile?.start("compatibilityScan", {
+      reconstructionCount: state.reconstructions.length,
     });
+    const targetPlans = state.reconstructions
+      .filter((reconstruction) => reconstruction.id !== sourceReconstruction.id)
+      .map((target) => ({
+        target,
+        compatibility: getReconstructionCompatibility(sourceReconstruction, target),
+      }))
+      .filter((plan) => plan.compatibility.compatible);
+    finishCompatibilityScan?.({ compatibleCount: targetPlans.length });
 
-    if (!targets.length) {
+    if (!targetPlans.length) {
+      transferProfile?.finish({ failed: true, reason: "no-compatible-targets" });
       throw new Error("No additional reconstructions are available for transfer.");
     }
 
@@ -7333,55 +7364,93 @@
     let skippedExclusionTargets = 0;
     const sourceRangeState = getRangeStateForReconstruction(sourceReconstruction);
 
-    targets.forEach((target) => {
-      const compatibility = getReconstructionCompatibility(sourceReconstruction, target);
-      if (compatibility.transferMode === "aligned") {
-        target.contours = cloneContourMapForTransfer(sourceReconstruction.contours);
-        target.exclusionMasks = cloneExclusionMasksForTransfer(sourceReconstruction.exclusionMasks);
-        storeRangeStateOnReconstruction(target, sourceRangeState);
-        target.transferMode = "aligned";
-        target.transferWarning = null;
-        alignedCount += 1;
-      } else {
-        const mappedTransfer = buildApproximateTransferredContours(target, compatibility);
-        target.contours = mappedTransfer.contours;
-        target.exclusionMasks = new Map();
-        storeRangeStateOnReconstruction(target, mappedTransfer.rangeState);
-        target.transferMode = "approximate";
-        target.transferWarning = sourceReconstruction.exclusionMasks.size
-          ? "Best-effort contour transfer skipped the erase exclusions. Review and adjust on this reconstruction."
-          : "Best-effort contour transfer completed. Review and adjust on this reconstruction.";
-        approximateCount += 1;
-        if (sourceReconstruction.exclusionMasks.size) {
-          skippedExclusionTargets += 1;
+    state.segmentationTransferBusy = true;
+    try {
+      refreshUi();
+      setStatus(`Transferring segmentation to ${targetPlans.length} reconstruction${targetPlans.length === 1 ? "" : "s"}...`);
+      await waitForAnimationFrame();
+
+      for (let targetIndex = 0; targetIndex < targetPlans.length; targetIndex += 1) {
+        const { target, compatibility } = targetPlans[targetIndex];
+        const finishTargetTransfer = transferProfile?.start("targetTransfer", {
+          mode: compatibility.transferMode,
+        });
+
+        if (compatibility.transferMode === "aligned") {
+          target.contours = cloneContourMapForTransfer(sourceReconstruction.contours);
+          target.exclusionMasks = cloneExclusionMasksForTransfer(sourceReconstruction.exclusionMasks);
+          storeRangeStateOnReconstruction(target, sourceRangeState);
+          target.transferMode = "aligned";
+          target.transferWarning = null;
+          alignedCount += 1;
+        } else {
+          const mappedTransfer = buildApproximateTransferredContours(target, compatibility);
+          target.contours = mappedTransfer.contours;
+          target.exclusionMasks = new Map();
+          storeRangeStateOnReconstruction(target, mappedTransfer.rangeState);
+          target.transferMode = "approximate";
+          target.transferWarning = sourceReconstruction.exclusionMasks.size
+            ? "Best-effort contour transfer skipped the erase exclusions. Review and adjust on this reconstruction."
+            : "Best-effort contour transfer completed. Review and adjust on this reconstruction.";
+          approximateCount += 1;
+          if (sourceReconstruction.exclusionMasks.size) {
+            skippedExclusionTargets += 1;
+          }
+        }
+
+        target.metricsCache = new Map();
+        target.transferSourceId = sourceReconstruction.id;
+        target.transferSourceLabel = sourceReconstruction.label;
+
+        finishTargetTransfer?.({
+          contourCount: target.contours?.size || 0,
+          exclusionCount: target.exclusionMasks?.size || 0,
+        });
+        if (targetIndex < targetPlans.length - 1) {
+          setStatus(`Transferred ${targetIndex + 1} / ${targetPlans.length} reconstructions...`);
+          await waitForAnimationFrame();
         }
       }
 
-      target.metricsCache = new Map();
-      target.transferSourceId = sourceReconstruction.id;
-      target.transferSourceLabel = sourceReconstruction.label;
-    });
+      if (state.activeReconstructionId === sourceReconstruction.id) {
+        syncActiveReconstructionAliases(sourceReconstruction);
+      }
 
-    if (state.activeReconstructionId === sourceReconstruction.id) {
-      syncActiveReconstructionAliases(sourceReconstruction);
-    }
+      const finishUiRefresh = transferProfile?.start("uiRefresh");
+      refreshUi();
+      requestRender();
+      finishUiRefresh?.();
+      await waitForAnimationFrame();
 
-    refreshUi();
-    requestRender();
-    pushHistorySnapshot("Transferred segmentation");
-    const segments = [];
-    if (alignedCount) {
-      segments.push(`${alignedCount} aligned`);
+      const finishHistorySnapshot = transferProfile?.start("historySnapshot", {
+        targetCount: targetPlans.length,
+      });
+      pushHistorySnapshot("Transferred segmentation");
+      finishHistorySnapshot?.();
+
+      const segments = [];
+      if (alignedCount) {
+        segments.push(`${alignedCount} aligned`);
+      }
+      if (approximateCount) {
+        segments.push(`${approximateCount} best-effort`);
+      }
+      const suffix = skippedExclusionTargets
+        ? " Erase exclusions were not copied to best-effort reconstructions."
+        : "";
+      setStatus(
+        `Transferred segmentation from ${sourceReconstruction.label} to ${targetPlans.length} reconstruction${targetPlans.length === 1 ? "" : "s"} (${segments.join(", ")}).${suffix}`
+      );
+      transferProfile?.finish({
+        transferredReconstructions: targetPlans.length,
+        alignedCount,
+        approximateCount,
+        skippedExclusionTargets,
+      });
+    } finally {
+      state.segmentationTransferBusy = false;
+      refreshUi();
     }
-    if (approximateCount) {
-      segments.push(`${approximateCount} best-effort`);
-    }
-    const suffix = skippedExclusionTargets
-      ? " Erase exclusions were not copied to best-effort reconstructions."
-      : "";
-    setStatus(
-      `Transferred segmentation from ${sourceReconstruction.label} to ${targets.length} reconstruction${targets.length === 1 ? "" : "s"} (${segments.join(", ")}).${suffix}`
-    );
   }
 
   function getExportActionConfig(action) {
@@ -9600,12 +9669,10 @@
     };
 
     const transferSegmentationWithFeedback = () => {
-      try {
-        transferSegmentationToCompatibleReconstructions();
-      } catch (error) {
+      transferSegmentationToCompatibleReconstructions().catch((error) => {
         console.error(error);
         setStatus(error.message || "Segmentation transfer failed.", "error");
-      }
+      });
     };
 
     const setCurrentSliceAsTop = () => {
