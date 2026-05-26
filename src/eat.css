@@ -375,6 +375,23 @@ a {
   font-size: 12px;
 }
 
+.button.compact-button {
+  padding: 6px 9px;
+  min-height: 30px;
+  font-size: 11px;
+}
+
+.button.danger {
+  border-color: rgba(255, 140, 130, 0.28);
+  color: #ffd1cc;
+}
+
+.button.danger:hover,
+.button.danger:focus-visible {
+  border-color: rgba(255, 140, 130, 0.48);
+  background: rgba(255, 140, 130, 0.08);
+}
+
 .button.is-active {
   border-color: var(--line-strong);
   background: linear-gradient(180deg, rgba(94, 214, 195, 0.18), rgba(23, 157, 136, 0.12));
@@ -938,8 +955,27 @@ a {
   margin-top: 7px;
 }
 
+.compact-actions {
+  align-items: stretch;
+  margin-top: 8px;
+}
+
+.threshold-actions {
+  display: grid;
+  grid-template-columns: minmax(80px, 0.62fr) minmax(0, 1.38fr);
+}
+
+.contour-cleanup-actions {
+  display: grid;
+  gap: 6px;
+}
+
 .full-width-actions {
   display: block;
+}
+
+.full-width-actions.contour-cleanup-actions {
+  display: grid;
 }
 
 .full-width-action {

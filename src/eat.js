@@ -187,6 +187,9 @@
       reportPrefs: {},
       reportDragId: null,
       previewReconstructionId: null,
+      summaryCache: new Map(),
+      summaryTaskId: 0,
+      summariesBusy: false,
     },
   };
 
@@ -260,6 +263,7 @@
     els.aiBackendMode = document.getElementById("ai-backend-mode");
     els.aiBackendTraining = document.getElementById("ai-backend-training");
     els.clearContourButton = document.getElementById("clear-contour-button");
+    els.clearAllContoursButton = document.getElementById("clear-all-contours-button");
     els.eraseRadiusInput = document.getElementById("erase-radius-input");
     els.erasePresetButtons = Array.from(document.querySelectorAll("[data-erase-preset]"));
     els.clearEraseButton = document.getElementById("clear-erase-button");
@@ -696,6 +700,23 @@
     reconstruction.rangeConfigured = normalized.rangeConfigured;
   }
 
+  function invalidateExportSummaryCache() {
+    if (state.export.summaryCache?.clear) {
+      state.export.summaryCache.clear();
+    } else {
+      state.export.summaryCache = new Map();
+    }
+    state.export.summaryTaskId += 1;
+    state.export.summariesBusy = false;
+  }
+
+  function bumpActiveExclusionRevision() {
+    const reconstruction = getActiveReconstruction();
+    if (reconstruction) {
+      reconstruction.exclusionRevision = (Number(reconstruction.exclusionRevision) || 0) + 1;
+    }
+  }
+
   function persistActiveReconstructionRange() {
     const reconstruction = getActiveReconstruction();
     if (!reconstruction) {
@@ -768,6 +789,7 @@
       transferMode: "local",
       transferWarning: null,
       backendCache: null,
+      exclusionRevision: 0,
       topSliceIndex: rangeState.topSliceIndex,
       bottomSliceIndex: rangeState.bottomSliceIndex,
       rangeConfigured: rangeState.rangeConfigured,
@@ -1340,6 +1362,7 @@
       reconstruction.contours = new Map();
       reconstruction.exclusionMasks = new Map();
       reconstruction.metricsCache = new Map();
+      reconstruction.exclusionRevision = 0;
       reconstruction.transferSourceId = null;
       reconstruction.transferSourceLabel = null;
       reconstruction.transferMode = "local";
@@ -1357,6 +1380,7 @@
       );
       reconstruction.exclusionMasks = deserializeExclusionMap(savedReconstruction.exclusionMasks, reconstruction.volume);
       reconstruction.metricsCache = new Map();
+      reconstruction.exclusionRevision = 0;
       reconstruction.transferSourceId = savedReconstruction.transferSourceId || null;
       reconstruction.transferSourceLabel = savedReconstruction.transferSourceLabel || null;
       reconstruction.transferMode = savedReconstruction.transferMode || "local";
@@ -1388,6 +1412,7 @@
     syncActiveReconstructionAliases(nextActiveReconstruction);
     clampCurrentSliceToActiveVolume();
     ensureValidCompareSelection();
+    invalidateExportSummaryCache();
     refreshUi();
     requestRender();
   }
@@ -1506,6 +1531,7 @@
       reconstruction.contours = new Map();
       reconstruction.exclusionMasks = new Map();
       reconstruction.metricsCache = new Map();
+      reconstruction.exclusionRevision = 0;
       reconstruction.transferSourceId = null;
       reconstruction.transferSourceLabel = null;
       reconstruction.transferMode = "local";
@@ -1523,6 +1549,7 @@
       );
       reconstruction.exclusionMasks = deserializeExclusionMap(savedReconstruction.exclusionMasks, reconstruction.volume);
       reconstruction.metricsCache = new Map();
+      reconstruction.exclusionRevision = 0;
       reconstruction.transferSourceLabel = safeString(savedReconstruction.transfer_source_label);
       reconstruction.transferMode = safeString(savedReconstruction.transfer_mode) || "local";
       reconstruction.transferWarning = safeString(savedReconstruction.transfer_warning);
@@ -1585,6 +1612,7 @@
 
     clampCurrentSliceToActiveVolume();
     ensureValidCompareSelection();
+    invalidateExportSummaryCache();
     refreshUi();
     requestRender();
 
@@ -2248,6 +2276,7 @@
 
     state.reconstructions = nextReconstructions;
     syncExportReportPrefs();
+    invalidateExportSummaryCache();
     state.dragging = null;
     state.hoverImagePoint = null;
 
@@ -2358,6 +2387,9 @@
     state.export.reportPrefs = {};
     state.export.reportDragId = null;
     state.export.previewReconstructionId = null;
+    state.export.summaryCache = new Map();
+    state.export.summaryTaskId += 1;
+    state.export.summariesBusy = false;
     resetHistory();
     setStatus("Ready for axial CT reconstructions");
     refreshUi();
@@ -2537,6 +2569,7 @@
       state.rangeConfigured = true;
     }
     persistActiveReconstructionRange();
+    invalidateExportSummaryCache();
 
     updateGuideUi();
     updateRangeUi();
@@ -2778,6 +2811,7 @@
 
   function invalidateAllMetrics() {
     state.metricsCache.clear();
+    invalidateExportSummaryCache();
   }
 
   function setHuThresholds(minValue, maxValue, options) {
@@ -4964,6 +4998,7 @@
 
   function invalidateSliceMetrics(sliceIndex) {
     state.metricsCache.delete(sliceIndex);
+    invalidateExportSummaryCache();
   }
 
   function createContourRecord(points, status, sourceDetails) {
@@ -5024,6 +5059,7 @@
       return false;
     }
     state.exclusionMasks.delete(sliceIndex);
+    bumpActiveExclusionRevision();
     invalidateSliceMetrics(sliceIndex);
     return true;
   }
@@ -5060,6 +5096,7 @@
     }
 
     if (changed) {
+      bumpActiveExclusionRevision();
       invalidateSliceMetrics(sliceIndex);
     }
     return changed;
@@ -7401,6 +7438,7 @@
         }
 
         target.metricsCache = new Map();
+        target.exclusionRevision = (Number(target.exclusionRevision) || 0) + 1;
         target.transferSourceId = sourceReconstruction.id;
         target.transferSourceLabel = sourceReconstruction.label;
 
@@ -7419,6 +7457,7 @@
       }
 
       const finishUiRefresh = transferProfile?.start("uiRefresh");
+      invalidateExportSummaryCache();
       refreshUi();
       requestRender();
       finishUiRefresh?.();
@@ -8072,25 +8111,236 @@
     updateExportWorkspaceUi();
   }
 
+  function getSliceHuValueFromVolume(volume, sliceIndex, pixelIndex) {
+    const slice = volume?.slices?.[sliceIndex];
+    if (!slice) {
+      return null;
+    }
+    return slice.pixels[pixelIndex] * slice.slope + slice.intercept;
+  }
+
+  function computeSliceMetricsForReconstruction(reconstruction, sliceIndex, points) {
+    const volume = reconstruction?.volume;
+    if (!volume || !Array.isArray(points) || points.length < 3) {
+      return null;
+    }
+
+    const rows = volume.rows;
+    const columns = volume.columns;
+    const pixelAreaMm2 = volume.rowSpacing * volume.columnSpacing;
+    const bounds = getContourBounds(points);
+    const minX = clamp(Math.floor(bounds.minX), 0, columns - 1);
+    const maxX = clamp(Math.ceil(bounds.maxX), 0, columns - 1);
+    const minY = clamp(Math.floor(bounds.minY), 0, rows - 1);
+    const maxY = clamp(Math.ceil(bounds.maxY), 0, rows - 1);
+    const exclusionMask = reconstruction.exclusionMasks?.get(sliceIndex) || null;
+    let contourPixelCount = 0;
+    let fatPixelCount = 0;
+    let fatHuSum = 0;
+    let fatHuSquaredSum = 0;
+    let fatHuMin = Infinity;
+    let fatHuMax = -Infinity;
+    let excludedPixelCount = 0;
+
+    for (let y = minY; y <= maxY; y += 1) {
+      for (let x = minX; x <= maxX; x += 1) {
+        if (!pointInPolygon(points, x + 0.5, y + 0.5)) {
+          continue;
+        }
+
+        contourPixelCount += 1;
+        const pixelIndex = y * columns + x;
+        const hu = getSliceHuValueFromVolume(volume, sliceIndex, pixelIndex);
+        const isExcluded = Boolean(exclusionMask?.[pixelIndex]);
+        if (hu == null || hu < state.huThreshold.min || hu > state.huThreshold.max) {
+          continue;
+        }
+
+        if (isExcluded) {
+          excludedPixelCount += 1;
+          continue;
+        }
+
+        fatPixelCount += 1;
+        fatHuSum += hu;
+        fatHuSquaredSum += hu * hu;
+        fatHuMin = Math.min(fatHuMin, hu);
+        fatHuMax = Math.max(fatHuMax, hu);
+      }
+    }
+
+    const contourAreaMm2 = polygonArea(points) * pixelAreaMm2;
+    const fatAreaMm2 = fatPixelCount * pixelAreaMm2;
+    const fatVolumeMm3 = fatAreaMm2 * volume.sliceSpacing;
+    const excludedAreaMm2 = excludedPixelCount * pixelAreaMm2;
+    const excludedVolumeMm3 = excludedAreaMm2 * volume.sliceSpacing;
+
+    return {
+      sliceIndex,
+      contourPixelCount,
+      contourAreaMm2,
+      fatPixelCount,
+      fatAreaMm2,
+      fatVolumeMm3,
+      fatVolumeMl: fatVolumeMm3 / 1000,
+      excludedPixelCount,
+      excludedAreaMm2,
+      excludedVolumeMm3,
+      excludedVolumeMl: excludedVolumeMm3 / 1000,
+      fatHuSum,
+      fatHuSquaredSum,
+      meanHu: fatPixelCount ? fatHuSum / fatPixelCount : null,
+      stdDevHu: computeHuStandardDeviation(fatPixelCount, fatHuSum, fatHuSquaredSum),
+      minHu: fatPixelCount ? fatHuMin : null,
+      maxHu: fatPixelCount ? fatHuMax : null,
+    };
+  }
+
+  function getReportSummarySignature(reconstruction, bounds) {
+    if (!reconstruction?.volume || !bounds) {
+      return "empty";
+    }
+    let revisionTotal = 0;
+    let contourCount = 0;
+    reconstruction.contours?.forEach((contour, sliceIndex) => {
+      if (sliceIndex < bounds.start || sliceIndex > bounds.end) {
+        return;
+      }
+      contourCount += 1;
+      revisionTotal += Number(contour.revision) || 0;
+    });
+    return [
+      reconstruction.id,
+      reconstruction.volume.rows,
+      reconstruction.volume.columns,
+      reconstruction.volume.depth,
+      bounds.start,
+      bounds.end,
+      state.huThreshold.min,
+      state.huThreshold.max,
+      contourCount,
+      revisionTotal,
+      Number(reconstruction.exclusionRevision) || 0,
+    ].join("|");
+  }
+
+  function buildLightweightReportSummary(reconstruction, bounds) {
+    if (!bounds) {
+      return {
+        reviewed: 0,
+        missing: 0,
+        rangeCount: 0,
+        totalVolumeMl: null,
+        totalExcludedVolumeMl: null,
+        meanHu: null,
+        stdDevHu: null,
+        totalFatPixels: 0,
+      };
+    }
+
+    let reviewed = 0;
+    reconstruction?.contours?.forEach((contour, sliceIndex) => {
+      if (contour && sliceIndex >= bounds.start && sliceIndex <= bounds.end) {
+        reviewed += 1;
+      }
+    });
+    return {
+      reviewed,
+      missing: bounds.count - reviewed,
+      rangeCount: bounds.count,
+      totalVolumeMl: null,
+      totalExcludedVolumeMl: null,
+      meanHu: null,
+      stdDevHu: null,
+      totalFatPixels: 0,
+    };
+  }
+
   function getReportSummaryForReconstruction(reconstruction) {
     if (!reconstruction?.volume) {
       return {
         bounds: null,
         summary: null,
+        pending: false,
       };
     }
-    try {
-      return withReconstructionSync(reconstruction, () => ({
-        bounds: getSliceBounds(),
-        summary: buildStudySummary(),
-      }));
-    } catch (error) {
-      console.warn("Could not summarize EAT reconstruction", error);
+
+    const bounds = getSliceBoundsForRangeState(reconstruction, reconstruction.volume);
+    const signature = getReportSummarySignature(reconstruction, bounds);
+    const cached = state.export.summaryCache.get(reconstruction.id);
+    if (cached?.signature === signature) {
+      return cached.value;
+    }
+
+    return {
+      bounds,
+      summary: buildLightweightReportSummary(reconstruction, bounds),
+      pending: hasTransferredSegmentation(reconstruction),
+    };
+  }
+
+  async function computeReportSummaryForReconstructionAsync(reconstruction, taskId) {
+    const bounds = getSliceBoundsForRangeState(reconstruction, reconstruction?.volume);
+    const signature = getReportSummarySignature(reconstruction, bounds);
+    if (!bounds || !reconstruction?.volume) {
       return {
-        bounds: null,
-        summary: null,
+        bounds,
+        summary: buildLightweightReportSummary(reconstruction, bounds),
+        pending: false,
       };
     }
+
+    let reviewed = 0;
+    let totalFatPixels = 0;
+    let totalHuSum = 0;
+    let totalHuSquaredSum = 0;
+    let totalVolumeMm3 = 0;
+    let totalExcludedVolumeMm3 = 0;
+    let processedContours = 0;
+
+    for (let sliceIndex = bounds.start; sliceIndex <= bounds.end; sliceIndex += 1) {
+      if (taskId !== state.export.summaryTaskId) {
+        return null;
+      }
+
+      const contour = reconstruction.contours?.get(sliceIndex);
+      if (!contour) {
+        continue;
+      }
+
+      reviewed += 1;
+      processedContours += 1;
+      const metrics = computeSliceMetricsForReconstruction(reconstruction, sliceIndex, contour.points);
+      if (metrics) {
+        totalFatPixels += metrics.fatPixelCount;
+        totalHuSum += metrics.fatHuSum;
+        totalHuSquaredSum += metrics.fatHuSquaredSum;
+        totalVolumeMm3 += metrics.fatVolumeMm3;
+        totalExcludedVolumeMm3 += metrics.excludedVolumeMm3;
+      }
+
+      if (processedContours % 2 === 0) {
+        await waitForAnimationFrame();
+      }
+    }
+
+    const value = {
+      bounds,
+      summary: {
+        reviewed,
+        missing: bounds.count - reviewed,
+        rangeCount: bounds.count,
+        totalVolumeMl: totalVolumeMm3 / 1000,
+        totalExcludedVolumeMl: totalExcludedVolumeMm3 / 1000,
+        meanHu: totalFatPixels ? totalHuSum / totalFatPixels : null,
+        stdDevHu: computeHuStandardDeviation(totalFatPixels, totalHuSum, totalHuSquaredSum),
+        totalFatPixels,
+      },
+      pending: false,
+    };
+
+    state.export.summaryCache.set(reconstruction.id, { signature, value });
+    return value;
   }
 
   function formatSliceRange(bounds) {
@@ -8386,10 +8636,11 @@
     }
     if (els.exportPreviewMetrics) {
       const summary = summaryInfo?.summary || {};
+      const pendingValue = summaryInfo?.pending ? "Calculating..." : "-";
       els.exportPreviewMetrics.innerHTML = [
-        ["Total EAT Volume", formatMetricValue(summary.totalVolumeMl, "mL", 3)],
-        ["Mean EAT HU", formatMetricValue(summary.meanHu, "HU", 1)],
-        ["SD EAT HU", formatMetricValue(summary.stdDevHu, "HU", 1)],
+        ["Total EAT Volume", Number.isFinite(summary.totalVolumeMl) ? formatMetricValue(summary.totalVolumeMl, "mL", 3) : pendingValue],
+        ["Mean EAT HU", Number.isFinite(summary.meanHu) ? formatMetricValue(summary.meanHu, "HU", 1) : pendingValue],
+        ["SD EAT HU", Number.isFinite(summary.stdDevHu) ? formatMetricValue(summary.stdDevHu, "HU", 1) : pendingValue],
         ["Reviewed", `${summary.reviewed || 0} / ${summary.rangeCount || 0}`],
         ["Missing Slices", String(summary.missing || 0)],
         ["Threshold", formatHuRange()],
@@ -8431,8 +8682,8 @@
         const pref = getExportReportPref(reconstruction, rowIndex);
         const summaryInfo = getReportSummaryForReconstruction(reconstruction);
         const summary = summaryInfo.summary || {};
-        const status = describeReportStatus(reconstruction, summaryInfo);
-        const statusClass = hasTransferredSegmentation(reconstruction) ? "status-ready" : "status-pending";
+        const status = summaryInfo.pending ? "Calculating" : describeReportStatus(reconstruction, summaryInfo);
+        const statusClass = hasTransferredSegmentation(reconstruction) && !summaryInfo.pending ? "status-ready" : "status-pending";
         return `
           <tr>
             <td>${escapeHtml(getSeriesNumberLabel(reconstruction, rowIndex))}</td>
@@ -8476,7 +8727,68 @@
     `;
   }
 
-  function updateExportWorkspaceUi() {
+  function hasValidReportSummaryCache(reconstruction) {
+    if (!reconstruction?.volume) {
+      return false;
+    }
+    const bounds = getSliceBoundsForRangeState(reconstruction, reconstruction.volume);
+    const signature = getReportSummarySignature(reconstruction, bounds);
+    return state.export.summaryCache.get(reconstruction.id)?.signature === signature;
+  }
+
+  function scheduleExportSummaryComputation() {
+    if (state.activeSidebarPage !== "export" || state.export.summariesBusy) {
+      return;
+    }
+
+    const pendingReconstructions = getOrderedReportReconstructions({
+      onlyIncluded: true,
+      onlyExportable: true,
+    }).filter((reconstruction) => !hasValidReportSummaryCache(reconstruction));
+
+    if (!pendingReconstructions.length) {
+      return;
+    }
+
+    const taskId = state.export.summaryTaskId + 1;
+    state.export.summaryTaskId = taskId;
+    state.export.summariesBusy = true;
+
+    window.setTimeout(() => {
+      runExportSummaryComputation(taskId, pendingReconstructions).catch((error) => {
+        console.error(error);
+        if (taskId === state.export.summaryTaskId) {
+          state.export.summariesBusy = false;
+          setStatus(error.message || "Could not prepare EAT export summaries.", "error");
+        }
+      });
+    }, 0);
+  }
+
+  async function runExportSummaryComputation(taskId, reconstructions) {
+    const total = reconstructions.length;
+    for (let index = 0; index < reconstructions.length; index += 1) {
+      if (taskId !== state.export.summaryTaskId) {
+        return;
+      }
+      const reconstruction = reconstructions[index];
+      setStatus(`Preparing EAT export summaries ${index + 1} / ${total}...`);
+      await computeReportSummaryForReconstructionAsync(reconstruction, taskId);
+      if (taskId !== state.export.summaryTaskId) {
+        return;
+      }
+      updateExportWorkspaceUi({ scheduleSummaries: false });
+      await waitForAnimationFrame();
+    }
+
+    if (taskId === state.export.summaryTaskId) {
+      state.export.summariesBusy = false;
+      updateExportWorkspaceUi({ scheduleSummaries: false });
+      setStatus("EAT export summaries ready.");
+    }
+  }
+
+  function updateExportWorkspaceUi(options = {}) {
     syncExportReportPrefs();
     updateExportWorkspaceVisibility();
     const includedReady = getOrderedReportReconstructions({ onlyIncluded: true, onlyExportable: true });
@@ -8510,6 +8822,9 @@
       els.exportTableSummary.textContent = `${includedReady.length} included / ${total} loaded`;
     }
     updateExportPreview();
+    if (options.scheduleSummaries !== false) {
+      scheduleExportSummaryComputation();
+    }
   }
 
   function getImportantDicomRows(reconstruction) {
@@ -9806,6 +10121,42 @@
       setStatus(`Cleared contour for slice ${state.currentSliceIndex + 1}.`);
     };
 
+    const clearActiveReconstructionContours = () => {
+      const reconstruction = getActiveReconstruction();
+      if (!state.volume || !reconstruction) {
+        return;
+      }
+
+      const contourCount = reconstruction.contours?.size || 0;
+      const eraseCount = reconstruction.exclusionMasks?.size || 0;
+      if (!contourCount && !eraseCount) {
+        setStatus(`No EAT contours or erase edits to clear for ${reconstruction.label}.`, "warning");
+        return;
+      }
+
+      const confirmed = window.confirm(
+        `Clear all EAT contours and erase edits for "${reconstruction.label}"?\n\nLoaded DICOM data and the slice range will stay in place.`
+      );
+      if (!confirmed) {
+        return;
+      }
+
+      reconstruction.contours = new Map();
+      reconstruction.exclusionMasks = new Map();
+      reconstruction.metricsCache = new Map();
+      reconstruction.exclusionRevision = (Number(reconstruction.exclusionRevision) || 0) + 1;
+      reconstruction.transferSourceId = null;
+      reconstruction.transferSourceLabel = null;
+      reconstruction.transferMode = "local";
+      reconstruction.transferWarning = null;
+      clearContourClickDraft({ render: false });
+      syncActiveReconstructionAliases(reconstruction);
+      invalidateExportSummaryCache();
+      refreshContourOutputs();
+      pushHistorySnapshot("Cleared all EAT contours");
+      setStatus(`Cleared all EAT contours for ${reconstruction.label}.`);
+    };
+
     const toggleThresholdOverlay = () => {
       state.showThresholdOverlay = !state.showThresholdOverlay;
       updateThresholdUi();
@@ -10131,6 +10482,7 @@
     });
     els.clearEraseButton.addEventListener("click", clearCurrentSliceExclusions);
     els.clearContourButton.addEventListener("click", clearCurrentSliceContour);
+    els.clearAllContoursButton?.addEventListener("click", clearActiveReconstructionContours);
     els.thresholdDefaultsButton.addEventListener("click", () => {
       setHuThresholds(DEFAULT_HU_THRESHOLD.min, DEFAULT_HU_THRESHOLD.max, { announce: false });
       setStatus(`Threshold reset to ${getThresholdLabel()}.`);

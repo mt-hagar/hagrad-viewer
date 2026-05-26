@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>HAGRad Viewer – EAT Workflow</title>
-    <link rel="stylesheet" href="/src/eat.css?v=20260525-dropdown-flow" />
+    <link rel="stylesheet" href="/src/eat.css?v=20260526-contour-cleanup" />
     <link rel="stylesheet" href="/src/shared/hagrad-shell.css?v=20260523-file-inputs" />
   </head>
   <body>
@@ -337,6 +337,14 @@
                     <input id="threshold-max-input" type="number" min="-1024" max="3071" step="1" value="-30" />
                   </label>
                 </div>
+                <div class="inline-actions compact-actions threshold-actions">
+                  <button id="threshold-defaults-button" class="button tertiary compact-button" type="button">
+                    Reset HU
+                  </button>
+                  <button id="threshold-toggle-button" class="button tertiary compact-button is-active" type="button">
+                    Threshold Overlay (O): On
+                  </button>
+                </div>
                 <div class="range-grid">
                   <label class="number-field" for="erase-radius-input">
                     <span>Erase Radius (px)</span>
@@ -370,6 +378,14 @@
                     Copy To All Other Recons (T)
                   </button>
                 </div>
+                <div class="inline-actions full-width-actions contour-cleanup-actions">
+                  <button id="clear-contour-button" class="button tertiary full-width-action" type="button">
+                    Clear Current Contour (X)
+                  </button>
+                  <button id="clear-all-contours-button" class="button tertiary danger full-width-action" type="button">
+                    Clear All Contours
+                  </button>
+                </div>
                 <dl class="meta-list" id="ai-backend-metrics" hidden>
                   <div class="meta-row">
                     <dt>Local Model</dt>
@@ -384,15 +400,6 @@
                     <dd id="ai-backend-training">No local reference-standard cases have been stored yet.</dd>
                   </div>
                 </dl>
-                <div class="inline-actions">
-                  <button id="threshold-defaults-button" class="button tertiary" type="button">
-                    Reset Thresholds
-                  </button>
-                  <button id="clear-contour-button" class="button tertiary" type="button">Clear Slice Contour (X)</button>
-                  <button id="threshold-toggle-button" class="button tertiary is-active" type="button">
-                    Threshold Overlay (O): On
-                  </button>
-                </div>
                 <p class="hint">
                   `Draw` traces a contour while you hold the mouse button. `Multiple Click` places
                   contour points one by one; double-click to finish a smoothed contour.
@@ -405,7 +412,7 @@
                 </p>
                 <p class="hint">
                   Shortcuts: `D` draw contour, `Q` multiple click, `R` redraw, `A` adjust, `E` erase, `O`
-                  overlay, `V` compare, `T` transfer, `X` clear contour, and `Shift+X` clear erase.
+                  overlay, `V` compare, `T` transfer, `X` clear current contour, and `Shift+X` clear erase.
                   Pan and zoom stay available with `M`, `Z`, middle mouse, and Cmd/Ctrl + wheel.
                 </p>
               </section>
@@ -803,6 +810,6 @@
     <script src="/src/shared/hagrad-zip.js"></script>
     <script src="/src/shared/hagrad-workflow-switcher.js?v=20260519-workflow-shell"></script>
     <script src="/src/eat-shared.js"></script>
-    <script src="/src/eat.js?v=20260525-export-preview"></script>
+    <script src="/src/eat.js?v=20260526-contour-cleanup"></script>
   </body>
 </html>
