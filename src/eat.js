@@ -6,7 +6,7 @@
   const GUIDE_STEPS = ["Load", "Range", "Start", "Review", "Transfer", "Export"];
   const GUIDE_STEP_TARGETS = {
     0: {
-      groupId: "sidebar-group-workflow",
+      groupId: "sidebar-group-reconstructions",
       page: "workflow",
       sectionId: "sidebar-section-reconstructions",
       label: "Reconstructions",

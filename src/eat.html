@@ -109,7 +109,7 @@
               data-sidebar-page="workflow"
               role="tab"
               type="button"
-              aria-controls="sidebar-group-workflow"
+              aria-controls="sidebar-group-workflow sidebar-group-reconstructions"
               aria-selected="true"
             >
               Workflow
@@ -142,7 +142,7 @@
             <summary class="sidebar-group-summary">
               <div class="sidebar-group-copy">
                 <strong>Workflow</strong>
-                <span>Guide, reconstructions, compare</span>
+                <span>Guide and session controls</span>
               </div>
             </summary>
             <div class="sidebar-group-body">
@@ -174,11 +174,21 @@
                   contours, exclusions, compare state, and transfer state for the same study.
                 </p>
               </section>
+            </div>
+          </details>
 
+          <details class="sidebar-group is-sidebar-page-active" id="sidebar-group-reconstructions" data-sidebar-page-panel="workflow" open>
+            <summary class="sidebar-group-summary">
+              <div class="sidebar-group-copy">
+                <strong>Reconstructions</strong>
+                <span id="reconstruction-summary">0 loaded</span>
+              </div>
+            </summary>
+            <div class="sidebar-group-body">
               <section class="sidebar-section" id="sidebar-section-reconstructions">
                 <div class="section-header">
-                  <h2>Reconstructions</h2>
-                  <span class="section-note" id="reconstruction-summary">0 loaded</span>
+                  <h2>Loaded Series</h2>
+                  <span class="section-note">Click to select</span>
                 </div>
                 <div class="slice-list" id="reconstruction-list"></div>
                 <p class="hint">
@@ -793,6 +803,6 @@
     <script src="/src/shared/hagrad-zip.js"></script>
     <script src="/src/shared/hagrad-workflow-switcher.js?v=20260519-workflow-shell"></script>
     <script src="/src/eat-shared.js"></script>
-    <script src="/src/eat.js?v=20260525-window-toolbar"></script>
+    <script src="/src/eat.js?v=20260525-reconstruction-group"></script>
   </body>
 </html>
