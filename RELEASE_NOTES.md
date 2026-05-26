@@ -27,6 +27,9 @@ This build refreshes the HAGRad Viewer workflow shell and adds new research tool
 - Improves QCA presentation behavior with slimmer header controls, clearer viewport guidance, fixed overlay visibility behavior, and a simplified frame-lock workflow.
 - Restores and fixes Noise Power reconstruction/series labels across analysis controls, reports, and exports.
 - Streamlines Noise Power and workflow toolbar sizing so analysis controls stay readable in tighter viewports.
+- Adds selectable Noise Power NPS heatmap series and fixes Noise Power series reorder/preferences behavior.
+- Redesigns the EAT workflow sidebar and export report workspace with separate reconstruction controls, faster export previews, cleaner contour editing, and improved contour transfer/copy-to-reconstruction behavior.
+- Adds Image Quality / CCTA IQ series removal controls for cleaner multi-series review.
 - Removes the extra left scrollbar gutter from Viewer and CCTA IQ layouts for cleaner horizontal alignment.
 - Updates the public website positioning, support, and credits content.
 - Updates public download guidance for macOS Gatekeeper and Windows SmartScreen prompts while the research-preview builds remain unsigned.
