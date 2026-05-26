@@ -789,6 +789,14 @@ a {
   padding: 0;
 }
 
+.tool-dropdown.is-open {
+  z-index: 60;
+}
+
+.tool-dropdown.is-open:hover {
+  transform: none;
+}
+
 .tool-dropdown-button {
   display: grid;
   grid-template-columns: 1fr auto auto;
@@ -846,13 +854,11 @@ a {
 }
 
 .tool-dropdown-menu {
-  position: absolute;
+  position: static;
   z-index: 40;
-  top: calc(100% + 6px);
-  left: 0;
-  right: 0;
   display: grid;
   gap: 5px;
+  margin: 0 6px 6px;
   padding: 6px;
   border: 1px solid rgba(94, 214, 195, 0.24);
   border-radius: 12px;
