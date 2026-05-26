@@ -451,6 +451,10 @@ input[type="file"] {
   padding: 0 2px;
 }
 
+[data-np-sidebar-panel][hidden] {
+  display: none !important;
+}
+
 .section-header {
   display: flex;
   align-items: flex-start;
@@ -663,34 +667,9 @@ input[type="file"] {
 
 .viewport-shell {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
-}
-
-.workspace-page-tabs {
-  display: flex;
-  gap: 8px;
-  padding: 9px 10px;
-  border-bottom: 1px solid var(--line);
-}
-
-.page-tab {
-  min-height: 30px;
-  padding: 0 14px;
-  border: 1px solid rgba(141, 169, 185, 0.22);
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--muted-strong);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.page-tab.is-active {
-  border-color: rgba(240, 197, 114, 0.5);
-  background: rgba(240, 197, 114, 0.12);
-  color: #fff1c7;
 }
 
 .workspace-page {

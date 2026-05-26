@@ -52,6 +52,7 @@
     activeDatasetId: "",
     activeSliceIndex: 0,
     activeTool: "select",
+    activeSidebarTab: "case",
     activeWorkspacePage: "viewer",
     showNpsLabels: false,
     showDicomInfo: false,
@@ -151,14 +152,6 @@
     if (els.analysisPage) {
       els.analysisPage.hidden = nextPage !== "analysis";
     }
-    if (els.viewerPageButton) {
-      els.viewerPageButton.classList.toggle("is-active", nextPage === "viewer");
-      els.viewerPageButton.setAttribute("aria-selected", nextPage === "viewer" ? "true" : "false");
-    }
-    if (els.analysisPageButton) {
-      els.analysisPageButton.classList.toggle("is-active", nextPage === "analysis");
-      els.analysisPageButton.setAttribute("aria-selected", nextPage === "analysis" ? "true" : "false");
-    }
     if (nextPage === "analysis") {
       updateAnalysisCanvases();
       focusAnalysisForSelection({ scroll: true });
@@ -223,23 +216,31 @@
     });
   }
 
-  function installSidebarJumpTabs() {
-    const tabs = Array.from(document.querySelectorAll("[data-np-sidebar-jump]"));
+  function setSidebarTab(tabName) {
+    const nextTab = tabName === "export" ? "export" : tabName === "analyze" ? "analyze" : "case";
+    state.activeSidebarTab = nextTab;
+    document.querySelectorAll("[data-np-sidebar-tab]").forEach((tab) => {
+      const isActive = tab.dataset.npSidebarTab === nextTab;
+      tab.classList.toggle("is-active", isActive);
+      tab.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
+    document.querySelectorAll("[data-np-sidebar-panel]").forEach((panel) => {
+      panel.hidden = panel.dataset.npSidebarPanel !== nextTab;
+    });
+    setWorkspacePage(nextTab === "export" ? "analysis" : "viewer");
+  }
+
+  function installSidebarTabs() {
+    const tabs = Array.from(document.querySelectorAll("[data-np-sidebar-tab]"));
     if (!tabs.length) {
       return;
     }
-    const setActiveTab = (activeTab) => {
-      tabs.forEach((tab) => {
-        tab.classList.toggle("is-active", tab === activeTab);
-      });
-    };
     tabs.forEach((tab) => {
       tab.addEventListener("click", () => {
-        const target = document.getElementById(tab.dataset.npSidebarJump || "");
-        setActiveTab(tab);
-        target?.scrollIntoView({ block: "start", behavior: "smooth" });
+        setSidebarTab(tab.dataset.npSidebarTab || "case");
       });
     });
+    setSidebarTab(state.activeSidebarTab);
   }
 
   function getActiveDataset() {
@@ -4469,8 +4470,6 @@
     els.canvas = document.getElementById("np-canvas");
     els.viewerPage = document.getElementById("np-viewer-page");
     els.analysisPage = document.getElementById("np-analysis-page");
-    els.viewerPageButton = document.getElementById("np-viewer-page-button");
-    els.analysisPageButton = document.getElementById("np-analysis-page-button");
     els.contextMenu = document.getElementById("np-context-menu");
     els.dropzone = document.getElementById("np-dropzone");
     els.overlayNote = document.getElementById("np-overlay-note");
@@ -4513,9 +4512,7 @@
       button.addEventListener("click", () => setActiveTool(button.dataset.tool || "select"));
     });
     installCollapsibleBlocks();
-    installSidebarJumpTabs();
-    els.viewerPageButton.addEventListener("click", () => setWorkspacePage("viewer"));
-    els.analysisPageButton.addEventListener("click", () => setWorkspacePage("analysis"));
+    installSidebarTabs();
 
     document.getElementById("np-dicom-input").addEventListener("change", async (event) => {
       try {

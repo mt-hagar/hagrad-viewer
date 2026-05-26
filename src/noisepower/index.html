@@ -77,15 +77,15 @@
 
       <section class="workspace">
         <aside class="sidebar shell-card">
-          <div class="sidebar-tabs np-sidebar-tabs" aria-label="Noise Power sidebar sections">
-            <button class="sidebar-tab is-active" data-np-sidebar-jump="np-sidebar-case" type="button">Case</button>
-            <button class="sidebar-tab" data-np-sidebar-jump="np-sidebar-analysis" type="button">Analyze</button>
-            <button class="sidebar-tab" data-np-sidebar-jump="np-sidebar-export" type="button">Export</button>
+          <div class="sidebar-tabs np-sidebar-tabs" role="tablist" aria-label="Noise Power sidebar sections">
+            <button class="sidebar-tab is-active" data-np-sidebar-tab="case" type="button" role="tab" aria-selected="true">Case</button>
+            <button class="sidebar-tab" data-np-sidebar-tab="analyze" type="button" role="tab" aria-selected="false">Analyze</button>
+            <button class="sidebar-tab" data-np-sidebar-tab="export" type="button" role="tab" aria-selected="false">Export</button>
           </div>
 
-          <div id="np-sidebar-case" class="sidebar-category">Patient</div>
+          <div id="np-sidebar-case" class="sidebar-category" data-np-sidebar-panel="case">Patient</div>
 
-          <section class="sidebar-section">
+          <section class="sidebar-section" data-np-sidebar-panel="case">
             <div class="section-header">
               <div>
                 <h2>Reconstructions</h2>
@@ -99,9 +99,9 @@
             </div>
           </section>
 
-          <div class="sidebar-category">Tools</div>
+          <div class="sidebar-category" data-np-sidebar-panel="analyze" hidden>Tools</div>
 
-          <section class="sidebar-section">
+          <section class="sidebar-section" data-np-sidebar-panel="analyze" hidden>
             <div class="section-header">
               <div>
                 <h2>Tools</h2>
@@ -120,9 +120,9 @@
             </div>
           </section>
 
-          <div id="np-sidebar-analysis" class="sidebar-category">Analysis</div>
+          <div id="np-sidebar-analysis" class="sidebar-category" data-np-sidebar-panel="analyze" hidden>Analysis</div>
 
-          <section class="sidebar-section">
+          <section class="sidebar-section" data-np-sidebar-panel="analyze" hidden>
             <div class="section-header">
               <div>
                 <h2>TTF Square ROI</h2>
@@ -140,9 +140,9 @@
             </div>
           </section>
 
-          <div id="np-sidebar-export" class="sidebar-category">Export</div>
+          <div class="sidebar-category" data-np-sidebar-panel="analyze" hidden>Noise Power</div>
 
-          <section class="sidebar-section">
+          <section class="sidebar-section" data-np-sidebar-panel="analyze" hidden>
             <div class="section-header">
               <div>
                 <h2>Noise Power Circle</h2>
@@ -193,11 +193,11 @@
             </div>
           </section>
 
-          <div class="sidebar-standalone-action" aria-label="Shared analysis actions">
+          <div class="sidebar-standalone-action" data-np-sidebar-panel="analyze" aria-label="Shared analysis actions" hidden>
             <button id="np-copy-to-all-button" class="button secondary wide" type="button">Copy To All Recons</button>
           </div>
 
-          <section class="sidebar-section">
+          <section class="sidebar-section" data-np-sidebar-panel="analyze" hidden>
             <div class="section-header">
               <div>
                 <h2>Selected Object</h2>
@@ -211,7 +211,9 @@
             </div>
           </section>
 
-          <section class="sidebar-section">
+          <div id="np-sidebar-export" class="sidebar-category" data-np-sidebar-panel="export" hidden>Export</div>
+
+          <section class="sidebar-section" data-np-sidebar-panel="export" hidden>
             <div class="section-header">
               <div>
                 <h2>Export</h2>
@@ -241,12 +243,7 @@
         </aside>
 
         <section class="viewport-shell shell-card">
-          <div class="workspace-page-tabs" role="tablist" aria-label="Noise Power workspace pages">
-            <button id="np-viewer-page-button" class="page-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="np-viewer-page">Viewer</button>
-            <button id="np-analysis-page-button" class="page-tab" type="button" role="tab" aria-selected="false" aria-controls="np-analysis-page">Analysis</button>
-          </div>
-
-          <section id="np-viewer-page" class="workspace-page viewer-page" role="tabpanel" aria-labelledby="np-viewer-page-button">
+          <section id="np-viewer-page" class="workspace-page viewer-page" role="region" aria-label="Noise Power viewer">
             <div class="viewport-toolbar">
               <div class="toolbar-group">
                 <button id="np-prev-slice" class="button tertiary" type="button">Prev</button>
@@ -283,7 +280,7 @@
             </div>
           </section>
 
-          <section id="np-analysis-page" class="workspace-page analysis-page" role="tabpanel" aria-labelledby="np-analysis-page-button" hidden>
+          <section id="np-analysis-page" class="workspace-page analysis-page" role="region" aria-label="Noise Power analysis" hidden>
             <section class="analysis-panel">
               <div class="analysis-header">
                 <div>
@@ -383,9 +380,9 @@
     <script src="/src/shared/hagrad-core.js"></script>
     <script src="/src/shared/hagrad-dicom.js"></script>
     <script src="/src/shared/hagrad-zip.js"></script>
-    <script src="/src/noisepower/noisepower-core.js?v=20260524-analysis-labels"></script>
-    <script src="/src/noisepower/noisepower-export.js?v=20260524-analysis-labels"></script>
-    <script src="/src/noisepower/noisepower.js?v=20260524-analysis-labels"></script>
-    <script src="/src/shared/hagrad-workflow-switcher.js?v=20260524-analysis-labels"></script>
+    <script src="/src/noisepower/noisepower-core.js?v=20260525-sidebar-tabs"></script>
+    <script src="/src/noisepower/noisepower-export.js?v=20260525-sidebar-tabs"></script>
+    <script src="/src/noisepower/noisepower.js?v=20260525-sidebar-tabs"></script>
+    <script src="/src/shared/hagrad-workflow-switcher.js?v=20260525-sidebar-tabs"></script>
   </body>
 </html>
