@@ -61,6 +61,7 @@
     squareProfilePrefs: {},
     reconstructionPrefs: {},
     seriesReferenceKey: "",
+    npsHeatmapSeriesKey: "",
     squareProfileReferenceKey: "",
     viewport: {
       zoom: 1,
@@ -3393,6 +3394,51 @@
     els.npsAnalysisStatus.textContent = `${circle.label}: ${analysis.circleCount || 1} circle${(analysis.circleCount || 1) === 1 ? "" : "s"}, ${analysis.validRoiCount} / ${analysis.sourceRoiCount || analysis.validRoiCount} valid square NPS ROIs, std ${formatMetric(Math.sqrt(analysis.meanRoiVariance), analysis.units, 2)}, fP ${formatMetric(analysis.peakFrequency, "mm^-1", 4)}. ${reconstructionCount ? `${reconstructionCount} reconstruction curve set${reconstructionCount === 1 ? "" : "s"} ready below.` : "No comparison curves were generated."}`;
   }
 
+  function npsHeatmapModelLabel(model, index = 0) {
+    const key = modelSeriesKey(model);
+    const pref = state.seriesPrefs[key] || {};
+    const label = ensureSeriesPrefLabel(pref, model, index);
+    return displaySeriesLabel({ ...pref, label }, index);
+  }
+
+  function resolveNpsHeatmapModel(models, fallbackCircle) {
+    const safeModels = (models || []).filter((model) => model?.dataset && model?.circle && model?.analysis);
+    if (!safeModels.length) {
+      state.npsHeatmapSeriesKey = "";
+      return null;
+    }
+    ensureSeriesPrefs(safeModels);
+    const orderedModels = sortModelsByPrefs(safeModels, state.seriesPrefs, modelSeriesKey);
+    const currentModel = orderedModels.find((model) => modelSeriesKey(model) === state.npsHeatmapSeriesKey);
+    const fallbackModel =
+      currentModel ||
+      orderedModels.find((model) => fallbackCircle?.datasetId && model.dataset?.id === fallbackCircle.datasetId) ||
+      orderedModels[0];
+    state.npsHeatmapSeriesKey = modelSeriesKey(fallbackModel);
+    return fallbackModel;
+  }
+
+  function updateNpsHeatmapPicker(models, selectedModel) {
+    if (!els.npsHeatmapSelect) {
+      return;
+    }
+    const safeModels = (models || []).filter((model) => model?.dataset && model?.circle && model?.analysis);
+    const orderedModels = sortModelsByPrefs(safeModels, state.seriesPrefs, modelSeriesKey);
+    if (!orderedModels.length) {
+      els.npsHeatmapSelect.innerHTML = '<option value="">No NPS series</option>';
+      els.npsHeatmapSelect.disabled = true;
+      return;
+    }
+    els.npsHeatmapSelect.disabled = orderedModels.length < 2;
+    els.npsHeatmapSelect.innerHTML = orderedModels
+      .map((model, index) => {
+        const key = modelSeriesKey(model);
+        const label = npsHeatmapModelLabel(model, index);
+        return `<option value="${escapeAttr(key)}" ${selectedModel && key === modelSeriesKey(selectedModel) ? "selected" : ""}>${escapeHtml(label)}</option>`;
+      })
+      .join("");
+  }
+
   function updateAnalysisCanvases() {
     if (els.analysisPage?.hidden) {
       return;
@@ -3451,16 +3497,19 @@
     });
 
     const circle = selectedCircle || state.circles.find((entry) => entry.datasetId === state.activeDatasetId && entry.generated);
-    const analysis = circle ? getNpsAnalysisForCircle(circle) : null;
+    const activeModels = buildCachedNpsModels(state.datasets, getRelatedNpsCircles(circle));
+    const heatmapModel = resolveNpsHeatmapModel(activeModels, circle);
+    const analysis = heatmapModel?.analysis || (circle ? getNpsAnalysisForCircle(circle) : null);
+    updateNpsHeatmapPicker(activeModels, heatmapModel);
+    const heatmapLabel = heatmapModel ? npsHeatmapModelLabel(heatmapModel, sortModelsByPrefs(activeModels, state.seriesPrefs, modelSeriesKey).indexOf(heatmapModel)) : "";
     exportApi.drawNpsHeatmap(els.npsHeatmapCanvas.getContext("2d"), {
       width: els.npsHeatmapCanvas.width,
       height: els.npsHeatmapCanvas.height,
-      title: circle ? `${circle.label} 2D NPS` : "2D NPS",
+      title: heatmapModel ? `${heatmapLabel} 2D NPS` : circle ? `${circle.label} 2D NPS` : "2D NPS",
       analysis,
       theme: "dark",
     });
-    const activeModels = buildCachedNpsModels(state.datasets, getRelatedNpsCircles(circle));
-    updateNpsAnalysisStatus(circle, analysis, activeModels);
+    updateNpsAnalysisStatus(circle || heatmapModel?.circle || null, analysis, activeModels);
     updateSeriesControls(activeModels);
     exportApi.drawLineSeries(els.npsCurveCanvas.getContext("2d"), {
       width: els.npsCurveCanvas.width,
@@ -4535,6 +4584,7 @@
     els.analysisGrid = document.getElementById("np-analysis-grid");
     els.npsAnalysisCard = document.getElementById("np-nps-analysis-card");
     els.npsAnalysisStatus = document.getElementById("np-nps-analysis-status");
+    els.npsHeatmapSelect = document.getElementById("np-nps-heatmap-select");
     els.seriesControls = document.getElementById("np-series-controls");
     els.profileSeriesControls = document.getElementById("np-profile-series-controls");
     els.profileCanvas = document.getElementById("np-profile-canvas");
@@ -4661,6 +4711,10 @@
     });
     els.printReportButton.addEventListener("click", () => {
       printReport().catch((error) => setStatus(error.message || "Report failed.", "error"));
+    });
+    els.npsHeatmapSelect?.addEventListener("change", () => {
+      state.npsHeatmapSeriesKey = safeString(els.npsHeatmapSelect.value);
+      updateAnalysisCanvases();
     });
 
     els.contextMenu.addEventListener("click", (event) => {

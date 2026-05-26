@@ -973,6 +973,39 @@ input[type="file"] {
   font-size: 15px;
 }
 
+.nps-heatmap-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.nps-heatmap-picker select {
+  width: min(280px, 34vw);
+  height: 34px;
+  min-width: 150px;
+  padding: 0 28px 0 12px;
+  border: 1px solid rgba(141, 169, 185, 0.26);
+  border-radius: 8px;
+  background: rgba(5, 12, 18, 0.82);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.nps-heatmap-picker select:disabled {
+  opacity: 0.58;
+}
+
 .analysis-canvas {
   display: block;
   width: 100%;
