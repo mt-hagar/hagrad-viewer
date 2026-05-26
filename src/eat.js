@@ -3715,7 +3715,7 @@
 
   function updateProjectUi() {
     const exportBusy = state.project.appendingExport || state.project.savingSession || state.export.busy;
-    const exportableCount = getOrderedReportReconstructions({ onlyIncluded: true, onlyExportable: true }).length;
+    const exportableCount = getOrderedReportReconstructions({ onlyExportable: true }).length;
     const disableExports = exportBusy || !exportableCount;
     els.finishCloseButton.disabled = disableExports;
     els.finishCloseButton.textContent = state.export.busy && state.export.action === "finish-close" ? "Finishing..." : "Finish & Close";
@@ -4298,6 +4298,10 @@
 
     const activeReconstruction = getActiveReconstruction();
     state.reconstructions.forEach((reconstruction, reconstructionIndex) => {
+      const row = document.createElement("div");
+      row.className = "reconstruction-row-shell";
+      row.dataset.reconstructionId = reconstruction.id;
+
       const button = document.createElement("button");
       button.type = "button";
       button.className = "slice-row";
@@ -4361,8 +4365,96 @@
       button.appendChild(indexLabel);
       button.appendChild(copy);
       button.appendChild(badge);
-      els.reconstructionList.appendChild(button);
+
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "reconstruction-remove-button";
+      removeButton.textContent = "×";
+      removeButton.title = `Remove ${reconstruction.label} from this EAT workflow`;
+      removeButton.setAttribute("aria-label", `Remove ${reconstruction.label} from this EAT workflow`);
+      removeButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        removeReconstructionFromWorkflow(reconstruction.id);
+      });
+
+      row.appendChild(button);
+      row.appendChild(removeButton);
+      els.reconstructionList.appendChild(row);
     });
+  }
+
+  function removeReconstructionFromWorkflow(reconstructionId) {
+    const reconstructionIndex = state.reconstructions.findIndex(
+      (reconstruction) => reconstruction.id === reconstructionId
+    );
+    const reconstruction = state.reconstructions[reconstructionIndex] || null;
+    if (!reconstruction) {
+      return;
+    }
+    if (state.segmentationTransferBusy || state.export.busy || state.export.summariesBusy) {
+      setStatus("Finish the current transfer or export preparation before removing a reconstruction.", "warning");
+      return;
+    }
+
+    const hasEdits =
+      hasTransferredSegmentation(reconstruction) ||
+      Boolean(reconstruction.exclusionMasks?.size) ||
+      Boolean(reconstruction.rangeConfigured);
+    if (
+      hasEdits &&
+      !window.confirm(
+        `Remove ${reconstruction.label} from this EAT workflow? DICOM files stay on disk, but this reconstruction's EAT contours and report settings will be removed from the current session.`
+      )
+    ) {
+      return;
+    }
+
+    persistActiveReconstructionRange();
+    const removedLabel = reconstruction.label;
+    const removedPrefKey = getReportPrefKey(reconstruction);
+    const wasActive = state.activeReconstructionId === reconstruction.id;
+
+    state.reconstructions.splice(reconstructionIndex, 1);
+    if (removedPrefKey) {
+      delete state.export.reportPrefs[removedPrefKey];
+    }
+    state.export.reportDragId = null;
+    if (state.export.previewReconstructionId === reconstruction.id) {
+      state.export.previewReconstructionId = null;
+    }
+    if (state.compareReconstructionId === reconstruction.id) {
+      state.compareReconstructionId = null;
+    }
+    state.dragging = null;
+    state.hoverImagePoint = null;
+    invalidateExportSummaryCache();
+
+    if (!state.reconstructions.length) {
+      state.activeReconstructionId = null;
+      state.compareMode = false;
+      state.compareReconstructionId = null;
+      state.currentSliceIndex = 0;
+      state.view.zoom = 1;
+      state.view.panX = 0;
+      state.view.panY = 0;
+      syncActiveReconstructionAliases(null);
+    } else if (wasActive) {
+      const nextReconstruction = state.reconstructions[Math.min(reconstructionIndex, state.reconstructions.length - 1)];
+      state.activeReconstructionId = nextReconstruction.id;
+      syncActiveReconstructionAliases(nextReconstruction);
+      clampCurrentSliceToActiveVolume();
+    } else {
+      const activeReconstruction = getActiveReconstruction() || state.reconstructions[0];
+      state.activeReconstructionId = activeReconstruction.id;
+      syncActiveReconstructionAliases(activeReconstruction);
+      clampCurrentSliceToActiveVolume();
+    }
+
+    ensureValidCompareSelection();
+    syncExportReportPrefs();
+    refreshUi();
+    requestRender();
+    setStatus(`Removed ${removedLabel} from the EAT workflow. The source DICOM files were not changed.`);
   }
 
   function getStoredContour(sliceIndex) {
@@ -7640,8 +7732,8 @@
       setStatus("Load a study before exporting.", "warning");
       return;
     }
-    if (!getOrderedReportReconstructions({ onlyIncluded: true, onlyExportable: true }).length) {
-      setStatus("Segment and include at least one reconstruction before exporting.", "warning");
+    if (!getOrderedReportReconstructions({ onlyExportable: true }).length) {
+      setStatus("Segment at least one reconstruction before exporting.", "warning");
       return;
     }
 
@@ -7783,12 +7875,9 @@
       throw new Error("Load a study before exporting.");
     }
 
-    const exportableReconstructions = getOrderedReportReconstructions({
-      onlyIncluded: true,
-      onlyExportable: true,
-    });
+    const exportableReconstructions = getOrderedReportReconstructions({ onlyExportable: true });
     if (!exportableReconstructions.length) {
-      throw new Error("Include at least one segmented reconstruction before exporting.");
+      throw new Error("Segment at least one reconstruction before exporting.");
     }
 
     const currentActiveReconstruction = getActiveReconstruction();
@@ -8003,7 +8092,6 @@
     const next = {
       label: safeString(existing.label) || buildDefaultReportLabel(reconstruction, index),
       color: safeString(existing.color) || EXPORT_REPORT_PALETTE[index % EXPORT_REPORT_PALETTE.length],
-      included: existing.included !== false,
       order: Number.isFinite(existing.order) ? existing.order : index,
     };
     state.export.reportPrefs[key] = next;
@@ -8058,10 +8146,7 @@
         return (leftPref?.order ?? 0) - (rightPref?.order ?? 0);
       })
       .filter((reconstruction, index) => {
-        const pref = getExportReportPref(reconstruction, index);
-        if (options.onlyIncluded && pref?.included === false) {
-          return false;
-        }
+        getExportReportPref(reconstruction, index);
         if (options.onlyExportable && !hasTransferredSegmentation(reconstruction)) {
           return false;
         }
@@ -8370,16 +8455,16 @@
 
   function getReportReferenceReconstruction() {
     const active = getActiveReconstruction();
-    const includedReady = getOrderedReportReconstructions({ onlyIncluded: true, onlyExportable: true });
+    const readyReconstructions = getOrderedReportReconstructions({ onlyExportable: true });
     const selected = getReconstructionById(state.export.previewReconstructionId);
-    if (selected && includedReady.some((reconstruction) => reconstruction.id === selected.id)) {
+    if (selected && readyReconstructions.some((reconstruction) => reconstruction.id === selected.id)) {
       return selected;
     }
-    if (active && includedReady.some((reconstruction) => reconstruction.id === active.id)) {
+    if (active && readyReconstructions.some((reconstruction) => reconstruction.id === active.id)) {
       state.export.previewReconstructionId = active.id;
       return active;
     }
-    const fallback = includedReady[0] || null;
+    const fallback = readyReconstructions[0] || null;
     state.export.previewReconstructionId = fallback?.id || null;
     return fallback;
   }
@@ -8389,9 +8474,9 @@
       return;
     }
     const ordered = getOrderedReportReconstructions();
-    const includedReady = getOrderedReportReconstructions({ onlyIncluded: true, onlyExportable: true });
+    const readyReconstructions = getOrderedReportReconstructions({ onlyExportable: true });
     if (els.exportSeriesSummary) {
-      els.exportSeriesSummary.textContent = `${includedReady.length} included`;
+      els.exportSeriesSummary.textContent = `${readyReconstructions.length} ready`;
     }
 
     if (!ordered.length) {
@@ -8405,7 +8490,6 @@
         const pref = getExportReportPref(reconstruction, originalIndex);
         const summaryInfo = getReportSummaryForReconstruction(reconstruction);
         const ready = hasTransferredSegmentation(reconstruction);
-        const included = pref?.included !== false;
         const previewActive = reconstruction.id === state.export.previewReconstructionId;
         const metaParts = [
           ready ? "Ready" : "Pending",
@@ -8417,11 +8501,11 @@
         }
         return `
           <div
-            class="eat-export-series-row ${previewActive ? "is-preview-active" : ""} ${included ? "" : "is-report-excluded"}"
+            class="eat-export-series-row ${previewActive ? "is-preview-active" : ""}"
             data-report-reconstruction-id="${escapeAttr(reconstruction.id)}"
             draggable="true"
             aria-current="${previewActive ? "true" : "false"}"
-            title="${ready && included ? "Click to use this reconstruction for the report preview" : "Include and segment this reconstruction to preview it in the report"}"
+            title="${ready ? "Click to use this reconstruction for the report preview" : "Segment this reconstruction to preview it in the report"}"
           >
             <div class="eat-export-order">
               <span class="eat-export-index">#${rowIndex + 1}</span>
@@ -8430,13 +8514,6 @@
                 <button class="mini-button" type="button" data-report-move="down" ${rowIndex === ordered.length - 1 ? "disabled" : ""}>Dn</button>
               </span>
             </div>
-            <input
-              class="eat-export-include"
-              type="checkbox"
-              aria-label="Include ${escapeAttr(pref?.label || reconstruction.label)}"
-              ${included ? "checked" : ""}
-              ${ready ? "" : "disabled"}
-            />
             <input
               class="eat-export-color"
               type="color"
@@ -8474,7 +8551,7 @@
         if (target?.closest("input, button, select, textarea")) {
           return;
         }
-        if (pref.included === false || !hasTransferredSegmentation(reconstruction)) {
+        if (!hasTransferredSegmentation(reconstruction)) {
           return;
         }
         state.export.previewReconstructionId = reconstructionId;
@@ -8514,15 +8591,6 @@
         button.addEventListener("click", () => {
           moveReportReconstruction(reconstructionId, button.dataset.reportMove === "up" ? -1 : 1);
         });
-      });
-      row.querySelector(".eat-export-include")?.addEventListener("change", (event) => {
-        pref.included = Boolean(event.target.checked);
-        if (!pref.included && state.export.previewReconstructionId === reconstructionId) {
-          state.export.previewReconstructionId = null;
-        } else if (pref.included && hasTransferredSegmentation(reconstruction)) {
-          state.export.previewReconstructionId = reconstructionId;
-        }
-        updateExportWorkspaceUi();
       });
       row.querySelector(".eat-export-color")?.addEventListener("input", (event) => {
         pref.color = event.target.value;
@@ -8672,9 +8740,9 @@
   }
 
   function buildExportResultsTable() {
-    const rows = getOrderedReportReconstructions({ onlyIncluded: true });
+    const rows = getOrderedReportReconstructions();
     if (!rows.length) {
-      return '<p class="hint">Check at least one reconstruction to populate the report table.</p>';
+      return '<p class="hint">Load at least one reconstruction to populate the report table.</p>';
     }
     const body = rows
       .map((reconstruction, rowIndex) => {
@@ -8741,10 +8809,9 @@
       return;
     }
 
-    const pendingReconstructions = getOrderedReportReconstructions({
-      onlyIncluded: true,
-      onlyExportable: true,
-    }).filter((reconstruction) => !hasValidReportSummaryCache(reconstruction));
+    const pendingReconstructions = getOrderedReportReconstructions({ onlyExportable: true }).filter(
+      (reconstruction) => !hasValidReportSummaryCache(reconstruction)
+    );
 
     if (!pendingReconstructions.length) {
       return;
@@ -8791,8 +8858,8 @@
   function updateExportWorkspaceUi(options = {}) {
     syncExportReportPrefs();
     updateExportWorkspaceVisibility();
-    const includedReady = getOrderedReportReconstructions({ onlyIncluded: true, onlyExportable: true });
-    const disableExports = state.export.busy || !includedReady.length;
+    const readyReconstructions = getOrderedReportReconstructions({ onlyExportable: true });
+    const disableExports = state.export.busy || !readyReconstructions.length;
     if (els.exportImageButton) {
       els.exportImageButton.disabled = disableExports;
     }
@@ -8819,7 +8886,7 @@
     }
     if (els.exportTableSummary) {
       const total = state.reconstructions.length;
-      els.exportTableSummary.textContent = `${includedReady.length} included / ${total} loaded`;
+      els.exportTableSummary.textContent = `${readyReconstructions.length} ready / ${total} loaded`;
     }
     updateExportPreview();
     if (options.scheduleSummaries !== false) {

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>HAGRad Viewer – EAT Workflow</title>
-    <link rel="stylesheet" href="/src/eat.css?v=20260526-contour-cleanup" />
+    <link rel="stylesheet" href="/src/eat.css?v=20260526-remove-recon" />
     <link rel="stylesheet" href="/src/shared/hagrad-shell.css?v=20260523-file-inputs" />
   </head>
   <body>
@@ -482,7 +482,7 @@
                 <p class="hint">
                   The PDF-ready report opens a print window with DICOM metadata, representative EAT
                   images, summary values, and the reconstruction table. The CSV includes summary and
-                  slice-level EAT measurements, including density SD, for every included reconstruction.
+                  slice-level EAT measurements, including density SD, for every ready reconstruction.
                   Export prompts for a required Study ID and mirrors exported CSV files into the
                   selected research study outbox when you choose one in the popup.
                 </p>
@@ -705,7 +705,7 @@
                 <p class="section-eyebrow">EAT Export</p>
                 <h2>Report Workspace</h2>
                 <p id="eat-export-workspace-note">
-                  Include, label, color, and order completed reconstructions before printing the
+                  Label, color, and order completed reconstructions before printing the
                   PDF-ready report or exporting CSV data.
                 </p>
               </div>
@@ -720,11 +720,11 @@
             <section class="export-report-panel" aria-labelledby="eat-export-series-title">
               <div class="section-header">
                 <h2 id="eat-export-series-title">Series Controls</h2>
-                <span class="section-note" id="eat-export-series-summary">0 included</span>
+                <span class="section-note" id="eat-export-series-summary">0 ready</span>
               </div>
               <p class="hint">
-                Reordering or excluding a row changes only the report and CSV export. Loaded DICOM
-                reconstructions stay available in the workflow sidebar.
+                Reordering changes only the report and CSV export. Remove unused reconstructions from
+                the Workflow tab when they should not be analyzed or reported.
               </p>
               <div class="eat-export-series-controls" id="eat-export-series-controls"></div>
             </section>
@@ -810,6 +810,6 @@
     <script src="/src/shared/hagrad-zip.js"></script>
     <script src="/src/shared/hagrad-workflow-switcher.js?v=20260519-workflow-shell"></script>
     <script src="/src/eat-shared.js"></script>
-    <script src="/src/eat.js?v=20260526-contour-cleanup"></script>
+    <script src="/src/eat.js?v=20260526-remove-recon"></script>
   </body>
 </html>
