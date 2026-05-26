@@ -1234,6 +1234,16 @@ a {
   cursor: grab;
 }
 
+.eat-export-series-row.is-preview-active {
+  border-color: var(--line-strong);
+  background: linear-gradient(135deg, rgba(94, 214, 195, 0.15), rgba(255, 255, 255, 0.035));
+  box-shadow: inset 0 0 0 1px rgba(94, 214, 195, 0.12);
+}
+
+.eat-export-series-row.is-report-excluded {
+  opacity: 0.56;
+}
+
 .eat-export-series-row.is-dragging {
   opacity: 0.52;
 }

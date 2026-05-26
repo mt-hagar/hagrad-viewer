@@ -186,6 +186,7 @@
       busy: false,
       reportPrefs: {},
       reportDragId: null,
+      previewReconstructionId: null,
     },
   };
 
@@ -2356,6 +2357,7 @@
     state.export.busy = false;
     state.export.reportPrefs = {};
     state.export.reportDragId = null;
+    state.export.previewReconstructionId = null;
     resetHistory();
     setStatus("Ready for axial CT reconstructions");
     refreshUi();
@@ -8119,10 +8121,17 @@
   function getReportReferenceReconstruction() {
     const active = getActiveReconstruction();
     const includedReady = getOrderedReportReconstructions({ onlyIncluded: true, onlyExportable: true });
+    const selected = getReconstructionById(state.export.previewReconstructionId);
+    if (selected && includedReady.some((reconstruction) => reconstruction.id === selected.id)) {
+      return selected;
+    }
     if (active && includedReady.some((reconstruction) => reconstruction.id === active.id)) {
+      state.export.previewReconstructionId = active.id;
       return active;
     }
-    return includedReady[0] || active || state.reconstructions[0] || null;
+    const fallback = includedReady[0] || null;
+    state.export.previewReconstructionId = fallback?.id || null;
+    return fallback;
   }
 
   function renderExportSeriesControls() {
@@ -8146,6 +8155,8 @@
         const pref = getExportReportPref(reconstruction, originalIndex);
         const summaryInfo = getReportSummaryForReconstruction(reconstruction);
         const ready = hasTransferredSegmentation(reconstruction);
+        const included = pref?.included !== false;
+        const previewActive = reconstruction.id === state.export.previewReconstructionId;
         const metaParts = [
           ready ? "Ready" : "Pending",
           `${reconstruction.volume?.depth || 0} slices`,
@@ -8156,9 +8167,11 @@
         }
         return `
           <div
-            class="eat-export-series-row"
+            class="eat-export-series-row ${previewActive ? "is-preview-active" : ""} ${included ? "" : "is-report-excluded"}"
             data-report-reconstruction-id="${escapeAttr(reconstruction.id)}"
             draggable="true"
+            aria-current="${previewActive ? "true" : "false"}"
+            title="${ready && included ? "Click to use this reconstruction for the report preview" : "Include and segment this reconstruction to preview it in the report"}"
           >
             <div class="eat-export-order">
               <span class="eat-export-index">#${rowIndex + 1}</span>
@@ -8171,7 +8184,7 @@
               class="eat-export-include"
               type="checkbox"
               aria-label="Include ${escapeAttr(pref?.label || reconstruction.label)}"
-              ${pref?.included === false ? "" : "checked"}
+              ${included ? "checked" : ""}
               ${ready ? "" : "disabled"}
             />
             <input
@@ -8206,6 +8219,17 @@
         return;
       }
       const pref = getExportReportPref(reconstruction);
+      row.addEventListener("click", (event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest("input, button, select, textarea")) {
+          return;
+        }
+        if (pref.included === false || !hasTransferredSegmentation(reconstruction)) {
+          return;
+        }
+        state.export.previewReconstructionId = reconstructionId;
+        updateExportWorkspaceUi();
+      });
       row.addEventListener("dragstart", (event) => {
         state.export.reportDragId = reconstructionId;
         row.classList.add("is-dragging");
@@ -8243,6 +8267,11 @@
       });
       row.querySelector(".eat-export-include")?.addEventListener("change", (event) => {
         pref.included = Boolean(event.target.checked);
+        if (!pref.included && state.export.previewReconstructionId === reconstructionId) {
+          state.export.previewReconstructionId = null;
+        } else if (pref.included && hasTransferredSegmentation(reconstruction)) {
+          state.export.previewReconstructionId = reconstructionId;
+        }
         updateExportWorkspaceUi();
       });
       row.querySelector(".eat-export-color")?.addEventListener("input", (event) => {
@@ -8392,9 +8421,9 @@
   }
 
   function buildExportResultsTable() {
-    const rows = getOrderedReportReconstructions();
+    const rows = getOrderedReportReconstructions({ onlyIncluded: true });
     if (!rows.length) {
-      return '<p class="hint">Load and segment EAT reconstructions to populate the report table.</p>';
+      return '<p class="hint">Check at least one reconstruction to populate the report table.</p>';
     }
     const body = rows
       .map((reconstruction, rowIndex) => {
@@ -8471,6 +8500,7 @@
     if (state.activeSidebarPage !== "export") {
       return;
     }
+    getReportReferenceReconstruction();
     renderExportSeriesControls();
     if (els.exportResultsTable) {
       els.exportResultsTable.innerHTML = buildExportResultsTable();
