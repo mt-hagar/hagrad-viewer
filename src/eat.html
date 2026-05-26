@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>HAGRad Viewer – EAT Workflow</title>
-    <link rel="stylesheet" href="/src/eat.css?v=20260525-edit-dropdown" />
+    <link rel="stylesheet" href="/src/eat.css?v=20260525-window-toolbar" />
     <link rel="stylesheet" href="/src/shared/hagrad-shell.css?v=20260523-file-inputs" />
   </head>
   <body>
@@ -415,52 +415,6 @@
             </div>
           </details>
 
-          <details class="sidebar-group" id="sidebar-group-review" data-sidebar-page-panel="eat" open hidden>
-            <summary class="sidebar-group-summary">
-              <div class="sidebar-group-copy">
-                <strong>Display & Review</strong>
-                <span>Windowing, zoom, slice list</span>
-              </div>
-            </summary>
-            <div class="sidebar-group-body">
-              <section class="sidebar-section" id="sidebar-section-display">
-                <div class="section-header">
-                  <h2>Display</h2>
-                  <span class="section-note">For contour review</span>
-                </div>
-                <div class="pill-grid">
-                  <button class="pill-button is-active" data-preset="cardiac" type="button">Cardiac</button>
-                  <button class="pill-button" data-preset="fat" type="button">Fat</button>
-                  <button class="pill-button" data-preset="wide" type="button">Wide</button>
-                </div>
-                <div class="range-grid">
-                  <label class="number-field" for="window-width-input">
-                    <span>Width</span>
-                    <input id="window-width-input" type="number" min="1" max="4000" step="1" value="450" />
-                  </label>
-                  <label class="number-field" for="window-center-input">
-                    <span>Level</span>
-                    <input id="window-center-input" type="number" min="-1200" max="3000" step="1" value="50" />
-                  </label>
-                </div>
-                <div class="inline-actions">
-                  <button id="zoom-out-button" class="button tertiary" type="button">Zoom Out (-)</button>
-                  <button id="zoom-in-button" class="button tertiary" type="button">Zoom In (+)</button>
-                  <button id="reset-view-button" class="button tertiary" type="button">Reset View (0)</button>
-                </div>
-                <p class="hint" id="zoom-readout">Zoom 100%</p>
-              </section>
-
-              <section class="sidebar-section" id="sidebar-section-slice-review">
-                <div class="section-header">
-                  <h2>Slice Review</h2>
-                  <span class="section-note" id="slice-review-count">0 slices</span>
-                </div>
-                <div class="slice-list" id="slice-list"></div>
-              </section>
-            </div>
-          </details>
-
           <details class="sidebar-group" id="sidebar-group-export" data-sidebar-page-panel="export" open hidden>
             <summary class="sidebar-group-summary">
               <div class="sidebar-group-copy">
@@ -588,6 +542,15 @@
                   <option value="zoom">Zoom</option>
                 </select>
                 <strong id="tool-summary" class="sr-only">Draw</strong>
+              </div>
+              <div class="viewer-pill">
+                Window
+                <select id="toolbar-window-select" class="toolbar-tool-select toolbar-window-select" aria-label="EAT window preset">
+                  <option value="cardiac" selected>Cardiac</option>
+                  <option value="fat">Fat</option>
+                  <option value="wide">Wide</option>
+                  <option value="custom" disabled hidden>Custom</option>
+                </select>
               </div>
             </div>
 
@@ -830,6 +793,6 @@
     <script src="/src/shared/hagrad-zip.js"></script>
     <script src="/src/shared/hagrad-workflow-switcher.js?v=20260519-workflow-shell"></script>
     <script src="/src/eat-shared.js"></script>
-    <script src="/src/eat.js?v=20260525-edit-dropdown"></script>
+    <script src="/src/eat.js?v=20260525-window-toolbar"></script>
   </body>
 </html>

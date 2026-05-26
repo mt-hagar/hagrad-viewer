@@ -24,10 +24,10 @@
       label: "EAT Mode",
     },
     3: {
-      groupId: "sidebar-group-review",
+      groupId: "sidebar-group-segmentation",
       page: "eat",
-      sectionId: "sidebar-section-slice-review",
-      label: "Slice Review",
+      sectionId: "sidebar-section-current-slice",
+      label: "Current Slice",
     },
     4: {
       groupId: "sidebar-group-segmentation",
@@ -243,6 +243,7 @@
     els.editToolMenu = document.getElementById("edit-tool-menu");
     els.editToolOptions = Array.from(document.querySelectorAll("[data-edit-tool-option]"));
     els.toolbarToolSelect = document.getElementById("toolbar-tool-select");
+    els.toolbarWindowSelect = document.getElementById("toolbar-window-select");
     els.presetButtons = Array.from(document.querySelectorAll("[data-preset]"));
     els.copyPrevButton = document.getElementById("copy-prev-button");
     els.copyNextButton = document.getElementById("copy-next-button");
@@ -2754,6 +2755,9 @@
   }
 
   function applyVoiFromInputs() {
+    if (!els.windowWidthInput || !els.windowCenterInput) {
+      return;
+    }
     state.currentPreset = null;
     state.currentVOI = {
       width: clamp(Number.parseFloat(els.windowWidthInput.value) || VOI_PRESETS.cardiac.width, 1, 4000),
@@ -2859,11 +2863,18 @@
     els.presetButtons.forEach((button) => {
       button.classList.toggle("is-active", button.dataset.preset === state.currentPreset);
     });
+    if (els.toolbarWindowSelect) {
+      els.toolbarWindowSelect.value = state.currentPreset || "custom";
+    }
   }
 
   function updateVoiUi() {
-    els.windowWidthInput.value = String(Math.round(state.currentVOI.width));
-    els.windowCenterInput.value = String(Math.round(state.currentVOI.center));
+    if (els.windowWidthInput) {
+      els.windowWidthInput.value = String(Math.round(state.currentVOI.width));
+    }
+    if (els.windowCenterInput) {
+      els.windowCenterInput.value = String(Math.round(state.currentVOI.center));
+    }
     updatePresetButtons();
   }
 
@@ -2900,7 +2911,9 @@
   }
 
   function updateZoomUi() {
-    els.zoomReadout.textContent = `Zoom ${Math.round(state.view.zoom * 100)}%`;
+    if (els.zoomReadout) {
+      els.zoomReadout.textContent = `Zoom ${Math.round(state.view.zoom * 100)}%`;
+    }
   }
 
   function updateViewportChromeUi() {
@@ -4109,7 +4122,9 @@
         els.bottomSliceInput.value = "1";
       }
       els.rangeSummary.textContent = "No study loaded";
-      els.sliceReviewCount.textContent = "0 slices";
+      if (els.sliceReviewCount) {
+        els.sliceReviewCount.textContent = "0 slices";
+      }
       if (els.sliceSlider) {
         els.sliceSlider.min = "0";
         els.sliceSlider.max = "0";
@@ -4134,7 +4149,9 @@
     els.rangeSummary.textContent = state.rangeConfigured
       ? `Slices ${bounds.start + 1}-${bounds.end + 1} (${bounds.count} total)`
       : "Use the scrubber handles to set range";
-    els.sliceReviewCount.textContent = `${bounds.count} slice${bounds.count === 1 ? "" : "s"}`;
+    if (els.sliceReviewCount) {
+      els.sliceReviewCount.textContent = `${bounds.count} slice${bounds.count === 1 ? "" : "s"}`;
+    }
     if (els.sliceSlider) {
       els.sliceSlider.min = "0";
       els.sliceSlider.max = String(sliceCount - 1);
@@ -5817,6 +5834,9 @@
   }
 
   function renderSliceList() {
+    if (!els.sliceList) {
+      return;
+    }
     els.sliceList.innerHTML = "";
     const bounds = getSliceBounds();
     if (!bounds) {
@@ -9845,8 +9865,8 @@
           updateThresholdUi();
         }
       });
-      els.windowWidthInput.addEventListener(eventName, applyVoiFromInputs);
-      els.windowCenterInput.addEventListener(eventName, applyVoiFromInputs);
+      els.windowWidthInput?.addEventListener(eventName, applyVoiFromInputs);
+      els.windowCenterInput?.addEventListener(eventName, applyVoiFromInputs);
       els.sliceNumberInput?.addEventListener(eventName, () => {
         if (!state.volume) {
           return;
@@ -9980,6 +10000,10 @@
     els.toolbarToolSelect?.addEventListener("change", () => {
       setActiveTool(els.toolbarToolSelect.value);
     });
+    els.toolbarWindowSelect?.addEventListener("change", () => {
+      applyPreset(els.toolbarWindowSelect.value);
+      setStatus(`Window preset set to ${els.toolbarWindowSelect.selectedOptions[0]?.textContent || "preset"}.`);
+    });
 
     els.presetButtons.forEach((button) => {
       button.addEventListener("click", () => applyPreset(button.dataset.preset));
@@ -10016,9 +10040,9 @@
     });
     els.thresholdToggleButton.addEventListener("click", toggleThresholdOverlay);
 
-    els.zoomOutButton.addEventListener("click", () => changeZoom(0.9));
-    els.zoomInButton.addEventListener("click", () => changeZoom(1.1));
-    els.resetViewButton.addEventListener("click", resetView);
+    els.zoomOutButton?.addEventListener("click", () => changeZoom(0.9));
+    els.zoomInButton?.addEventListener("click", () => changeZoom(1.1));
+    els.resetViewButton?.addEventListener("click", resetView);
     els.presentationResetWindowButton?.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
