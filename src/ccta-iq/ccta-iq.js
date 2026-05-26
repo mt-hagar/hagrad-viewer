@@ -8729,6 +8729,8 @@
       const objectiveMissing = getObjectiveMissingCount(reconstruction);
       const subjectiveComplete = getSubjectiveCompletionCount(reconstruction.id);
       const subjectiveMissing = getSubjectiveMissingCount(reconstruction.id);
+      const row = document.createElement("div");
+      row.className = "recon-row-shell";
       const button = document.createElement("button");
       button.type = "button";
       button.className = "recon-button";
@@ -8742,7 +8744,20 @@
       button.addEventListener("click", () => {
         setActiveReconstruction(reconstruction.id);
       });
-      els.reconstructionList.appendChild(button);
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "recon-remove-button";
+      removeButton.textContent = "×";
+      removeButton.title = `Remove ${reconstruction.label} from this Image Quality workflow`;
+      removeButton.setAttribute("aria-label", `Remove ${reconstruction.label} from this Image Quality workflow`);
+      removeButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        removeReconstructionFromWorkflow(reconstruction.id);
+      });
+      row.appendChild(button);
+      row.appendChild(removeButton);
+      els.reconstructionList.appendChild(row);
     });
     els.reconstructionSummary.textContent = `${state.reconstructions.length} loaded`;
     updateMeasurementTransferControls();
@@ -8878,6 +8893,74 @@
       scheduleIqTargetListAutoScroll(state.iq.activeTargetId, { behavior: "auto" });
     }
     requestRenderAll();
+  }
+
+  function hasIqSessionData(reconstruction) {
+    const subjectiveScores = state.iq.subjectiveScoresByRecon[reconstruction.id] || {};
+    return (
+      (reconstruction.annotations || []).length > 0 ||
+      Object.values(subjectiveScores).some((value) => value != null && value !== "")
+    );
+  }
+
+  function refreshReferenceBasis() {
+    const referenceVolume = state.reconstructions[0]?.volume || null;
+    state.referenceBasis = referenceVolume
+      ? {
+          row: cloneVector(referenceVolume.rowDirection),
+          column: cloneVector(referenceVolume.columnDirection),
+          normal: cloneVector(referenceVolume.normalDirection),
+        }
+      : null;
+  }
+
+  function removeReconstructionFromWorkflow(reconstructionId) {
+    const reconstructionIndex = state.reconstructions.findIndex((item) => item.id === reconstructionId);
+    const reconstruction = state.reconstructions[reconstructionIndex] || null;
+    if (!reconstruction) {
+      return;
+    }
+
+    if (
+      hasIqSessionData(reconstruction) &&
+      !window.confirm(
+        `Remove ${reconstruction.label} from this Image Quality workflow? DICOM files stay on disk, but this series' IQ measurements and subjective scores will be removed from the current session.`
+      )
+    ) {
+      return;
+    }
+
+    const removedLabel = reconstruction.label;
+    const removedSourceKeys = new Set((reconstruction.records || []).map((record) => record.sourceKey));
+    const wasActive = reconstruction.id === state.activeReconId;
+
+    state.reconstructions.splice(reconstructionIndex, 1);
+    state.sourceRecords = state.sourceRecords.filter((record) => !removedSourceKeys.has(record.sourceKey));
+    delete state.iq.subjectiveScoresByRecon[reconstruction.id];
+    state.dragging = null;
+    state.polygonDraft = null;
+    state.iq.contourCorrectionDraft = null;
+
+    if (!state.reconstructions.length) {
+      clearStudy();
+      setStatus(`Removed ${removedLabel}. Ready for a coronary CTA stack.`);
+      return;
+    }
+
+    refreshReferenceBasis();
+    if (wasActive) {
+      state.activeReconId = null;
+      state.selectedAnnotationId = null;
+      state.selectedProfileAnnotationId = null;
+      state.roiClipboard = null;
+      const nextReconstruction = state.reconstructions[Math.min(reconstructionIndex, state.reconstructions.length - 1)];
+      setActiveReconstruction(nextReconstruction.id);
+    } else {
+      updateEmptyState();
+      updateSidebarUi();
+      requestRenderAll();
+    }
+    setStatus(`Removed ${removedLabel} from this Image Quality workflow.`);
   }
 
   function resetMprState() {

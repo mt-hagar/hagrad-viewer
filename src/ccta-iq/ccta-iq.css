@@ -1063,6 +1063,13 @@ button {
   gap: 8px;
 }
 
+.recon-row-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  gap: 8px;
+  align-items: stretch;
+}
+
 .recon-button {
   width: 100%;
   text-align: left;
@@ -1071,6 +1078,10 @@ button {
   border: 1px solid var(--line);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.025));
   cursor: pointer;
+}
+
+.recon-row-shell .recon-button {
+  height: 100%;
 }
 
 .recon-button.is-active {
@@ -1094,6 +1105,30 @@ button {
 
 .recon-button span:last-child {
   color: var(--muted-strong);
+}
+
+.recon-remove-button {
+  display: grid;
+  place-items: center;
+  min-width: 36px;
+  min-height: 44px;
+  border: 1px solid rgba(255, 111, 101, 0.32);
+  border-radius: 14px;
+  background: rgba(255, 111, 101, 0.075);
+  color: #ff8f86;
+  font-size: 22px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.recon-remove-button:hover,
+.recon-remove-button:focus-visible {
+  border-color: rgba(255, 138, 128, 0.72);
+  background: rgba(255, 111, 101, 0.16);
+  color: #ffd1cc;
+  transform: translateY(-1px);
+  outline: none;
 }
 
 .numeric-grid {
