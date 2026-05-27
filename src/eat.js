@@ -116,6 +116,7 @@
     activeReconstructionId: null,
     volume: null,
     records: [],
+    doseRecords: [],
     seriesLabel: null,
     currentSliceIndex: 0,
     topSliceIndex: 0,
@@ -1747,6 +1748,15 @@
         sliceThickness: parseFirstNumber(dataSet.string("x00180050")),
         spacingBetweenSlices: parseFirstNumber(dataSet.string("x00180088")),
         kvp: parseFirstNumber(dataSet.string("x00180060")),
+        exposureTime: parseFirstNumber(dataSet.string("x00181150")),
+        exposureTimeMs: parseFirstNumber(dataSet.string("x00181150")),
+        tubeCurrent: parseFirstNumber(dataSet.string("x00181151")),
+        tubeCurrentMa: parseFirstNumber(dataSet.string("x00181151")),
+        exposure: parseFirstNumber(dataSet.string("x00181152")),
+        exposureMas: parseFirstNumber(dataSet.string("x00181152")),
+        ctdiVol: parseFirstNumber(dataSet.string("x00189345")),
+        ctdiVolMgy: parseFirstNumber(dataSet.string("x00189345")),
+        doseAreaProduct: parseFirstNumber(dataSet.string("x0018115e")),
         convolutionKernel: safeString(dataSet.string("x00181210")),
         imagePositionPatient: parseNumericArray(dataSet.string("x00200032")),
         imageOrientationPatient,
@@ -1819,6 +1829,52 @@
     profile?.count("headerRecords", records.length);
     finishMainThreadParse?.({ parsedCount: records.length });
     return records;
+  }
+
+  function hasRadiationDoseData(record) {
+    if (!record) {
+      return false;
+    }
+    return [
+      record.ctdiVolMgy,
+      record.ctdiVol,
+      record.reportCtdiVolMgy,
+      record.reportDlpMgyCm,
+      record.exposureTimeMs,
+      record.exposureTime,
+      record.tubeCurrentMa,
+      record.tubeCurrent,
+      record.exposureMas,
+      record.exposure,
+      record.doseAreaProduct,
+    ].some(Number.isFinite);
+  }
+
+  function getDoseRecordKey(record) {
+    return (
+      record?.sourceKey ||
+      record?.sopInstanceUID ||
+      [record?.seriesInstanceUID, record?.instanceNumber, record?.file?.name].filter(Boolean).join("::") ||
+      record?.file?.name ||
+      ""
+    );
+  }
+
+  function mergeDoseRecords(existingRecords, nextRecords) {
+    const byKey = new Map();
+    (existingRecords || []).forEach((record) => {
+      const key = getDoseRecordKey(record);
+      if (key) {
+        byKey.set(key, record);
+      }
+    });
+    (nextRecords || []).forEach((record) => {
+      const key = getDoseRecordKey(record);
+      if (key) {
+        byKey.set(key, record);
+      }
+    });
+    return Array.from(byKey.values());
   }
 
   function compareDicomRecords(a, b, normalVector) {
@@ -2208,6 +2264,9 @@
     if (!records.length) {
       throw new Error("No readable DICOM files were found.");
     }
+    const doseRecords = records
+      .filter(hasRadiationDoseData)
+      .filter((record) => mode !== "append" || isSameStudyAsLoadedStudy(record));
 
     const finishGrouping = profile?.start("seriesGrouping", { recordCount: records.length });
     const groups = groupSeries(records).filter((group) => group.pixelCount);
@@ -2275,6 +2334,8 @@
     }
 
     state.reconstructions = nextReconstructions;
+    state.doseRecords =
+      mode === "append" ? mergeDoseRecords(state.doseRecords, doseRecords) : mergeDoseRecords([], doseRecords);
     syncExportReportPrefs();
     invalidateExportSummaryCache();
     state.dragging = null;
@@ -2361,6 +2422,7 @@
     state.activeReconstructionId = null;
     state.volume = null;
     state.records = [];
+    state.doseRecords = [];
     state.seriesLabel = null;
     state.currentSliceIndex = 0;
     state.topSliceIndex = 0;
@@ -7894,6 +7956,7 @@
       report.report_order = pref?.order ?? index;
       report.series_number = getSeriesNumberLabel(reconstruction, state.reconstructions.indexOf(reconstruction));
       report.dicom_rows = getImportantDicomRows(reconstruction);
+      report.radiation_dose_rows = getRadiationDoseRows(reconstruction);
       reports.push(report);
       await waitForAnimationFrame();
     }
@@ -8916,6 +8979,54 @@
     ];
   }
 
+  function findFirstFiniteRecordValue(records, keys) {
+    for (const record of records || []) {
+      for (const key of keys) {
+        const value = record?.[key];
+        if (Number.isFinite(value)) {
+          return { value, key };
+        }
+      }
+    }
+    return null;
+  }
+
+  function formatDoseMetric(result, unit, digits) {
+    if (!result || !Number.isFinite(result.value)) {
+      return "";
+    }
+    const sourceNote = result.key?.startsWith("report") ? " (report text)" : "";
+    return `${formatNumber(result.value, digits)} ${unit}${sourceNote}`;
+  }
+
+  function getRadiationDoseRows(reconstruction) {
+    const reconstructionRecords = reconstruction?.records || [];
+    const reportRecords = (state.doseRecords || []).filter(
+      (record) => !record?.hasPixelData || Number.isFinite(record?.reportCtdiVolMgy) || Number.isFinite(record?.reportDlpMgyCm)
+    );
+    const rows = [];
+    const pushMetric = (label, result, unit, digits) => {
+      const formatted = formatDoseMetric(result, unit, digits);
+      if (formatted) {
+        rows.push([label, formatted]);
+      }
+    };
+
+    pushMetric(
+      "CTDIvol",
+      findFirstFiniteRecordValue(reconstructionRecords, ["ctdiVolMgy", "ctdiVol"]) ||
+        findFirstFiniteRecordValue(reportRecords, ["reportCtdiVolMgy"]),
+      "mGy",
+      3
+    );
+    pushMetric("DLP", findFirstFiniteRecordValue(reportRecords, ["reportDlpMgyCm"]), "mGy.cm", 3);
+    pushMetric("Tube Current", findFirstFiniteRecordValue(reconstructionRecords, ["tubeCurrentMa", "tubeCurrent"]), "mA", 1);
+    pushMetric("Exposure Time", findFirstFiniteRecordValue(reconstructionRecords, ["exposureTimeMs", "exposureTime"]), "ms", 1);
+    pushMetric("Exposure", findFirstFiniteRecordValue(reconstructionRecords, ["exposureMas", "exposure"]), "mAs", 1);
+    pushMetric("Dose Area Product", findFirstFiniteRecordValue(reconstructionRecords, ["doseAreaProduct"]), "dGy.cm^2", 3);
+    return rows;
+  }
+
   function buildDicomRowsHtml(rows) {
     return `<dl class="dicom-info-grid">${rows
       .map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`)
@@ -9345,6 +9456,7 @@
     const researchStudy = reportSet.researchStudyDisplay || reportSet.researchStudyLabel || reportSet.researchStudyId || "-";
     const studyId = reportSet.studyId || "unspecified";
     const dicomRows = reference?.dicom_rows || [];
+    const radiationDoseRows = reference?.radiation_dose_rows || [];
     const summaryCards = [
       ["Total EAT Volume", formatMetricValue(reference?.summary?.total_eat_volume_ml, "mL", 3)],
       ["Mean EAT HU", formatMetricValue(reference?.summary?.mean_eat_density_hu, "HU", 1)],
@@ -9417,6 +9529,12 @@
     </section>
     <h2>Important DICOM Header</h2>
     ${buildDicomRowsHtml(dicomRows)}
+    <h2>Radiation Dose Metrics</h2>
+    ${
+      radiationDoseRows.length
+        ? buildDicomRowsHtml(radiationDoseRows)
+        : '<p class="note">No CTDIvol, DLP, tube current, exposure, or dose-area product values were found in the loaded DICOM headers or dose report text.</p>'
+    }
     <h2>EAT Summary</h2>
     <div class="summary-grid">
       ${summaryCards
