@@ -7,6 +7,7 @@ VENV_DIR="$ROOT/dist/packaging-venv/macos"
 DIST_DIR="$ROOT/dist/macos"
 WORK_DIR="$ROOT/dist/pyinstaller-work/macos"
 SPEC_DIR="$ROOT/dist/pyinstaller-spec/macos"
+STAGE_DIR="$ROOT/dist/packaging-stage/macos"
 COLLECT_PATH="$DIST_DIR/HAGRad Viewer"
 APP_PATH="$DIST_DIR/HAGRad Viewer.app"
 DMG_PATH="$ROOT/dist/HAGRad-Viewer-macOS.dmg"
@@ -37,14 +38,34 @@ fi
 "$VENV_DIR/bin/python" -m pip install --upgrade pip pyinstaller
 
 rm -rf "$APP_PATH" "$COLLECT_PATH"
-mkdir -p "$DIST_DIR" "$WORK_DIR" "$SPEC_DIR"
+rm -rf "$STAGE_DIR"
+mkdir -p "$DIST_DIR" "$WORK_DIR" "$SPEC_DIR" "$STAGE_DIR"
+
+copy_clean_tree() {
+  local source="$1"
+  local destination="$2"
+  rsync -a \
+    --exclude ".DS_Store" \
+    --exclude ".Rhistory" \
+    --exclude "__pycache__/" \
+    --exclude "*.pyc" \
+    --exclude "*.pyo" \
+    "$source/" "$destination/"
+}
+
+copy_clean_tree "$ROOT/src" "$STAGE_DIR/src"
+copy_clean_tree "$ROOT/vendor" "$STAGE_DIR/vendor"
+copy_clean_tree "$ROOT/assets" "$STAGE_DIR/assets"
+mkdir -p "$STAGE_DIR/scripts"
+cp "$ROOT/scripts/serve_https.py" "$STAGE_DIR/scripts/serve_https.py"
+cp "$ROOT/scripts/run_eat_backend_pipeline.py" "$STAGE_DIR/scripts/run_eat_backend_pipeline.py"
 
 DATA_ARGS=(
-  --add-data "$ROOT/src:src"
-  --add-data "$ROOT/vendor:vendor"
-  --add-data "$ROOT/assets:assets"
-  --add-data "$ROOT/scripts/serve_https.py:scripts"
-  --add-data "$ROOT/scripts/run_eat_backend_pipeline.py:scripts"
+  --add-data "$STAGE_DIR/src:src"
+  --add-data "$STAGE_DIR/vendor:vendor"
+  --add-data "$STAGE_DIR/assets:assets"
+  --add-data "$STAGE_DIR/scripts/serve_https.py:scripts"
+  --add-data "$STAGE_DIR/scripts/run_eat_backend_pipeline.py:scripts"
   --add-data "$ROOT/README.md:."
   --add-data "$ROOT/DISCLAIMER.md:."
   --add-data "$ROOT/LICENSE:."

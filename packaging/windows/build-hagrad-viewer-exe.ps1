@@ -8,6 +8,7 @@ $Python = Join-Path $Venv "Scripts\python.exe"
 $DistPath = Join-Path $Root "dist\windows"
 $WorkPath = Join-Path $Root "dist\pyinstaller-work\windows"
 $SpecPath = Join-Path $Root "dist\pyinstaller-spec\windows"
+$StagePath = Join-Path $Root "dist\packaging-stage\windows"
 $ExePath = Join-Path $DistPath "HAGRad Viewer.exe"
 $ZipPath = Join-Path $Root "dist\HAGRad-Viewer-Windows.zip"
 $IconPath = Join-Path $Root "assets\hagrad-palm-icon.ico"
@@ -23,12 +24,37 @@ if (Test-Path $ExePath) {
   Remove-Item $ExePath -Force
 }
 
+if (Test-Path $StagePath) {
+  Remove-Item $StagePath -Recurse -Force
+}
+New-Item -ItemType Directory -Force -Path $StagePath | Out-Null
+
+function Copy-CleanTree {
+  param(
+    [Parameter(Mandatory = $true)][string]$Source,
+    [Parameter(Mandatory = $true)][string]$Destination
+  )
+
+  Copy-Item -Path $Source -Destination $Destination -Recurse -Force
+  Get-ChildItem -Path $Destination -Recurse -Force -File -Include ".DS_Store", ".Rhistory", "*.pyc", "*.pyo" |
+    Remove-Item -Force
+  Get-ChildItem -Path $Destination -Recurse -Force -Directory -Filter "__pycache__" |
+    Remove-Item -Recurse -Force
+}
+
+Copy-CleanTree -Source (Join-Path $Root "src") -Destination (Join-Path $StagePath "src")
+Copy-CleanTree -Source (Join-Path $Root "vendor") -Destination (Join-Path $StagePath "vendor")
+Copy-CleanTree -Source (Join-Path $Root "assets") -Destination (Join-Path $StagePath "assets")
+New-Item -ItemType Directory -Force -Path (Join-Path $StagePath "scripts") | Out-Null
+Copy-Item -Path (Join-Path $Root "scripts\serve_https.py") -Destination (Join-Path $StagePath "scripts\serve_https.py") -Force
+Copy-Item -Path (Join-Path $Root "scripts\run_eat_backend_pipeline.py") -Destination (Join-Path $StagePath "scripts\run_eat_backend_pipeline.py") -Force
+
 $DataArgs = @(
-  "--add-data", "$Root\src;src",
-  "--add-data", "$Root\vendor;vendor",
-  "--add-data", "$Root\assets;assets",
-  "--add-data", "$Root\scripts\serve_https.py;scripts",
-  "--add-data", "$Root\scripts\run_eat_backend_pipeline.py;scripts",
+  "--add-data", "$StagePath\src;src",
+  "--add-data", "$StagePath\vendor;vendor",
+  "--add-data", "$StagePath\assets;assets",
+  "--add-data", "$StagePath\scripts\serve_https.py;scripts",
+  "--add-data", "$StagePath\scripts\run_eat_backend_pipeline.py;scripts",
   "--add-data", "$Root\README.md;.",
   "--add-data", "$Root\DISCLAIMER.md;.",
   "--add-data", "$Root\LICENSE;.",
