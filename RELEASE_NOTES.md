@@ -29,6 +29,8 @@ This build refreshes the HAGRad Viewer workflow shell and adds new research tool
 - Streamlines Noise Power and workflow toolbar sizing so analysis controls stay readable in tighter viewports.
 - Adds selectable Noise Power NPS heatmap series and fixes Noise Power series reorder/preferences behavior.
 - Redesigns the EAT workflow sidebar and export report workspace with separate reconstruction controls, faster export previews, cleaner contour editing, and improved contour transfer/copy-to-reconstruction behavior.
+- Adds EAT report radiation dose fields for research documentation.
+- Aligns the EAT report color picker interaction with the Noise Power reporting workflow.
 - Adds Image Quality / CCTA IQ series removal controls for cleaner multi-series review.
 - Removes the extra left scrollbar gutter from Viewer and CCTA IQ layouts for cleaner horizontal alignment.
 - Updates the public website positioning, support, and credits content.
