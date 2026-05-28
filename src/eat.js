@@ -101,14 +101,10 @@
     radiusSmoothingPasses: 2,
   };
   const EXPORT_REPORT_PALETTE = [
-    "#5ed6c3",
-    "#ffd27f",
-    "#6ee4ff",
-    "#f58f84",
-    "#c99bff",
-    "#a6e36e",
-    "#ffb36e",
-    "#9fb7ff",
+    "#ffe0cf", "#ffd7e1", "#d8f1d2", "#d9ecff", "#eadfff",
+    "#fdba90", "#ffb2c1", "#bdeab8", "#b7dcff", "#d3b8ff",
+    "#ff9a9a", "#f4a8c0", "#8fe6ab", "#93cfff", "#b690ff",
+    "#c7a18f", "#bf7f99", "#7fc7a1", "#b8c4d0", "#a891c7",
   ];
 
   const state = {
@@ -7952,7 +7948,7 @@
       const pref = getExportReportPref(reconstruction, state.reconstructions.indexOf(reconstruction));
       report.source_reconstruction_label = report.reconstruction_label;
       report.reconstruction_label = pref?.label || report.reconstruction_label;
-      report.report_color = pref?.color || EXPORT_REPORT_PALETTE[index % EXPORT_REPORT_PALETTE.length];
+      report.report_color = normalizeReportColor(pref?.color, EXPORT_REPORT_PALETTE[index % EXPORT_REPORT_PALETTE.length]);
       report.report_order = pref?.order ?? index;
       report.series_number = getSeriesNumberLabel(reconstruction, state.reconstructions.indexOf(reconstruction));
       report.dicom_rows = getImportantDicomRows(reconstruction);
@@ -8126,6 +8122,102 @@
     return escapeHtml(value).replace(/`/g, "&#96;");
   }
 
+  function normalizeReportColor(value, fallback) {
+    const cleanValue = String(safeString(value) || "").trim();
+    const match = cleanValue.match(/^#?([0-9a-f]{6})$/i);
+    if (match) {
+      return `#${match[1].toLowerCase()}`;
+    }
+    return fallback || EXPORT_REPORT_PALETTE[0];
+  }
+
+  function getReportColorPaletteMarkup(selectedColor, label) {
+    const normalizedSelected = normalizeReportColor(selectedColor, EXPORT_REPORT_PALETTE[0]);
+    return `
+      <div class="series-color-picker" data-series-color-picker>
+        <button
+          class="series-color-selected"
+          data-series-color-toggle
+          type="button"
+          aria-expanded="false"
+          aria-label="Color for ${escapeAttr(label)}"
+          title="Change series color"
+          style="--swatch-color:${escapeAttr(normalizedSelected)}"
+        >
+          <span class="series-color-selected-band" aria-hidden="true"></span>
+        </button>
+        <div class="series-color-palette" data-series-color-palette role="radiogroup" aria-label="Series color">
+          ${EXPORT_REPORT_PALETTE.map((color, index) => {
+            const normalizedColor = normalizeReportColor(color, EXPORT_REPORT_PALETTE[0]);
+            const isSelected = normalizedColor === normalizedSelected;
+            return `
+              <button
+                class="series-color-swatch ${isSelected ? "is-selected" : ""}"
+                data-series-color="${escapeAttr(normalizedColor)}"
+                type="button"
+                role="radio"
+                aria-checked="${isSelected ? "true" : "false"}"
+                title="Use palette color ${index + 1}"
+                style="--swatch-color:${escapeAttr(normalizedColor)}"
+              ></button>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  function setSeriesColorPickerOpen(picker, isOpen) {
+    if (!picker) {
+      return;
+    }
+    picker.classList.toggle("is-open", Boolean(isOpen));
+    picker.querySelector("[data-series-color-toggle]")?.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  }
+
+  function closeSeriesColorPickers(exceptPicker) {
+    document.querySelectorAll("[data-series-color-picker].is-open").forEach((picker) => {
+      if (picker !== exceptPicker) {
+        setSeriesColorPickerOpen(picker, false);
+      }
+    });
+  }
+
+  function setSeriesColorPickerValue(picker, color) {
+    const normalizedColor = normalizeReportColor(color, EXPORT_REPORT_PALETTE[0]);
+    picker?.querySelector("[data-series-color-toggle]")?.style.setProperty("--swatch-color", normalizedColor);
+    picker?.querySelectorAll("[data-series-color]").forEach((button) => {
+      const isSelected = normalizeReportColor(button.dataset.seriesColor, "") === normalizedColor;
+      button.classList.toggle("is-selected", isSelected);
+      button.setAttribute("aria-checked", isSelected ? "true" : "false");
+    });
+    return normalizedColor;
+  }
+
+  function bindSeriesColorPicker(row, onChange) {
+    const picker = row.querySelector("[data-series-color-picker]");
+    if (!picker) {
+      return;
+    }
+    picker.addEventListener("click", (event) => {
+      const colorToggle = event.target.closest("[data-series-color-toggle]");
+      if (colorToggle) {
+        const shouldOpen = !picker.classList.contains("is-open");
+        closeSeriesColorPickers(picker);
+        setSeriesColorPickerOpen(picker, shouldOpen);
+        event.preventDefault();
+        return;
+      }
+      const colorButton = event.target.closest("[data-series-color]");
+      if (colorButton) {
+        const color = setSeriesColorPickerValue(picker, colorButton.dataset.seriesColor);
+        setSeriesColorPickerOpen(picker, false);
+        onChange(color);
+        event.preventDefault();
+      }
+    });
+  }
+
   function getReportPrefKey(reconstruction) {
     return safeString(reconstruction?.id) || "";
   }
@@ -8152,9 +8244,10 @@
     }
 
     const existing = state.export.reportPrefs[key] || {};
+    const fallbackColor = EXPORT_REPORT_PALETTE[index % EXPORT_REPORT_PALETTE.length];
     const next = {
       label: safeString(existing.label) || buildDefaultReportLabel(reconstruction, index),
-      color: safeString(existing.color) || EXPORT_REPORT_PALETTE[index % EXPORT_REPORT_PALETTE.length],
+      color: normalizeReportColor(existing.color, fallbackColor),
       order: Number.isFinite(existing.order) ? existing.order : index,
     };
     state.export.reportPrefs[key] = next;
@@ -8551,6 +8644,8 @@
       .map((reconstruction, rowIndex) => {
         const originalIndex = state.reconstructions.indexOf(reconstruction);
         const pref = getExportReportPref(reconstruction, originalIndex);
+        const color = normalizeReportColor(pref?.color, EXPORT_REPORT_PALETTE[originalIndex % EXPORT_REPORT_PALETTE.length]);
+        const label = pref?.label || buildDefaultReportLabel(reconstruction, rowIndex);
         const summaryInfo = getReportSummaryForReconstruction(reconstruction);
         const ready = hasTransferredSegmentation(reconstruction);
         const previewActive = reconstruction.id === state.export.previewReconstructionId;
@@ -8577,16 +8672,11 @@
                 <button class="mini-button" type="button" data-report-move="down" ${rowIndex === ordered.length - 1 ? "disabled" : ""}>Dn</button>
               </span>
             </div>
-            <input
-              class="eat-export-color"
-              type="color"
-              value="${escapeAttr(pref?.color || EXPORT_REPORT_PALETTE[rowIndex % EXPORT_REPORT_PALETTE.length])}"
-              aria-label="Report color"
-            />
+            ${getReportColorPaletteMarkup(color, label)}
             <input
               class="eat-export-label"
               type="text"
-              value="${escapeAttr(pref?.label || buildDefaultReportLabel(reconstruction, rowIndex))}"
+              value="${escapeAttr(label)}"
               aria-label="Report label"
               spellcheck="false"
             />
@@ -8611,7 +8701,7 @@
       const pref = getExportReportPref(reconstruction);
       row.addEventListener("click", (event) => {
         const target = event.target instanceof Element ? event.target : null;
-        if (target?.closest("input, button, select, textarea")) {
+        if (target?.closest("input, button, select, textarea, [data-series-color-picker]")) {
           return;
         }
         if (!hasTransferredSegmentation(reconstruction)) {
@@ -8655,8 +8745,8 @@
           moveReportReconstruction(reconstructionId, button.dataset.reportMove === "up" ? -1 : 1);
         });
       });
-      row.querySelector(".eat-export-color")?.addEventListener("input", (event) => {
-        pref.color = event.target.value;
+      bindSeriesColorPicker(row, (color) => {
+        pref.color = color;
         if (els.exportResultsTable) {
           els.exportResultsTable.innerHTML = buildExportResultsTable();
         }
@@ -8811,6 +8901,7 @@
       .map((reconstruction, rowIndex) => {
         const record = reconstruction.records?.[0] || {};
         const pref = getExportReportPref(reconstruction, rowIndex);
+        const color = normalizeReportColor(pref?.color, EXPORT_REPORT_PALETTE[rowIndex % EXPORT_REPORT_PALETTE.length]);
         const summaryInfo = getReportSummaryForReconstruction(reconstruction);
         const summary = summaryInfo.summary || {};
         const status = summaryInfo.pending ? "Calculating" : describeReportStatus(reconstruction, summaryInfo);
@@ -8818,7 +8909,7 @@
         return `
           <tr>
             <td>${escapeHtml(getSeriesNumberLabel(reconstruction, rowIndex))}</td>
-            <td><span class="eat-results-color-chip" style="background:${escapeAttr(pref?.color || "#5ed6c3")}"></span>${escapeHtml(pref?.label || reconstruction.label)}</td>
+            <td><span class="eat-results-color-chip" style="background:${escapeAttr(color)}"></span>${escapeHtml(pref?.label || reconstruction.label)}</td>
             <td>${escapeHtml(record.seriesDescription || reconstruction.label || "-")}</td>
             <td>${escapeHtml(formatSliceRange(summaryInfo.bounds))}</td>
             <td>${escapeHtml(String(summary.reviewed || 0))}</td>
@@ -9442,7 +9533,7 @@
         }
         return {
           title: report.reconstruction_label,
-          color: report.report_color || "#5ed6c3",
+          color: normalizeReportColor(report.report_color, EXPORT_REPORT_PALETTE[0]),
           src: createReportPreviewDataUrl(reconstruction, report.reconstruction_label),
           caption: `${report.series_number || ""} · ${report.summary.reviewed_slices} reviewed, ${report.summary.missing_slices} missing · ${formatTransferModeLabel(report.transfer_mode)}`,
         };
@@ -10629,6 +10720,10 @@
       if (!els.editToolDropdown?.contains(event.target)) {
         setEditToolMenuOpen(false);
       }
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target?.closest("[data-series-color-picker]")) {
+        closeSeriesColorPickers();
+      }
     });
     els.toolbarToolSelect?.addEventListener("change", () => {
       setActiveTool(els.toolbarToolSelect.value);
@@ -10810,6 +10905,7 @@
       }
 
       if (event.key === "Escape") {
+        closeSeriesColorPickers();
         if (state.focusSidebarOpen) {
           event.preventDefault();
           setFocusSidebarOpen(false);
