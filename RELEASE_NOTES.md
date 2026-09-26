@@ -1,4 +1,4 @@
-# HAGRad Viewer v0.9.0-research-preview
+# HAGRad Viewer v0.9.1-research-preview
 
 ## Release Type
 
@@ -10,6 +10,10 @@ This release is intended to make HAGRad citable, downloadable, and testable by c
 
 This build refreshes the HAGRad Viewer workflow shell and adds new research tools:
 
+- Adds `Line Profile Raw` for source-voxel HU sampling along user-drawn research profile lines.
+- Adds `Export Raw Profiles`, an Excel-readable research workbook export with summary rows, raw sample tables, and DICOM metadata sheets.
+- Adds DICOM compatibility diagnostics for transfer syntax, pixel storage, lossy compression tags, and direct-volume sampling support.
+- Adds fast/smooth MPR rendering controls while keeping measurements tied to source voxel data.
 - Adds vessel profile and vascular diameter tools to the main HAGRad Viewer.
 - Adds blooming and stenosis diameter measurements for coronary research workflows.
 - Speeds up large DICOM/patient-study loading with guarded header and volume workers plus browser-safe fallbacks.
@@ -88,7 +92,7 @@ See `DISCLAIMER.md` and `LICENSE.md` before use.
 
 ## Suggested Software Citation
 
-HAGRad Viewer, version 0.9.0-research-preview. HAGRad contributors, 2026. Research-use software for local cardiovascular image analysis.
+HAGRad Viewer, version 0.9.1-research-preview. HAGRad contributors, 2026. Research-use software for local cardiovascular image analysis.
 
 ## Known Limitations
 

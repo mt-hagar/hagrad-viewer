@@ -11,7 +11,7 @@ import zipfile
 
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-DEFAULT_VERSION = "v0.9.0-research-preview"
+DEFAULT_VERSION = "v0.9.1-research-preview"
 PACKAGE_PREFIX = "hagrad-viewer"
 PLATFORM_ASSET_GROUPS = (
     ("HAGRad-Viewer-macOS.dmg", "HAGRad-Viewer-macOS.zip"),
@@ -170,7 +170,7 @@ def create_release(repo: str, version: str, assets: list[pathlib.Path], package_
             "--repo",
             repo,
             "--title",
-            "HAGRad Viewer v0.9.0 Research Preview",
+            f"HAGRad Viewer {version.replace('-research-preview', '')} Research Preview",
             "--notes-file",
             str(notes_file),
             "--prerelease",

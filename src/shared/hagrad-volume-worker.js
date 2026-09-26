@@ -57,8 +57,13 @@
     const rows = record.rows;
     const columns = record.columns;
     const bitsAllocated = record.bitsAllocated || 16;
+    const bitsStored = Number.isFinite(record.bitsStored) ? record.bitsStored : bitsAllocated;
+    const highBit = Number.isFinite(record.highBit) ? record.highBit : bitsStored - 1;
     const bytesPerSample = bitsAllocated === 16 ? 2 : bitsAllocated === 8 ? 1 : 0;
     if (!Number.isFinite(rows) || !Number.isFinite(columns) || !bytesPerSample) {
+      return null;
+    }
+    if (bitsStored !== bitsAllocated || highBit !== bitsStored - 1) {
       return null;
     }
     return rows * columns * bytesPerSample;
@@ -125,7 +130,12 @@
     const columns = record.columns;
     const sampleCount = rows * columns;
     const bitsAllocated = record.bitsAllocated || 16;
+    const bitsStored = Number.isFinite(record.bitsStored) ? record.bitsStored : bitsAllocated;
+    const highBit = Number.isFinite(record.highBit) ? record.highBit : bitsStored - 1;
     const pixelRepresentation = record.pixelRepresentation || 0;
+    if (bitsStored !== bitsAllocated || highBit !== bitsStored - 1) {
+      throw unsupported("The DICOM slice uses stored bits that require decoder normalization.");
+    }
     const expectedBytes = expectedPixelByteLength(record);
     const buffer = await record.file.slice(record.pixelDataOffset, record.pixelDataOffset + expectedBytes).arrayBuffer();
     if (buffer.byteLength < expectedBytes) {

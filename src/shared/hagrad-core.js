@@ -369,7 +369,7 @@
 
   const DICOM_HEADER_INDEX_DB_NAME = "hagrad-dicom-header-index-v1";
   const DICOM_HEADER_INDEX_STORE = "headers";
-  const DICOM_HEADER_INDEX_SCHEMA = 2;
+  const DICOM_HEADER_INDEX_SCHEMA = 3;
   const DICOM_HEADER_FINGERPRINT_BYTES = 16 * 1024;
   const DICOM_VOLUME_WORKER_TRANSFER_SYNTAXES = new Set([
     "1.2.840.10008.1.2",
@@ -733,7 +733,12 @@
     const columns = record.columns;
     const samplesPerPixel = record.samplesPerPixel || 1;
     const bitsAllocated = record.bitsAllocated || 16;
+    const bitsStored = Number.isFinite(record.bitsStored) ? record.bitsStored : bitsAllocated;
+    const highBit = Number.isFinite(record.highBit) ? record.highBit : bitsStored - 1;
     if (!Number.isFinite(rows) || !Number.isFinite(columns) || samplesPerPixel !== 1) {
+      return false;
+    }
+    if (bitsStored !== bitsAllocated || highBit !== bitsStored - 1) {
       return false;
     }
     const bytesPerSample = bitsAllocated === 16 ? 2 : bitsAllocated === 8 ? 1 : 0;
@@ -758,11 +763,16 @@
       columns: Number.isFinite(record.columns) ? record.columns : null,
       samplesPerPixel: Number.isFinite(record.samplesPerPixel) ? record.samplesPerPixel : 1,
       bitsAllocated: Number.isFinite(record.bitsAllocated) ? record.bitsAllocated : 16,
+      bitsStored: Number.isFinite(record.bitsStored) ? record.bitsStored : null,
+      highBit: Number.isFinite(record.highBit) ? record.highBit : null,
       pixelRepresentation: Number.isFinite(record.pixelRepresentation) ? record.pixelRepresentation : 0,
       pixelDataOffset: Number.isFinite(record.pixelDataOffset) ? record.pixelDataOffset : null,
       pixelDataLength: Number.isFinite(record.pixelDataLength) ? record.pixelDataLength : null,
       pixelDataHasFragments: Boolean(record.pixelDataHasFragments),
       photometricInterpretation: safeString(record.photometricInterpretation),
+      lossyImageCompression: safeString(record.lossyImageCompression),
+      lossyImageCompressionRatio: safeString(record.lossyImageCompressionRatio),
+      lossyImageCompressionMethod: safeString(record.lossyImageCompressionMethod),
       pixelSpacing: cloneNumericVector(record.pixelSpacing),
       sliceThickness: Number.isFinite(record.sliceThickness) ? record.sliceThickness : null,
       imagePositionPatient: cloneNumericVector(record.imagePositionPatient),

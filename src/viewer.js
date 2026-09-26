@@ -47,8 +47,21 @@
       cssClass: "comparison-layout-single",
     },
   };
-  const PROFILE_TYPES = new Set(["lineProfile", "squareProfile", "plaqueLineProfile", "plaqueNoncalcifiedLineProfile", "vascularLineProfile"]);
-  const LINE_PROFILE_TYPES = new Set(["lineProfile", "plaqueLineProfile", "plaqueNoncalcifiedLineProfile", "vascularLineProfile"]);
+  const PROFILE_TYPES = new Set([
+    "lineProfile",
+    "lineProfileRaw",
+    "squareProfile",
+    "plaqueLineProfile",
+    "plaqueNoncalcifiedLineProfile",
+    "vascularLineProfile",
+  ]);
+  const LINE_PROFILE_TYPES = new Set([
+    "lineProfile",
+    "lineProfileRaw",
+    "plaqueLineProfile",
+    "plaqueNoncalcifiedLineProfile",
+    "vascularLineProfile",
+  ]);
   const STENT_INTERFACE_PROFILE_TYPES = new Set(["lineProfile", "squareProfile"]);
   const MULTI_DIAMETER_TYPES = new Set(["bloomingDiameter", "stenosisDiameter"]);
   const MEASUREMENT_TYPES = new Set([
@@ -57,6 +70,7 @@
     "freehandRoi",
     "brushRoi",
     "lineProfile",
+    "lineProfileRaw",
     "squareProfile",
     "plaqueLineProfile",
     "plaqueNoncalcifiedLineProfile",
@@ -103,6 +117,8 @@
   const UI_MODE_STORAGE_KEY = "hagrad.ui_mode.v1";
   const SIDEBAR_TAB_STORAGE_KEY = "hagrad.sidebar_tab.v1";
   const PRESENTATION_SERIES_LABEL_STORAGE_KEY = "hagrad.presentation_series_label.v1";
+  const SAFE_DECODE_STORAGE_KEY = "hagrad.safe_decode.v1";
+  const MPR_RENDER_QUALITY_STORAGE_KEY = "hagrad.mpr_render_quality.v1";
   const PROJECT_WORKFLOW_ENABLED = false;
   const SESSION_AUTOSAVE_DELAY_MS = 900;
   const DUPLICATE_CHECK_DELAY_MS = 260;
@@ -140,6 +156,7 @@
     { id: "length", label: "Length", defaultKey: "L", defaultMeaning: "Place a distance measurement" },
     { id: "probe", label: "Probe", defaultKey: "B", defaultMeaning: "Sample one CT value" },
     { id: "lineProfile", label: "Stent-Lumen Line", defaultKey: "P", defaultMeaning: "Draw a line profile for stent-lumen interface analysis" },
+    { id: "lineProfileRaw", label: "Line Profile Raw", defaultKey: "G", defaultMeaning: "Draw a raw HU line profile for Excel research export" },
     { id: "squareProfile", label: "Stent-Lumen Square", defaultKey: "S", defaultMeaning: "Draw a band profile for stent-lumen interface analysis" },
     { id: "plaqueLineProfile", label: "Plaque-Lumen Calcified", defaultKey: "I", defaultMeaning: "Draw a calcified plaque-lumen interface line profile" },
     { id: "plaqueNoncalcifiedLineProfile", label: "Plaque-Lumen Noncalcified", defaultKey: "N", defaultMeaning: "Draw a non-calcified plaque-lumen interface line profile" },
@@ -169,6 +186,7 @@
     length: "Place a distance measurement. It will appear in the annotation list and exports.",
     probe: "Sample one CT value at a point and keep it as its own saved result.",
     lineProfile: "Stent-lumen interface: draw a 1D HU profile, then refine the stent cutoffs in the profile panel if needed.",
+    lineProfileRaw: "Line Profile Raw: draw a line and export unsmoothed HU samples with anatomical distance to an Excel-readable research workbook.",
     squareProfile: "Stent-lumen interface: draw a rectangular band profile for cleaner stent analysis and export.",
     plaqueLineProfile: "Plaque-lumen interface: draw across contrast lumen and calcified plaque to quantify blooming width and edge slope.",
     plaqueNoncalcifiedLineProfile: "Plaque-lumen interface: draw from contrast lumen into non-calcified plaque to quantify HU drop and interface width.",
@@ -196,6 +214,7 @@
   };
   const INTERFACE_TOOL_KEYS = [
     "lineProfile",
+    "lineProfileRaw",
     "squareProfile",
     "plaqueLineProfile",
     "plaqueNoncalcifiedLineProfile",
@@ -203,6 +222,7 @@
   ];
   const INTERFACE_TOOL_LABELS = {
     lineProfile: "Stent Line",
+    lineProfileRaw: "Line Profile Raw",
     squareProfile: "Stent Square",
     plaqueLineProfile: "Plaque Calcified",
     plaqueNoncalcifiedLineProfile: "Plaque Noncalcified",
@@ -229,6 +249,10 @@
 
   const RIGHT_DRAG_SCRUB_HEIGHT_FACTOR = 0.9;
   const RIGHT_CLICK_DOUBLE_MS = 320;
+  const MPR_RENDER_QUALITY_LABELS = {
+    fast: "Fast nearest-neighbor",
+    smooth: "Smooth linear/trilinear",
+  };
 
   const PROFILE_GUIDE_STYLES = {
     leftOutsideIndex: { color: "#57c8ff", label: "Outer L" },
@@ -261,6 +285,7 @@
     length: "crosshair",
     probe: "copy",
     lineProfile: "crosshair",
+    lineProfileRaw: "crosshair",
     squareProfile: "crosshair",
     plaqueLineProfile: "crosshair",
     plaqueNoncalcifiedLineProfile: "crosshair",
@@ -371,6 +396,8 @@
     showPresentationSeriesLabel: true,
     showViewportOverlays: false,
     showViewportGrid: false,
+    safeDecodeMode: false,
+    mprRenderQuality: "fast",
     viewportOverlayPositions: {
       dicom: null,
       series: null,
@@ -437,6 +464,7 @@
       projectUi: "",
       projectCases: "",
       reconstructionList: "",
+      dicomCompatibility: "",
       comparisonLayer: "",
       annotationManager: "",
       metadata: "",
@@ -533,6 +561,57 @@
     return Number.isFinite(value) ? value : null;
   }
 
+  function formatDicomFlag(value) {
+    const text = safeString(value);
+    return text || "-";
+  }
+
+  function isLossyCompressedRecord(record) {
+    const lossyFlag = safeString(record?.lossyImageCompression);
+    return lossyFlag === "01" || lossyFlag === "1" || Boolean(record?.lossyImageCompressionRatio || record?.lossyImageCompressionMethod);
+  }
+
+  function isMonochromePhotometric(record) {
+    const photometric = safeString(record?.photometricInterpretation);
+    return !photometric || /^MONOCHROME/i.test(photometric);
+  }
+
+  function getRawDecodeBypassReason(record, options = {}) {
+    if ((options.forceSafeDecode || state.safeDecodeMode) && !options.ignoreSafeDecodeMode) {
+      return "Safe Decode mode is enabled.";
+    }
+    const transferSyntaxUID = safeString(record?.transferSyntaxUID);
+    if (!DIRECT_PIXEL_TRANSFER_SYNTAXES.has(transferSyntaxUID || "")) {
+      return "Transfer syntax requires the decoder fallback.";
+    }
+    if (record?.pixelDataHasFragments) {
+      return "Encapsulated pixel data requires the decoder fallback.";
+    }
+    if (!Number.isFinite(record?.pixelDataOffset)) {
+      return "Pixel data offset is unavailable.";
+    }
+    if (Number.isFinite(record?.numberOfFrames) && record.numberOfFrames > 1) {
+      return "Multi-frame image is not eligible for direct raw decode.";
+    }
+    if ((record?.samplesPerPixel || 1) !== 1 || !isMonochromePhotometric(record)) {
+      return "Non-monochrome or multi-sample image is not eligible for direct raw decode.";
+    }
+    const bitsAllocated = Number.isFinite(record?.bitsAllocated) ? record.bitsAllocated : 16;
+    const bitsStored = Number.isFinite(record?.bitsStored) ? record.bitsStored : bitsAllocated;
+    const highBit = Number.isFinite(record?.highBit) ? record.highBit : bitsStored - 1;
+    if (![8, 16].includes(bitsAllocated)) {
+      return `Bits Allocated ${bitsAllocated} is not supported by the direct raw path.`;
+    }
+    if (bitsStored !== bitsAllocated || highBit !== bitsStored - 1) {
+      return `Bits Stored / High Bit (${bitsStored} / ${highBit}) require decoder normalization.`;
+    }
+    return "";
+  }
+
+  function shouldBypassDirectRawDecode(record, options = {}) {
+    return Boolean(getRawDecodeBypassReason(record, options));
+  }
+
   function cacheElements() {
     els.app = document.querySelector(".app");
     els.dicomInput = document.getElementById("dicom-input");
@@ -605,6 +684,7 @@
     els.resetMprButton = document.getElementById("reset-mpr-button");
     els.syncMprButton = document.getElementById("sync-mpr-button");
     els.mprOverlayToggleButton = document.getElementById("mpr-overlay-toggle-button");
+    els.mprRenderQualityButtons = Array.from(document.querySelectorAll("[data-mpr-render-quality]"));
     els.clearMeasurementsButton = document.getElementById("clear-measurements-button");
     els.brushMinInput = document.getElementById("brush-min-input");
     els.brushMaxInput = document.getElementById("brush-max-input");
@@ -634,6 +714,7 @@
     els.voiReadout = document.getElementById("voi-readout");
     els.exportCineButton = document.getElementById("export-cine-button");
     els.exportMeasurementsButton = document.getElementById("export-measurements-button");
+    els.exportRawProfilesButton = document.getElementById("export-raw-profiles-button");
     els.finishCloseButton = document.getElementById("finish-close-button");
     els.exportBaselineButton = document.getElementById("export-baseline-button");
     els.measurementExportModal = document.getElementById("measurement-export-modal");
@@ -680,8 +761,10 @@
     els.metaKvp = document.getElementById("meta-kvp");
     els.metaTime = document.getElementById("meta-time");
     els.metaPosition = document.getElementById("meta-position");
-    els.metadataOverlayToggleButton = document.getElementById("metadata-overlay-toggle-button");
-    els.presentationSeriesLabelToggleButton = document.getElementById("presentation-series-label-toggle-button");
+    els.dicomCompatSummary = document.getElementById("dicom-compat-summary");
+    els.dicomCompatList = document.getElementById("dicom-compat-list");
+    els.safeDecodeToggleButton = document.getElementById("safe-decode-toggle-button");
+    els.safeDecodeReloadButton = document.getElementById("safe-decode-reload-button");
     els.presentationSeriesLabel = document.getElementById("presentation-series-label");
     els.presentationSeriesLabelText = document.getElementById("presentation-series-label-text");
     els.presentationSeriesLabelCloseButton = document.getElementById("presentation-series-label-close-button");
@@ -1082,6 +1165,41 @@
         PRESENTATION_SERIES_LABEL_STORAGE_KEY,
         state.showPresentationSeriesLabel ? "1" : "0"
       );
+    } catch (_error) {
+      // Ignore storage issues.
+    }
+  }
+
+  function loadSafeDecodePreference() {
+    try {
+      state.safeDecodeMode = window.localStorage?.getItem(SAFE_DECODE_STORAGE_KEY) === "1";
+    } catch (_error) {
+      state.safeDecodeMode = false;
+    }
+  }
+
+  function saveSafeDecodePreference() {
+    try {
+      window.localStorage?.setItem(SAFE_DECODE_STORAGE_KEY, state.safeDecodeMode ? "1" : "0");
+    } catch (_error) {
+      // Ignore storage issues.
+    }
+  }
+
+  function loadMprRenderQualityPreference() {
+    try {
+      const stored = String(window.localStorage?.getItem(MPR_RENDER_QUALITY_STORAGE_KEY) || "").trim();
+      if (stored === "fast" || stored === "smooth") {
+        state.mprRenderQuality = stored;
+      }
+    } catch (_error) {
+      state.mprRenderQuality = "fast";
+    }
+  }
+
+  function saveMprRenderQualityPreference() {
+    try {
+      window.localStorage?.setItem(MPR_RENDER_QUALITY_STORAGE_KEY, state.mprRenderQuality);
     } catch (_error) {
       // Ignore storage issues.
     }
@@ -2391,6 +2509,7 @@
       case "length":
       case "probe":
       case "lineProfile":
+      case "lineProfileRaw":
       case "squareProfile":
       case "plaqueLineProfile":
       case "plaqueNoncalcifiedLineProfile":
@@ -2508,14 +2627,14 @@
       els.viewportGrid.classList.toggle("has-grid-overlay", Boolean(state.showViewportGrid));
     }
     if (els.presentationOverlayToggleButton) {
-      const visible = state.showViewportOverlays !== false;
+      const visible = isPresentationInfoOverlayVisible();
       els.presentationOverlayToggleButton.classList.toggle("is-active", visible);
       els.presentationOverlayToggleButton.title = visible
-        ? "Hide DICOM header and series labels"
-        : "Show DICOM header and series labels";
+        ? "Hide DICOM header and series label"
+        : "Show DICOM header and series label";
       els.presentationOverlayToggleButton.setAttribute(
         "aria-label",
-        visible ? "Hide DICOM header and series labels" : "Show DICOM header and series labels"
+        visible ? "Hide DICOM header and series label" : "Show DICOM header and series label"
       );
     }
     if (els.presentationGridToggleButton) {
@@ -2529,12 +2648,37 @@
     }
   }
 
-  function setViewportOverlayVisibility(visible) {
-    state.showViewportOverlays = Boolean(visible);
-    state.showDicomMetadataOverlay = Boolean(visible);
-    if (visible) {
-      state.showPresentationSeriesLabel = true;
+  function isPresentationInfoOverlayVisible() {
+    return Boolean(
+      getActiveReconstruction() &&
+        state.showViewportOverlays !== false &&
+        (state.showDicomMetadataOverlay || state.showPresentationSeriesLabel)
+    );
+  }
+
+  function isPresentationInfoOverlayVisibleInDom() {
+    if (state.showViewportOverlays === false || els.viewportGrid?.classList.contains("hide-viewport-overlays")) {
+      return false;
     }
+    const dicomOverlayVisible = Boolean(
+      els.dicomOverlays?.presentation &&
+        !els.dicomOverlays.presentation.classList.contains("is-hidden") &&
+        els.dicomOverlays.presentation.childElementCount > 0
+    );
+    const seriesLabelVisible = Boolean(
+      els.presentationSeriesLabel &&
+        !els.presentationSeriesLabel.classList.contains("is-hidden") &&
+        safeString(els.presentationSeriesLabelText?.textContent)
+    );
+    return dicomOverlayVisible || seriesLabelVisible;
+  }
+
+  function togglePresentationInfoOverlays() {
+    const shouldShow = !(isPresentationInfoOverlayVisible() || isPresentationInfoOverlayVisibleInDom());
+    state.showViewportOverlays = shouldShow;
+    state.showDicomMetadataOverlay = shouldShow;
+    state.showPresentationSeriesLabel = shouldShow;
+    savePresentationSeriesLabelPreference();
     updateViewportChromeUi();
     updateViewportDicomOverlays();
     updatePresentationSeriesLabel();
@@ -2583,6 +2727,9 @@
   }
 
   function getProfileFamily(annotation) {
+    if (annotation?.type === "lineProfileRaw") {
+      return "raw_line_profile";
+    }
     if (annotation?.type === "vascularLineProfile") {
       return "vascular_lumen_profile";
     }
@@ -2703,6 +2850,31 @@
       els.mprOverlayToggleButton.textContent = visible ? "Hide Crosses" : "Show Crosses";
       els.mprOverlayToggleButton.classList.toggle("is-active", visible);
     }
+    updateMprRenderQualityUi();
+  }
+
+  function updateMprRenderQualityUi() {
+    els.mprRenderQualityButtons?.forEach((button) => {
+      const active = button.dataset.mprRenderQuality === state.mprRenderQuality;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+      button.title = MPR_RENDER_QUALITY_LABELS[button.dataset.mprRenderQuality] || "";
+    });
+  }
+
+  function setMprRenderQuality(quality) {
+    if (quality !== "fast" && quality !== "smooth") {
+      return;
+    }
+    if (state.mprRenderQuality === quality) {
+      updateMprRenderQualityUi();
+      return;
+    }
+    state.mprRenderQuality = quality;
+    saveMprRenderQualityPreference();
+    updateMprRenderQualityUi();
+    requestRenderAll();
+    setStatus(`${MPR_RENDER_QUALITY_LABELS[quality]} MPR rendering enabled.`);
   }
 
   function scheduleFocusLayoutRender() {
@@ -3941,6 +4113,261 @@
     els.metaPosition.textContent = summary.position;
   }
 
+  function formatDiagnosticNumber(value, suffix = "", decimals = 3) {
+    if (!Number.isFinite(value)) {
+      return "-";
+    }
+    const text = value.toFixed(decimals).replace(/\.?0+$/, "");
+    return suffix ? `${text} ${suffix}` : text;
+  }
+
+  function formatDiagnosticArray(values, suffix = "") {
+    const numeric = Array.isArray(values) ? values.filter(Number.isFinite) : [];
+    if (!numeric.length) {
+      return "-";
+    }
+    return `${numeric.map((value) => formatDiagnosticNumber(value)).join(" x ")}${suffix ? ` ${suffix}` : ""}`;
+  }
+
+  function uniqueFormattedValues(records, formatter) {
+    return Array.from(new Set((records || []).map(formatter).filter((value) => value && value !== "-")));
+  }
+
+  function formatUniqueValues(values) {
+    if (!values.length) {
+      return "-";
+    }
+    if (values.length === 1) {
+      return values[0];
+    }
+    return `${values.slice(0, 3).join("; ")}${values.length > 3 ? `; +${values.length - 3} more` : ""}`;
+  }
+
+  function getTransferSyntaxLabel(uid) {
+    const labels = {
+      "1.2.840.10008.1.2": "Implicit VR Little Endian",
+      "1.2.840.10008.1.2.1": "Explicit VR Little Endian",
+      "1.2.840.10008.1.2.1.99": "Deflated Explicit VR Little Endian",
+      "1.2.840.10008.1.2.2": "Explicit VR Big Endian",
+      "1.2.840.10008.1.2.4.50": "JPEG Baseline",
+      "1.2.840.10008.1.2.4.51": "JPEG Extended",
+      "1.2.840.10008.1.2.4.57": "JPEG Lossless",
+      "1.2.840.10008.1.2.4.70": "JPEG Lossless SV1",
+      "1.2.840.10008.1.2.4.80": "JPEG-LS Lossless",
+      "1.2.840.10008.1.2.4.81": "JPEG-LS Lossy",
+      "1.2.840.10008.1.2.4.90": "JPEG 2000 Lossless",
+      "1.2.840.10008.1.2.4.91": "JPEG 2000",
+      "1.2.840.10008.1.2.5": "RLE Lossless",
+    };
+    return uid ? `${uid} (${labels[uid] || "unlisted"})` : "-";
+  }
+
+  function formatDecodePathCounts(volume) {
+    const counts = volume?.decodePathCounts || (volume?.decodePath ? { [volume.decodePath]: volume.depth || 0 } : null);
+    if (!counts) {
+      return "-";
+    }
+    return Object.entries(counts)
+      .sort((left, right) => right[1] - left[1])
+      .map(([path, count]) => `${path} x ${count}`)
+      .join("; ");
+  }
+
+  function getImagePositionConsistency(records, volume) {
+    const normal = records?.find((record) => record.normalVector?.length >= 3)?.normalVector;
+    if (!normal) {
+      return { status: "Unknown", detail: "Image Orientation/Position vectors are incomplete.", warning: true };
+    }
+    const positions = (records || [])
+      .map((record) => (record.imagePositionPatient?.length >= 3 ? dot(record.imagePositionPatient, normal) : null))
+      .filter(Number.isFinite);
+    if (positions.length < 2) {
+      return { status: "Limited", detail: "Only one positioned slice was available.", warning: false };
+    }
+
+    const deltas = [];
+    for (let index = 1; index < positions.length; index += 1) {
+      const delta = Math.abs(positions[index] - positions[index - 1]);
+      if (delta > 0) {
+        deltas.push(delta);
+      }
+    }
+    if (!deltas.length) {
+      return { status: "Irregular", detail: "Slice positions did not advance along the normal vector.", warning: true };
+    }
+
+    const mean = deltas.reduce((sum, value) => sum + value, 0) / deltas.length;
+    const min = Math.min(...deltas);
+    const max = Math.max(...deltas);
+    const expected = Number.isFinite(volume?.sliceSpacing) ? volume.sliceSpacing : mean;
+    const maxDeviation = Math.max(...deltas.map((value) => Math.abs(value - expected)));
+    const tolerance = Math.max(0.05, Math.abs(expected) * 0.05);
+    const warning = maxDeviation > tolerance;
+    return {
+      status: warning ? "Irregular" : "Consistent",
+      detail: `mean ${formatDiagnosticNumber(mean, "mm")}, range ${formatDiagnosticNumber(min, "mm")} - ${formatDiagnosticNumber(max, "mm")}, max deviation ${formatDiagnosticNumber(maxDeviation, "mm")}`,
+      warning,
+    };
+  }
+
+  function getReconstructionCompatibilityWarnings(reconstruction) {
+    const records = reconstruction?.records || [];
+    const volume = reconstruction?.volume;
+    const warnings = [];
+    if (!records.length) {
+      return warnings;
+    }
+
+    if (records.some(isLossyCompressedRecord)) {
+      warnings.push("Lossy Image Compression tags are present.");
+    }
+    if (records.some((record) => !DIRECT_PIXEL_TRANSFER_SYNTAXES.has(safeString(record.transferSyntaxUID) || "") || record.pixelDataHasFragments)) {
+      warnings.push("Transfer syntax or encapsulated pixel data bypasses HAGRad direct raw decode.");
+    }
+    const bypassReason = records
+      .map((record) => getRawDecodeBypassReason(record, { forceSafeDecode: false, ignoreSafeDecodeMode: true }))
+      .find(Boolean);
+    if (bypassReason && bypassReason !== "Safe Decode mode is enabled.") {
+      warnings.push(bypassReason);
+    }
+    const positionConsistency = getImagePositionConsistency(records, volume);
+    if (positionConsistency.warning) {
+      warnings.push(`Image position consistency: ${positionConsistency.status}.`);
+    }
+    if (volume?.skippedCount) {
+      warnings.push(`${volume.skippedCount} slice${volume.skippedCount === 1 ? "" : "s"} skipped during decoding.`);
+    }
+
+    return Array.from(new Set(warnings));
+  }
+
+  function buildDicomCompatibilityDiagnostics(reconstruction) {
+    const records = reconstruction?.records || [];
+    const record = records[0];
+    const volume = reconstruction?.volume;
+    if (!record || !volume) {
+      return {
+        summary: "No study loaded",
+        tone: "neutral",
+        rows: [{ label: "Status", value: "Load a DICOM study to view compatibility diagnostics." }],
+        warnings: [],
+      };
+    }
+
+    const positionConsistency = getImagePositionConsistency(records, volume);
+    const warnings = getReconstructionCompatibilityWarnings(reconstruction);
+    const decodePath = formatDecodePathCounts(volume);
+    const rawBypass = records.map((item) => getRawDecodeBypassReason(item, { forceSafeDecode: false })).find(Boolean);
+    const underlyingRawBypass = records
+      .map((item) => getRawDecodeBypassReason(item, { forceSafeDecode: false, ignoreSafeDecodeMode: true }))
+      .find(Boolean);
+    const transferSyntaxValues = uniqueFormattedValues(records, (item) => getTransferSyntaxLabel(safeString(item.transferSyntaxUID)));
+    const lossyValues = uniqueFormattedValues(records, (item) => {
+      if (!isLossyCompressedRecord(item)) {
+        return "No lossy tags";
+      }
+      const ratio = formatDicomFlag(item.lossyImageCompressionRatio);
+      const method = formatDicomFlag(item.lossyImageCompressionMethod);
+      return `${formatDicomFlag(item.lossyImageCompression)} / ratio ${ratio} / method ${method}`;
+    });
+    const rawPathValue = rawBypass
+      ? `${rawBypass}${underlyingRawBypass && underlyingRawBypass !== rawBypass ? ` Underlying check: ${underlyingRawBypass}` : ""}`
+      : "Direct raw path eligible.";
+
+    return {
+      summary: warnings.length
+        ? `${warnings.length} warning${warnings.length === 1 ? "" : "s"}`
+        : decodePath.includes("cornerstone")
+          ? "Cornerstone decode"
+          : "Direct decode eligible",
+      tone: warnings.length ? "warning" : "ok",
+      rows: [
+        { label: "Transfer Syntax UID", value: formatUniqueValues(transferSyntaxValues) },
+        { label: "Lossy Compression", value: formatUniqueValues(lossyValues) },
+        { label: "Rows / Columns", value: `${record.rows || "-"} / ${record.columns || "-"}` },
+        {
+          label: "Bits",
+          value: `${record.bitsAllocated ?? "-"} allocated / ${record.bitsStored ?? "-"} stored / ${record.highBit ?? "-"} high bit / ${record.pixelRepresentation ?? "-"} representation`,
+        },
+        {
+          label: "Samples / Photo",
+          value: `${record.samplesPerPixel || 1} / ${record.photometricInterpretation || "-"}`,
+        },
+        {
+          label: "Spacing",
+          value: `${formatDiagnosticArray(record.pixelSpacing, "mm")} / thickness ${formatDiagnosticNumber(record.sliceThickness, "mm")} / between ${formatDiagnosticNumber(record.spacingBetweenSlices, "mm")}`,
+        },
+        { label: "Image Position", value: `${positionConsistency.status}: ${positionConsistency.detail}` },
+        { label: "Decode Path", value: decodePath },
+        { label: "Raw Path Check", value: rawPathValue },
+        { label: "MPR Quality", value: MPR_RENDER_QUALITY_LABELS[state.mprRenderQuality] || state.mprRenderQuality },
+      ],
+      warnings,
+    };
+  }
+
+  function renderDicomCompatibilityDiagnostics() {
+    if (!els.dicomCompatSummary || !els.dicomCompatList) {
+      return;
+    }
+    const diagnostics = buildDicomCompatibilityDiagnostics(getActiveReconstruction());
+    const signature = JSON.stringify({
+      activeReconId: state.activeReconId || "",
+      safeDecodeMode: state.safeDecodeMode,
+      mprRenderQuality: state.mprRenderQuality,
+      diagnostics,
+    });
+    if (state.uiCache.dicomCompatibility === signature) {
+      updateSafeDecodeUi();
+      return;
+    }
+    state.uiCache.dicomCompatibility = signature;
+    els.dicomCompatSummary.textContent = diagnostics.summary;
+    els.dicomCompatSummary.classList.toggle("is-warning", diagnostics.tone === "warning");
+    els.dicomCompatSummary.classList.toggle("is-ok", diagnostics.tone === "ok");
+    els.dicomCompatList.innerHTML = "";
+
+    diagnostics.rows.forEach((row) => {
+      const wrapper = document.createElement("div");
+      wrapper.className = "meta-row";
+      const term = document.createElement("dt");
+      term.textContent = row.label;
+      const description = document.createElement("dd");
+      description.textContent = row.value || "-";
+      wrapper.append(term, description);
+      els.dicomCompatList.appendChild(wrapper);
+    });
+
+    if (diagnostics.warnings.length) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "meta-row dicom-compat-warning-row";
+      const term = document.createElement("dt");
+      term.textContent = "Warnings";
+      const description = document.createElement("dd");
+      diagnostics.warnings.forEach((warning) => {
+        const item = document.createElement("div");
+        item.className = "dicom-compat-warning";
+        item.textContent = warning;
+        description.appendChild(item);
+      });
+      wrapper.append(term, description);
+      els.dicomCompatList.appendChild(wrapper);
+    }
+
+    updateSafeDecodeUi();
+  }
+
+  function updateSafeDecodeUi() {
+    if (els.safeDecodeToggleButton) {
+      els.safeDecodeToggleButton.classList.toggle("is-active", state.safeDecodeMode);
+      els.safeDecodeToggleButton.textContent = `Safe Decode: ${state.safeDecodeMode ? "On" : "Off"}`;
+      els.safeDecodeToggleButton.setAttribute("aria-pressed", state.safeDecodeMode ? "true" : "false");
+    }
+    if (els.safeDecodeReloadButton) {
+      els.safeDecodeReloadButton.disabled = !state.sourceRecords.some((record) => record?.file);
+    }
+  }
+
   function updateSidebarUi() {
     updateUiModeUi();
     updateSidebarTabsUi();
@@ -3952,6 +4379,7 @@
     renderProjectUi();
     renderProjectCases();
     updateMetadata();
+    renderDicomCompatibilityDiagnostics();
     updatePresentationSeriesLabel();
     renderReconstructionButtons();
     renderAnnotationManager();
@@ -4611,11 +5039,80 @@
     return raw * slice.slope + slice.intercept;
   }
 
+  function getVoxelValueAtIndex(volume, x, y, z) {
+    if (x < 0 || x >= volume.columns || y < 0 || y >= volume.rows || z < 0 || z >= volume.depth) {
+      return null;
+    }
+    const slice = volume.slices[z];
+    const raw = slice.pixels[y * volume.columns + x];
+    return raw * slice.slope + slice.intercept;
+  }
+
+  function lerp(left, right, fraction) {
+    return left + (right - left) * fraction;
+  }
+
+  function getLinearVoxelValue(volume, coordinates) {
+    if (
+      !volume ||
+      coordinates.x < 0 ||
+      coordinates.y < 0 ||
+      coordinates.z < 0 ||
+      coordinates.x > volume.columns - 1 ||
+      coordinates.y > volume.rows - 1 ||
+      coordinates.z > volume.depth - 1
+    ) {
+      return null;
+    }
+
+    const x0 = Math.floor(coordinates.x);
+    const y0 = Math.floor(coordinates.y);
+    const z0 = Math.floor(coordinates.z);
+    const x1 = Math.min(volume.columns - 1, x0 + 1);
+    const y1 = Math.min(volume.rows - 1, y0 + 1);
+    const z1 = Math.min(volume.depth - 1, z0 + 1);
+    const fx = coordinates.x - x0;
+    const fy = coordinates.y - y0;
+    const fz = coordinates.z - z0;
+
+    const c000 = getVoxelValueAtIndex(volume, x0, y0, z0);
+    const c100 = getVoxelValueAtIndex(volume, x1, y0, z0);
+    const c010 = getVoxelValueAtIndex(volume, x0, y1, z0);
+    const c110 = getVoxelValueAtIndex(volume, x1, y1, z0);
+    const c001 = getVoxelValueAtIndex(volume, x0, y0, z1);
+    const c101 = getVoxelValueAtIndex(volume, x1, y0, z1);
+    const c011 = getVoxelValueAtIndex(volume, x0, y1, z1);
+    const c111 = getVoxelValueAtIndex(volume, x1, y1, z1);
+
+    if ([c000, c100, c010, c110, c001, c101, c011, c111].some((value) => value == null)) {
+      return null;
+    }
+
+    const c00 = lerp(c000, c100, fx);
+    const c10 = lerp(c010, c110, fx);
+    const c01 = lerp(c001, c101, fx);
+    const c11 = lerp(c011, c111, fx);
+    const c0 = lerp(c00, c10, fy);
+    const c1 = lerp(c01, c11, fy);
+    return lerp(c0, c1, fz);
+  }
+
   function sampleVolumeAtWorld(volume, world) {
     if (!volume) {
       return null;
     }
     return getNearestVoxelValue(volume, worldToVolumeCoordinates(volume, world));
+  }
+
+  function sampleVolumeForDisplayAtWorld(volume, world) {
+    if (!volume) {
+      return null;
+    }
+    const coordinates = worldToVolumeCoordinates(volume, world);
+    if (state.mprRenderQuality === "smooth") {
+      return getLinearVoxelValue(volume, coordinates);
+    }
+    return getNearestVoxelValue(volume, coordinates);
   }
 
   function getReadoutIndex(reconstruction, plane) {
@@ -4671,13 +5168,6 @@
     els.readouts.sagittal.textContent = getViewportSummary("sagittal");
     els.readouts.coronal.textContent = getViewportSummary("coronal");
     updateViewportDicomOverlays();
-  }
-
-  function updateMetadataOverlayToggleButton() {
-    if (!els.metadataOverlayToggleButton) {
-      return;
-    }
-    els.metadataOverlayToggleButton.textContent = state.showDicomMetadataOverlay ? "Hide DICOM Overlay" : "Show DICOM Overlay";
   }
 
   function buildViewportDicomOverlayRows(viewportId) {
@@ -4837,7 +5327,6 @@
   }
 
   function updateViewportDicomOverlays() {
-    updateMetadataOverlayToggleButton();
     Object.entries(els.dicomOverlays || {}).forEach(([viewportId, overlay]) => {
       if (!overlay) {
         return;
@@ -4851,16 +5340,6 @@
       renderViewportDicomOverlay(overlay, buildViewportDicomOverlayRows(viewportId));
     });
     applyViewportOverlayPositions();
-  }
-
-  function updatePresentationSeriesLabelToggleButton() {
-    if (!els.presentationSeriesLabelToggleButton) {
-      return;
-    }
-    els.presentationSeriesLabelToggleButton.textContent = state.showPresentationSeriesLabel
-      ? "Hide Series Label"
-      : "Show Series Label";
-    els.presentationSeriesLabelToggleButton.classList.toggle("is-active", state.showPresentationSeriesLabel);
   }
 
   function buildPresentationSeriesLabelText(reconstruction) {
@@ -4882,7 +5361,6 @@
   }
 
   function updatePresentationSeriesLabel() {
-    updatePresentationSeriesLabelToggleButton();
     if (!els.presentationSeriesLabel) {
       return;
     }
@@ -4977,7 +5455,7 @@
           addVectors(frame.centerWorld, scaleVector(frame.uWorld, xMm)),
           scaleVector(frame.vWorld, yMm)
         );
-        const hu = sampleVolumeAtWorld(reconstruction.volume, world);
+        const hu = sampleVolumeForDisplayAtWorld(reconstruction.volume, world);
         const gray = voiToByte(hu == null ? -1024 : hu, voi);
         pixels[offset] = gray;
         pixels[offset + 1] = gray;
@@ -5513,6 +5991,9 @@
     }
     if (annotation.squareProfile) {
       clone.squareProfile = { ...annotation.squareProfile };
+    }
+    if (annotation.rawProfile) {
+      clone.rawProfile = { ...annotation.rawProfile };
     }
     if (annotation.mask) {
       clone.mask = cloneBrushMask(annotation.mask);
@@ -7154,6 +7635,9 @@
     if (annotation.type === "lineProfile" || annotation.type === "squareProfile") {
       return overlayStyle?.COLORS?.stent || "#7af4a8";
     }
+    if (annotation.type === "lineProfileRaw") {
+      return "#57c8ff";
+    }
     if (annotation.type === "plaqueLineProfile") {
       return overlayStyle?.COLORS?.plaqueCalcified || "#ff7f6e";
     }
@@ -7201,9 +7685,11 @@
         text:
           annotation.type === "vascularLineProfile"
             ? "Vascular Profile"
-            : isPlaqueProfileAnnotation(annotation)
-              ? "Plaque-Lumen"
-              : "Stent-Lumen",
+            : annotation.type === "lineProfileRaw"
+              ? "Line Raw"
+              : isPlaqueProfileAnnotation(annotation)
+                ? "Plaque-Lumen"
+                : "Stent-Lumen",
         anchor: point,
         accent,
       };
@@ -7655,6 +8141,64 @@
     };
   }
 
+  function getRawProfileSampleSpacingMm(annotation, reconstruction) {
+    const volume = reconstruction?.volume || null;
+    const requestedSpacing = Number(annotation?.rawProfile?.sampleSpacingMm);
+    const sampler = window.HAGRadLineProfileRaw;
+    if (sampler?.resolveSampleSpacingMm) {
+      return sampler.resolveSampleSpacingMm(volume, requestedSpacing);
+    }
+    const metrics = annotation?.frame?.metrics || {};
+    const spacings = [
+      metrics.spacingX,
+      metrics.spacingY,
+      metrics.spacingNormal,
+      volume?.columnSpacing,
+      volume?.rowSpacing,
+      volume?.sliceSpacing,
+    ]
+      .map(Number)
+      .filter((value) => Number.isFinite(value) && value > 0);
+    return Math.max(0.1, (spacings.length ? Math.min(...spacings) : 1) / 2);
+  }
+
+  function setRawProfileSampleSpacing(annotation, reconstruction, sampleSpacingMm) {
+    const value = Number(sampleSpacingMm);
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new Error("Enter a positive raw profile sample spacing in mm.");
+    }
+    const resolved = Math.max(0.05, Math.min(value, 50));
+    annotation.rawProfile = {
+      ...(annotation.rawProfile || {}),
+      sampleSpacingMm: resolved,
+    };
+    return getRawProfileSampleSpacingMm(annotation, reconstruction);
+  }
+
+  function sampleRawLineProfile(annotation, reconstruction) {
+    const sampler = window.HAGRadLineProfileRaw;
+    if (!sampler?.sampleLineProfile || !reconstruction?.volume) {
+      return null;
+    }
+    const sampled = sampler.sampleLineProfile({
+      volume: reconstruction.volume,
+      startWorld: annotation.worldPoints?.[0],
+      endWorld: annotation.worldPoints?.[1],
+      sampleSpacingMm: getRawProfileSampleSpacingMm(annotation, reconstruction),
+      plane: annotation.plane || annotation.frame?.plane || "",
+      interpolationMethod: annotation.rawProfile?.interpolationMethod || "nearest",
+    });
+    if (!sampled) {
+      return null;
+    }
+    return {
+      mode: "line_raw",
+      profileFamily: "raw_line_profile",
+      profileSubtype: "raw_research_export",
+      ...sampled,
+    };
+  }
+
   function getSquareProfilePlaneBox(annotation) {
     if (annotation.squareProfile) {
       const widthMm = Math.max(annotation.squareProfile.widthMm || 0, 0);
@@ -8013,6 +8557,9 @@
   }
 
   function buildProfileAnalysis(annotation, reconstruction) {
+    if (annotation.type === "lineProfileRaw") {
+      return sampleRawLineProfile(annotation, reconstruction);
+    }
     const base =
       isLineProfileAnnotationType(annotation.type)
         ? sampleLineProfile(annotation, reconstruction)
@@ -8081,7 +8628,9 @@
       height: height - 34,
     };
 
-    const finiteValues = [...profile.valuesHu, ...profile.smoothHu].filter(Number.isFinite);
+    const rawValues = Array.isArray(profile.valuesHu) ? profile.valuesHu : [];
+    const smoothValues = Array.isArray(profile.smoothHu) ? profile.smoothHu : [];
+    const finiteValues = [...rawValues, ...smoothValues].filter(Number.isFinite);
     if (!finiteValues.length) {
       return drawEmptyProfileChartOnCanvas(canvas, "No valid HU samples in this profile.", options);
     }
@@ -8093,7 +8642,8 @@
       maxHu += 1;
     }
 
-    const maxDistance = profile.distancesMm[profile.distancesMm.length - 1] || 1;
+    const distancesMm = Array.isArray(profile.distancesMm) ? profile.distancesMm : [];
+    const maxDistance = distancesMm[distancesMm.length - 1] || 1;
     const xAt = (distanceMm) => plot.x + (distanceMm / maxDistance) * plot.width;
     const yAt = (hu) => plot.y + plot.height - ((hu - minHu) / (maxHu - minHu)) * plot.height;
 
@@ -8112,11 +8662,11 @@
 
     ctx.beginPath();
     let rawStarted = false;
-    profile.valuesHu.forEach((value, index) => {
+    rawValues.forEach((value, index) => {
       if (!Number.isFinite(value)) {
         return;
       }
-      const x = xAt(profile.distancesMm[index]);
+      const x = xAt(distancesMm[index]);
       const y = yAt(value);
       if (!rawStarted) {
         ctx.moveTo(x, y);
@@ -8125,17 +8675,17 @@
         ctx.lineTo(x, y);
       }
     });
-    ctx.strokeStyle = "rgba(87, 200, 255, 0.45)";
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = profile.profileFamily === "raw_line_profile" ? "#57c8ff" : "rgba(87, 200, 255, 0.45)";
+    ctx.lineWidth = profile.profileFamily === "raw_line_profile" ? 2.1 : 1.5;
     ctx.stroke();
 
     ctx.beginPath();
     let started = false;
-    profile.smoothHu.forEach((value, index) => {
+    smoothValues.forEach((value, index) => {
       if (!Number.isFinite(value)) {
         return;
       }
-      const x = xAt(profile.distancesMm[index]);
+      const x = xAt(distancesMm[index]);
       const y = yAt(value);
       if (!started) {
         ctx.moveTo(x, y);
@@ -8579,6 +9129,10 @@
     if (!annotation || !PROFILE_TYPES.has(annotation.type)) {
       throw new Error("Select a profile annotation first.");
     }
+    if (annotation.type === "lineProfileRaw") {
+      setStatus("Line Profile Raw has no fitted guide model to reset.");
+      return;
+    }
     delete annotation.profileGuideAdjustments;
     delete annotation.plaqueGuideAdjustments;
     delete annotation.vascularGuideAdjustments;
@@ -8595,6 +9149,44 @@
     return `${value.toFixed(precision)}${suffix ? ` ${suffix}` : ""}`;
   }
 
+  function formatRawProfileSpacingInput(value) {
+    if (!Number.isFinite(value)) {
+      return "";
+    }
+    return value.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+  }
+
+  function bindRawProfileSampleSpacingControl(annotation, reconstruction) {
+    const input = document.getElementById("raw-profile-spacing-input");
+    if (!input) {
+      return;
+    }
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        input.blur();
+      }
+    });
+    input.addEventListener("change", () => {
+      try {
+        const nextSpacing = Number(input.value);
+        if (!Number.isFinite(nextSpacing) || nextSpacing <= 0) {
+          throw new Error("Enter a positive raw profile sample spacing in mm.");
+        }
+        captureUndoSnapshot();
+        const spacingMm = setRawProfileSampleSpacing(annotation, reconstruction, nextSpacing);
+        requestProjectSessionAutosave();
+        updateSidebarUi();
+        updateProfilePanel();
+        requestRenderAll();
+        setStatus(`Line Profile Raw sample spacing set to ${formatMetricValue(spacingMm, "mm", 3)}.`);
+      } catch (error) {
+        input.value = formatRawProfileSpacingInput(getRawProfileSampleSpacingMm(annotation, reconstruction));
+        setStatus(error?.message || "Could not update raw profile sample spacing.");
+      }
+    });
+  }
+
   function updateProfilePanel() {
     const reconstruction = getActiveReconstruction();
     const annotation = ensureSelectedProfileAnnotation();
@@ -8604,7 +9196,7 @@
       els.profileMetrics.innerHTML = `
         <div class="meta-row">
           <dt>Selection</dt>
-          <dd>Draw a vascular, stent, plaque, or square profile to see the curve and edge metrics here.</dd>
+          <dd>Draw a vascular, stent, plaque, raw, or square profile to see the curve and metrics here.</dd>
         </div>
       `;
       drawEmptyProfileChart("Draw a profile to see the curve.");
@@ -8622,6 +9214,48 @@
         </div>
       `;
       drawEmptyProfileChart("This profile could not be sampled.");
+      return;
+    }
+
+    if (analysis.profileFamily === "raw_line_profile") {
+      els.profileStatus.textContent = `${getAnnotationDisplayName(annotation, reconstruction)} • ${analysis.sampleCount} samples • raw research profile`;
+      els.profileMetrics.innerHTML = `
+        <div class="meta-row">
+          <dt>Length</dt>
+          <dd>${formatMetricValue(analysis.lengthMm, "mm", 2)}</dd>
+        </div>
+        <div class="meta-row">
+          <dt>Samples</dt>
+          <dd>${analysis.sampleCount || 0}</dd>
+        </div>
+        <div class="meta-row">
+          <dt>Spacing</dt>
+          <dd>
+            <label class="number-field" for="raw-profile-spacing-input">
+              <span>Sample spacing (mm)</span>
+              <input id="raw-profile-spacing-input" type="number" min="0.05" max="50" step="0.05" value="${formatRawProfileSpacingInput(analysis.sampleSpacingMm)}" />
+            </label>
+          </dd>
+        </div>
+        <div class="meta-row">
+          <dt>HU Range</dt>
+          <dd>${formatMetricValue(analysis.minHu, "HU", 0)} to ${formatMetricValue(analysis.maxHu, "HU", 0)}</dd>
+        </div>
+        <div class="meta-row">
+          <dt>Mean / SD</dt>
+          <dd>${formatMetricValue(analysis.meanHu, "HU", 1)} / ${formatMetricValue(analysis.sdHu, "HU", 1)}</dd>
+        </div>
+        <div class="meta-row">
+          <dt>Interpolation</dt>
+          <dd>${analysis.interpolationMethod || "nearest"} primary; nearest and trilinear columns export separately.</dd>
+        </div>
+        <div class="meta-row">
+          <dt>Use</dt>
+          <dd>Raw research export only. Not diagnostic output.</dd>
+        </div>
+      `;
+      bindRawProfileSampleSpacingControl(annotation, reconstruction);
+      drawProfileChart(analysis);
       return;
     }
 
@@ -8796,6 +9430,22 @@
     }
     if (PROFILE_TYPES.has(annotation.type)) {
       const analysis = buildProfileAnalysis(annotation, reconstruction);
+      if (analysis?.profileFamily === "raw_line_profile") {
+        return {
+          profileFamily: "raw_line_profile",
+          profileLengthMm: analysis.lengthMm,
+          profileAxis: "line",
+          sampleCount: analysis.sampleCount,
+          sampleSpacingMm: analysis.sampleSpacingMm,
+          interpolationMethod: analysis.interpolationMethod || "nearest",
+          minHu: analysis.minHu,
+          maxHu: analysis.maxHu,
+          mean: analysis.meanHu,
+          sd: analysis.sdHu,
+          sdHu: analysis.sdHu,
+          profileAdjustmentMode: "raw_research_export",
+        };
+      }
       if (analysis?.profileFamily === "vascular_lumen_profile") {
         const vascular = analysis.vascular || null;
         return {
@@ -8923,6 +9573,9 @@
     const type = annotation?.type || typeOrAnnotation;
     if (type === "lineProfile") {
       return "Stent-Lumen Line Profile";
+    }
+    if (type === "lineProfileRaw") {
+      return "Line Profile Raw";
     }
     if (type === "squareProfile") {
       return "Stent-Lumen Square Profile";
@@ -9257,6 +9910,9 @@
     const bufferCanvas = viewportState.bufferCanvas || document.createElement("canvas");
     viewportState.bufferCanvas = bufferCanvas;
     renderPlanePixelsToCanvas(bufferCanvas, reconstruction, frame, options?.voi);
+    const smoothDisplay = state.mprRenderQuality === "smooth";
+    ctx.imageSmoothingEnabled = smoothDisplay;
+    ctx.imageSmoothingQuality = smoothDisplay ? "high" : "low";
     ctx.drawImage(bufferCanvas, geometry.originX, geometry.originY, geometry.drawWidth, geometry.drawHeight);
 
     if (options?.storeGeometry !== false) {
@@ -10134,6 +10790,56 @@
     }
     const text = String(value);
     return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  }
+
+  function xmlEscape(value) {
+    if (value == null) {
+      return "";
+    }
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function sanitizeWorksheetName(name, fallback) {
+    const sanitized = safeString(name)
+      .replace(/[\\/?*\[\]:]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return (sanitized || fallback || "Sheet").slice(0, 31);
+  }
+
+  function workbookCellXml(value) {
+    if (value == null || value === "") {
+      return "<Cell><Data ss:Type=\"String\"></Data></Cell>";
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return `<Cell><Data ss:Type="Number">${value}</Data></Cell>`;
+    }
+    if (typeof value === "boolean") {
+      return `<Cell><Data ss:Type="String">${value ? "true" : "false"}</Data></Cell>`;
+    }
+    return `<Cell><Data ss:Type="String">${xmlEscape(value)}</Data></Cell>`;
+  }
+
+  function buildSpreadsheetWorkbookXml(sheets) {
+    const worksheets = (sheets || [])
+      .map((sheet) => {
+        const rows = (sheet.rows || [])
+          .map((row) => `<Row>${row.map(workbookCellXml).join("")}</Row>`)
+          .join("");
+        return `<Worksheet ss:Name="${xmlEscape(sanitizeWorksheetName(sheet.name, "Sheet"))}"><Table>${rows}</Table></Worksheet>`;
+      })
+      .join("");
+    return `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">${worksheets}</Workbook>`;
   }
 
   function mergeSourceRecords(existingRecords, nextRecords) {
@@ -11273,6 +11979,183 @@
     return [table.headers, ...csvRows].map((row) => row.map(csvEscape).join(",")).join("\n");
   }
 
+  function workbookNumber(value, decimals) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+      return "";
+    }
+    if (Number.isInteger(decimals)) {
+      return Number(number.toFixed(decimals));
+    }
+    return number;
+  }
+
+  function getRawProfileEntries() {
+    return buildMeasurementEntries().filter((entry) => entry.annotation.type === "lineProfileRaw");
+  }
+
+  function getRawProfileLabel(entry) {
+    return entry.annotation.customName || entry.displayName || entry.label || `Raw Profile ${entry.annotation.id}`;
+  }
+
+  function buildRawProfileWorkbookSheets(entries, studyId) {
+    const researchStudy = getSelectedExportStudyMetadata();
+    const exportNote = "Raw research export only. Not diagnostic output.";
+    const summaryHeaders = [
+      "study_id",
+      "research_study_id",
+      "research_study_label",
+      "reconstruction",
+      "annotation_id",
+      "profile_label",
+      "plane",
+      "total_length_mm",
+      "sample_count",
+      "sample_spacing_mm",
+      "interpolation_method",
+      "min_hu",
+      "max_hu",
+      "mean_hu",
+      "sd_hu",
+      "export_note",
+    ];
+    const sampleHeaders = [
+      "study_id",
+      "reconstruction",
+      "annotation_id",
+      "profile_label",
+      "sample_index",
+      "distance_mm",
+      "normalized_position",
+      "hu",
+      "hu_nearest",
+      "hu_trilinear",
+      "raw_stored_value",
+      "world_x_mm",
+      "world_y_mm",
+      "world_z_mm",
+      "voxel_x",
+      "voxel_y",
+      "voxel_z",
+      "plane",
+      "interpolation_method",
+      "sample_spacing_mm",
+    ];
+    const metadataKeySet = new Set();
+    const summaryRows = [];
+    const sampleRows = [];
+    const metadataRows = [];
+
+    entries.forEach((entry) => {
+      const analysis = buildProfileAnalysis(entry.annotation, entry.reconstruction);
+      if (!analysis?.rawSamples?.length) {
+        return;
+      }
+      const profileLabel = getRawProfileLabel(entry);
+      const reconstructionLabel = entry.reconstruction?.label || "";
+      summaryRows.push({
+        study_id: studyId || "",
+        research_study_id: researchStudy.id || "",
+        research_study_label: researchStudy.label || "",
+        reconstruction: reconstructionLabel,
+        annotation_id: entry.annotation.id,
+        profile_label: profileLabel,
+        plane: entry.annotation.plane || "",
+        total_length_mm: workbookNumber(analysis.lengthMm, 6),
+        sample_count: analysis.sampleCount || 0,
+        sample_spacing_mm: workbookNumber(analysis.sampleSpacingMm, 6),
+        interpolation_method: analysis.interpolationMethod || "nearest",
+        min_hu: workbookNumber(analysis.minHu, 6),
+        max_hu: workbookNumber(analysis.maxHu, 6),
+        mean_hu: workbookNumber(analysis.meanHu, 6),
+        sd_hu: workbookNumber(analysis.sdHu, 6),
+        export_note: exportNote,
+      });
+      analysis.rawSamples.forEach((sample) => {
+        sampleRows.push({
+          study_id: studyId || "",
+          reconstruction: reconstructionLabel,
+          annotation_id: entry.annotation.id,
+          profile_label: profileLabel,
+          sample_index: sample.sampleIndex,
+          distance_mm: workbookNumber(sample.distanceMm, 6),
+          normalized_position: workbookNumber(sample.normalizedPosition, 9),
+          hu: workbookNumber(sample.hu, 6),
+          hu_nearest: workbookNumber(sample.huNearest, 6),
+          hu_trilinear: workbookNumber(sample.huTrilinear, 6),
+          raw_stored_value: workbookNumber(sample.rawStoredValue, 6),
+          world_x_mm: workbookNumber(sample.worldX, 6),
+          world_y_mm: workbookNumber(sample.worldY, 6),
+          world_z_mm: workbookNumber(sample.worldZ, 6),
+          voxel_x: workbookNumber(sample.voxelX, 6),
+          voxel_y: workbookNumber(sample.voxelY, 6),
+          voxel_z: workbookNumber(sample.voxelZ, 6),
+          plane: sample.plane || entry.annotation.plane || "",
+          interpolation_method: sample.interpolationMethod || analysis.interpolationMethod || "nearest",
+          sample_spacing_mm: workbookNumber(sample.sampleSpacingMm, 6),
+        });
+      });
+
+      const metadata = getMeasurementExportMetadata(entry);
+      Object.keys(metadata).forEach((key) => metadataKeySet.add(key));
+      metadataRows.push({
+        study_id: studyId || "",
+        research_study_id: researchStudy.id || "",
+        research_study_label: researchStudy.label || "",
+        reconstruction: reconstructionLabel,
+        annotation_id: entry.annotation.id,
+        profile_label: profileLabel,
+        export_note: exportNote,
+        ...metadata,
+      });
+    });
+
+    const metadataHeaders = [
+      "study_id",
+      "research_study_id",
+      "research_study_label",
+      "reconstruction",
+      "annotation_id",
+      "profile_label",
+      "export_note",
+      ...Array.from(metadataKeySet),
+    ];
+    const rowsForHeaders = (headers, rows) => [headers, ...rows.map((row) => headers.map((header) => row[header] ?? ""))];
+    return [
+      { name: "summary", rows: rowsForHeaders(summaryHeaders, summaryRows) },
+      { name: "raw_samples", rows: rowsForHeaders(sampleHeaders, sampleRows) },
+      { name: "dicom_metadata", rows: rowsForHeaders(metadataHeaders, metadataRows) },
+    ];
+  }
+
+  async function exportRawProfileWorkbook(options) {
+    const entries = getRawProfileEntries();
+    if (!entries.length) {
+      throw new Error("Create at least one Line Profile Raw annotation first.");
+    }
+    const studyId = safeString(options?.studyId);
+    if (!studyId) {
+      throw new Error("Enter a Study ID before exporting raw profiles.");
+    }
+    const sheets = buildRawProfileWorkbookSheets(entries, studyId);
+    const rawSampleCount = Math.max(0, (sheets[1]?.rows?.length || 1) - 1);
+    if (!rawSampleCount) {
+      throw new Error("No valid raw profile samples were available to export.");
+    }
+    const workbookXml = buildSpreadsheetWorkbookXml(sheets);
+    const filename = buildExportFilename("line_profile_raw", "xls", { studyId });
+    const workbookFile = {
+      filename,
+      blob: new Blob([workbookXml], { type: "application/vnd.ms-excel;charset=utf-8" }),
+    };
+    await downloadExportBundle(
+      [workbookFile],
+      buildExportFilename("line_profile_raw", "zip", { studyId }),
+      { patientStudyId: studyId }
+    );
+    setStatus(`Exported ${entries.length} raw profile${entries.length === 1 ? "" : "s"} with ${rawSampleCount} samples as an Excel-readable workbook for ${studyId}.`);
+  }
+
   function drawMeasurementTag(ctx, label) {
     ctx.save();
     ctx.fillStyle = "rgba(255, 207, 102, 0.96)";
@@ -11285,6 +12168,16 @@
   }
 
   function buildProfileExportSummaryLines(analysis) {
+    if (analysis?.profileFamily === "raw_line_profile") {
+      return [
+        "Family: raw line profile | research export only",
+        `Length: ${formatMetricValue(analysis.lengthMm, "mm", 2)} | Samples: ${analysis.sampleCount || 0}`,
+        `Spacing: ${formatMetricValue(analysis.sampleSpacingMm, "mm", 3)} | Primary HU: ${analysis.interpolationMethod || "nearest"}`,
+        `HU min/max: ${formatMetricValue(analysis.minHu, "HU", 0)} / ${formatMetricValue(analysis.maxHu, "HU", 0)}`,
+        `Mean/SD: ${formatMetricValue(analysis.meanHu, "HU", 1)} / ${formatMetricValue(analysis.sdHu, "HU", 1)}`,
+        "Use Export Raw Profiles for the full unsmoothed sample table.",
+      ];
+    }
     if (analysis?.profileFamily === "vascular_lumen_profile") {
       const vascular = analysis.vascular || null;
       return [
@@ -11822,8 +12715,14 @@
         rows: readDicomNumber(dataSet, "x00280010"),
         columns: readDicomNumber(dataSet, "x00280011"),
         samplesPerPixel: readDicomNumber(dataSet, "x00280002"),
+        photometricInterpretation: safeString(dataSet.string("x00280004")),
         bitsAllocated: readDicomNumber(dataSet, "x00280100"),
+        bitsStored: readDicomNumber(dataSet, "x00280101"),
+        highBit: readDicomNumber(dataSet, "x00280102"),
         pixelRepresentation: readDicomNumber(dataSet, "x00280103"),
+        lossyImageCompression: safeString(dataSet.string("x00282110")),
+        lossyImageCompressionRatio: safeString(dataSet.string("x00282112")),
+        lossyImageCompressionMethod: safeString(dataSet.string("x00282114")),
         pixelDataOffset: Number.isFinite(pixelDataElement?.dataOffset) ? pixelDataElement.dataOffset : null,
         pixelDataLength: Number.isFinite(pixelDataElement?.length) ? pixelDataElement.length : null,
         pixelDataHasFragments: Boolean(pixelDataElement?.fragments?.length),
@@ -12055,6 +12954,7 @@
         pixels: cloneTypedArray(pixelData),
         slope: Number.isFinite(image.slope) ? image.slope : record.rescaleSlope ?? 1,
         intercept: Number.isFinite(image.intercept) ? image.intercept : record.rescaleIntercept ?? 0,
+        decodePath: "cornerstone",
       };
     } finally {
       cornerstoneWADOImageLoader.wadouri.fileManager.remove?.(imageId);
@@ -12064,6 +12964,10 @@
   async function parsePixelDataFromStoredRange(record, options) {
     const transferSyntaxUID = safeString(record?.transferSyntaxUID);
     const profile = options?.profile?.enabled ? options.profile : null;
+
+    if (shouldBypassDirectRawDecode(record, options)) {
+      return null;
+    }
 
     if (Number.isFinite(record.numberOfFrames) && record.numberOfFrames > 1) {
       throw new Error("Multi-frame DICOM is not supported in this local MPR viewer yet.");
@@ -12128,11 +13032,17 @@
       pixels,
       slope: record.rescaleSlope ?? 1,
       intercept: record.rescaleIntercept ?? 0,
+      decodePath: "direct-raw-range",
     };
   }
 
   async function parsePixelData(record, options) {
     const profile = options?.profile?.enabled ? options.profile : null;
+    if (shouldBypassDirectRawDecode(record, options)) {
+      profile?.count("pixelCornerstoneForcedSlices", 1);
+      return decodePixelDataWithCornerstone(record, options);
+    }
+
     const directSlice = await parsePixelDataFromStoredRange(record, options);
     if (directSlice) {
       profile?.count("pixelDirectRangeSlices", 1);
@@ -12210,7 +13120,28 @@
       pixels,
       slope: readDicomNumber(dataSet, "x00281053") ?? record.rescaleSlope ?? 1,
       intercept: readDicomNumber(dataSet, "x00281052") ?? record.rescaleIntercept ?? 0,
+      decodePath: "full-file-raw",
     };
+  }
+
+  function countDecodePaths(slices) {
+    return (slices || []).reduce((counts, slice) => {
+      const key = safeString(slice?.decodePath) || "unknown";
+      counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    }, {});
+  }
+
+  function summarizeDecodePath(slices) {
+    const counts = countDecodePaths(slices);
+    const entries = Object.entries(counts);
+    if (!entries.length) {
+      return "unknown";
+    }
+    if (entries.length === 1) {
+      return entries[0][0];
+    }
+    return "mixed";
   }
 
   async function buildVolume(records, options) {
@@ -12218,7 +13149,11 @@
     const finishVolume = profile?.start("volumeConstruction", { sliceCount: records.length });
     const workerPayload = await buildDicomVolumeInWorker?.(records, {
       profile,
-      disableVolumeWorker: options?.disableVolumeWorker,
+      disableVolumeWorker:
+        options?.disableVolumeWorker ||
+        options?.forceSafeDecode ||
+        state.safeDecodeMode ||
+        records.some((record) => shouldBypassDirectRawDecode(record, options)),
       spacingFallback: 1,
       statusCallback(current, total) {
         if (current === 1 || current === total || current % 10 === 0) {
@@ -12228,6 +13163,8 @@
     });
     const workerVolume = createVolumeFromWorkerPayload?.(workerPayload, records, { includeUnits: false });
     if (workerVolume) {
+      workerVolume.decodePath = "worker-direct-raw";
+      workerVolume.decodePathCounts = { "worker-direct-raw": workerVolume.depth };
       finishVolume?.({ decodedSlices: workerVolume.depth, skippedCount: workerVolume.skippedCount });
       return workerVolume;
     }
@@ -12301,6 +13238,8 @@
       originWorld,
       centerWorld,
       skippedCount,
+      decodePath: summarizeDecodePath(slices),
+      decodePathCounts: countDecodePaths(slices),
     };
     profile?.count("skippedSlices", skippedCount);
     finishVolume?.({ decodedSlices: slices.length, skippedCount });
@@ -12382,7 +13321,10 @@
 
       let volume;
       try {
-        volume = await buildVolume(imageRecords, { profile });
+        volume = await buildVolume(imageRecords, {
+          profile,
+          forceSafeDecode: Boolean(options?.forceSafeDecode || state.safeDecodeMode),
+        });
       } catch (error) {
         skippedUnreadableSeries += 1;
         console.warn("Skipping unreadable DICOM series.", error);
@@ -12438,6 +13380,10 @@
       state.activeReconId = state.reconstructions[0].id;
     }
 
+    const compatibilityWarnings = Array.from(
+      new Set(nextReconstructions.flatMap((reconstruction) => getReconstructionCompatibilityWarnings(reconstruction)))
+    );
+
     if (options?.append) {
       setActiveReconstruction(nextReconstructions[0].id);
       const notes = [];
@@ -12446,6 +13392,9 @@
       }
       if (skippedFiles) {
         notes.push(`${skippedFiles} file${skippedFiles === 1 ? "" : "s"} skipped during decoding`);
+      }
+      if (compatibilityWarnings.length) {
+        notes.push("DICOM compatibility warnings available");
       }
       const loadedMessage = `Added ${nextReconstructions.length} reconstruction${nextReconstructions.length === 1 ? "" : "s"}.`;
       setStatus(notes.length ? `${loadedMessage} ${notes.join("; ")}.` : loadedMessage, notes.length ? "warning" : null);
@@ -12463,6 +13412,9 @@
       }
       if (skippedFiles) {
         notes.push(`${skippedFiles} file${skippedFiles === 1 ? "" : "s"} skipped during decoding`);
+      }
+      if (compatibilityWarnings.length) {
+        notes.push("DICOM compatibility warnings available");
       }
       const loadedMessage = `Loaded ${state.reconstructions.length} reconstruction${state.reconstructions.length === 1 ? "" : "s"} for this patient.`;
       setStatus(notes.length ? `${loadedMessage} ${notes.join("; ")}.` : loadedMessage, notes.length ? "warning" : null);
@@ -12503,6 +13455,49 @@
         loadedReconstructions: nextReconstructions.length,
         totalReconstructions: state.reconstructions.length,
       });
+    });
+  }
+
+  function getCurrentStudyFiles() {
+    const byKey = new Map();
+    state.sourceRecords.forEach((record) => {
+      if (!record?.file) {
+        return;
+      }
+      byKey.set(record.sourceKey || getFileSourceKey(record.file), record.file);
+    });
+    return Array.from(byKey.values());
+  }
+
+  function setSafeDecodeMode(enabled) {
+    const nextMode = Boolean(enabled);
+    if (state.safeDecodeMode === nextMode) {
+      updateSafeDecodeUi();
+      return;
+    }
+    state.safeDecodeMode = nextMode;
+    saveSafeDecodePreference();
+    state.uiCache.dicomCompatibility = "";
+    updateSidebarUi();
+    if (getCurrentStudyFiles().length) {
+      setStatus(
+        `Safe Decode ${nextMode ? "enabled" : "disabled"}. Rebuild the current study to apply it to loaded pixels.`,
+        "warning"
+      );
+    } else {
+      setStatus(`Safe Decode ${nextMode ? "enabled" : "disabled"} for future DICOM loads.`);
+    }
+  }
+
+  async function rebuildCurrentStudyWithCurrentDecodeMode() {
+    const files = getCurrentStudyFiles();
+    if (!files.length) {
+      throw new Error("No local DICOM files are available to rebuild.");
+    }
+    setStatus(`Rebuilding current study with Safe Decode ${state.safeDecodeMode ? "On" : "Off"}...`);
+    await loadReconstructionsFromFiles(files, {
+      append: false,
+      forceSafeDecode: state.safeDecodeMode,
     });
   }
 
@@ -12962,6 +13957,7 @@
       (state.activeToolKey === "length" ||
         state.activeToolKey === "arrow" ||
         state.activeToolKey === "lineProfile" ||
+        state.activeToolKey === "lineProfileRaw" ||
         state.activeToolKey === "plaqueLineProfile" ||
         state.activeToolKey === "plaqueNoncalcifiedLineProfile" ||
         state.activeToolKey === "vascularLineProfile" ||
@@ -13248,6 +14244,7 @@
       state.activeToolKey === "length" ||
       state.activeToolKey === "arrow" ||
       state.activeToolKey === "lineProfile" ||
+      state.activeToolKey === "lineProfileRaw" ||
       state.activeToolKey === "plaqueLineProfile" ||
       state.activeToolKey === "plaqueNoncalcifiedLineProfile" ||
       state.activeToolKey === "vascularLineProfile" ||
@@ -13906,17 +14903,6 @@
     });
 
     els.clearButton.addEventListener("click", clearStudy);
-    els.metadataOverlayToggleButton?.addEventListener("click", () => {
-      state.showDicomMetadataOverlay = !state.showDicomMetadataOverlay;
-      updateViewportDicomOverlays();
-      syncViewportOverlayVisibilityFlag();
-    });
-    els.presentationSeriesLabelToggleButton?.addEventListener("click", () => {
-      state.showPresentationSeriesLabel = !state.showPresentationSeriesLabel;
-      savePresentationSeriesLabelPreference();
-      updatePresentationSeriesLabel();
-      syncViewportOverlayVisibilityFlag();
-    });
     els.presentationSeriesLabelCloseButton?.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -13929,20 +14915,24 @@
       startViewportOverlayDrag("series", els.presentationSeriesLabel, event);
     });
     els.presentationSeriesLabel?.addEventListener("contextmenu", (event) => event.preventDefault());
-    els.dicomOverlays?.presentation?.addEventListener("click", (event) => {
-      if (!event.target?.closest?.(".viewport-dicom-overlay-close")) {
-        return;
+    Object.entries(els.dicomOverlays || {}).forEach(([viewportId, overlay]) => {
+      overlay?.addEventListener("click", (event) => {
+        if (!event.target?.closest?.(".viewport-dicom-overlay-close")) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        state.showDicomMetadataOverlay = false;
+        updateViewportDicomOverlays();
+        syncViewportOverlayVisibilityFlag();
+      });
+      if (viewportId === "presentation") {
+        overlay?.addEventListener("pointerdown", (event) => {
+          startViewportOverlayDrag("dicom", overlay, event);
+        });
       }
-      event.preventDefault();
-      event.stopPropagation();
-      state.showDicomMetadataOverlay = false;
-      updateViewportDicomOverlays();
-      syncViewportOverlayVisibilityFlag();
+      overlay?.addEventListener("contextmenu", (event) => event.preventDefault());
     });
-    els.dicomOverlays?.presentation?.addEventListener("pointerdown", (event) => {
-      startViewportOverlayDrag("dicom", els.dicomOverlays.presentation, event);
-    });
-    els.dicomOverlays?.presentation?.addEventListener("contextmenu", (event) => event.preventDefault());
     els.uiModeButtons.forEach((button) => {
       button.addEventListener("click", () => setUiMode(button.dataset.uiMode));
     });
@@ -14064,7 +15054,7 @@
     els.presentationOverlayToggleButton?.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      setViewportOverlayVisibility(state.showViewportOverlays === false);
+      togglePresentationInfoOverlays();
     });
     els.presentationGridToggleButton?.addEventListener("click", (event) => {
       event.preventDefault();
@@ -14072,6 +15062,17 @@
       state.showViewportGrid = !state.showViewportGrid;
       updateViewportChromeUi();
       updateComparisonUi();
+    });
+    els.safeDecodeToggleButton?.addEventListener("click", () => {
+      setSafeDecodeMode(!state.safeDecodeMode);
+    });
+    els.safeDecodeReloadButton?.addEventListener("click", async () => {
+      try {
+        await rebuildCurrentStudyWithCurrentDecodeMode();
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message || "Could not rebuild the current study.", "error");
+      }
     });
     els.presentationFocusToggleButton?.addEventListener("click", (event) => {
       event.preventDefault();
@@ -14284,6 +15285,11 @@
     els.mprOverlayToggleButton?.addEventListener("click", () => {
       toggleMprOverlayVisibility();
     });
+    els.mprRenderQualityButtons?.forEach((button) => {
+      button.addEventListener("click", () => {
+        setMprRenderQuality(button.dataset.mprRenderQuality || "fast");
+      });
+    });
 
     els.cineSpeedSlider.addEventListener("input", () => {
       state.cineFps = Number(els.cineSpeedSlider.value);
@@ -14310,6 +15316,18 @@
       } catch (error) {
         console.error(error);
         setStatus(error.message || "Measurement export failed.", "error");
+      }
+    });
+    els.exportRawProfilesButton?.addEventListener("click", async () => {
+      try {
+        const studyId = window.prompt("Study ID for Line Profile Raw export", suggestMeasurementStudyId());
+        if (studyId === null) {
+          return;
+        }
+        await exportRawProfileWorkbook({ studyId: safeString(studyId) });
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message || "Raw profile export failed.", "error");
       }
     });
     els.finishCloseButton?.addEventListener("click", () => {
@@ -14658,6 +15676,8 @@
     loadUiModePreference();
     loadSidebarTabPreference();
     loadPresentationSeriesLabelPreference();
+    loadSafeDecodePreference();
+    loadMprRenderQualityPreference();
     loadShortcutSettings();
     loadVoiPresetSettings();
     renderVoiPresetButtons();

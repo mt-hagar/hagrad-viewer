@@ -523,6 +523,14 @@ button {
   font-size: 11px;
 }
 
+.section-note.is-warning {
+  color: var(--warm);
+}
+
+.section-note.is-ok {
+  color: var(--accent);
+}
+
 .section-body {
   display: grid;
   gap: 0;
@@ -1353,6 +1361,24 @@ input[type="range"] {
   overflow-wrap: anywhere;
 }
 
+.dicom-compat-list {
+  gap: 8px;
+}
+
+.dicom-compat-list .meta-row {
+  grid-template-columns: 94px minmax(0, 1fr);
+}
+
+.dicom-compat-warning-row dd {
+  display: grid;
+  gap: 5px;
+}
+
+.dicom-compat-warning {
+  color: var(--warm);
+  line-height: 1.35;
+}
+
 .hint {
   margin: 0 0 8px;
   color: var(--muted);
@@ -2115,10 +2141,11 @@ input[type="range"] {
   top: calc(var(--header-height) + 52px);
   left: 14px;
   z-index: 4;
-  max-width: min(42%, 360px);
+  width: fit-content;
+  max-width: min(36%, 320px);
   display: grid;
   gap: 2px;
-  padding: 7px 28px 7px 9px;
+  padding: 7px 24px 7px 8px;
   border-radius: 10px;
   border: 1px solid rgba(140, 180, 202, 0.12);
   background: rgba(5, 11, 16, 0.64);
@@ -2131,7 +2158,7 @@ input[type="range"] {
 .viewport-dicom-line {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 3px;
   font-size: 10px;
   line-height: 1.25;
   color: rgba(243, 248, 251, 0.94);
@@ -2140,6 +2167,11 @@ input[type="range"] {
 .viewport-dicom-line strong {
   color: var(--warm);
   font-weight: 700;
+}
+
+.viewport-dicom-line span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .viewport-dicom-overlay-close {

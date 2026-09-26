@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>HAGRad Viewer</title>
-    <link rel="stylesheet" href="/src/viewer.css?v=20260524-left-gutter" />
+    <link rel="stylesheet" href="/src/viewer.css?v=20260925-dicom-diagnostics" />
     <link rel="stylesheet" href="/src/shared/hagrad-shell.css?v=20260523-file-inputs" />
   </head>
   <body>
@@ -269,6 +269,7 @@
                       </button>
                       <div id="interface-tool-menu" class="tool-submenu is-hidden" data-tool-submenu="interface" role="menu">
                         <button class="tool-submenu-button" data-tool="lineProfile" type="button" role="menuitem">Stent Line</button>
+                        <button class="tool-submenu-button" data-tool="lineProfileRaw" type="button" role="menuitem">Line Profile Raw</button>
                         <button class="tool-submenu-button" data-tool="squareProfile" type="button" role="menuitem">Stent Square</button>
                         <button class="tool-submenu-button" data-tool="plaqueLineProfile" type="button" role="menuitem">Plaque Calcified</button>
                         <button class="tool-submenu-button" data-tool="plaqueNoncalcifiedLineProfile" type="button" role="menuitem">Plaque Noncalcified</button>
@@ -475,9 +476,21 @@
               <button id="reset-mpr-button" class="button tertiary" type="button">Reset MPR</button>
               <button id="mpr-overlay-toggle-button" class="button tertiary is-active" type="button">Hide Crosses</button>
             </div>
+            <div class="pill-grid">
+              <button id="mpr-render-fast-button" class="pill-button is-active" data-mpr-render-quality="fast" type="button">
+                Fast
+              </button>
+              <button id="mpr-render-smooth-button" class="pill-button" data-mpr-render-quality="smooth" type="button">
+                Smooth
+              </button>
+            </div>
             <p class="hint">
               In 4-up MPR, drag the shared crosshair center directly. Rotation still comes from the
               three angle controls below it or from the colored plane lines.
+            </p>
+            <p class="hint">
+              `Fast` uses nearest source voxels. `Smooth` uses display-only interpolation for MPR
+              rendering while measurements continue to sample source voxels.
             </p>
             <p class="hint">
               You can also grab a colored MPR line directly in the viewport to rotate that plane
@@ -569,7 +582,7 @@
               <dl class="profile-metrics" id="profile-metrics">
                 <div class="meta-row">
                   <dt>Selection</dt>
-                  <dd>Draw a vascular, stent, plaque, or square profile to see the curve and edge metrics here.</dd>
+                  <dd>Draw a vascular, stent, plaque, raw, or square profile to see the curve and metrics here.</dd>
                 </div>
               </dl>
               <p class="hint">
@@ -578,7 +591,8 @@
               </p>
               <p class="hint">
                 `Stent Line` and `Stent Square` quantify the stent-lumen interface. `Plaque Calcified`,
-                `Plaque Noncalcified`, and `Vascular Profile` quantify vessel/plaque edges.
+                `Plaque Noncalcified`, and `Vascular Profile` quantify vessel/plaque edges. `Line Profile Raw`
+                records unsmoothed HU samples for research export.
               </p>
               <p class="hint">
                 Right-click any annotation to edit it directly.
@@ -604,6 +618,9 @@
                 <button id="export-measurements-button" class="button tertiary" type="button">
                   Export Measurements
                 </button>
+                <button id="export-raw-profiles-button" class="button tertiary" type="button">
+                  Export Raw Profiles
+                </button>
                 <button id="finish-close-button" class="button primary" type="button">
                   Finish &amp; Close
                 </button>
@@ -617,6 +634,10 @@
               </p>
               <p class="hint">
                 `Export Measurements` downloads one combined PNG plus a CSV that opens in Excel.
+              </p>
+              <p class="hint">
+                `Export Raw Profiles` saves Line Profile Raw annotations as an Excel-readable workbook
+                with summary, raw sample, and DICOM metadata sheets for research use.
               </p>
               <p class="hint">
                 Before measurement export, HAGRad asks for a `Study ID`. That value is written into
@@ -709,16 +730,38 @@
                 <dd id="meta-position">-</dd>
               </div>
             </dl>
-            <div class="inline-actions">
-              <button id="metadata-overlay-toggle-button" class="button tertiary" type="button">Show DICOM Overlay</button>
-              <button id="presentation-series-label-toggle-button" class="button tertiary is-active" type="button">
-                Hide Series Label
-              </button>
             </div>
-            <p class="hint">
-              Toggle a classic DICOM-style on-image info block with patient, series, slice geometry,
-              kernel, and reconstruction details.
-            </p>
+          </section>
+
+          <section
+            class="sidebar-section"
+            data-section-id="dicom-compatibility"
+            data-default-collapsed="true"
+            data-ui-level="advanced"
+            data-sidebar-tab="case"
+          >
+            <div class="section-header">
+              <div class="section-header-main">
+                <h2>DICOM Compatibility</h2>
+                <span class="section-note" id="dicom-compat-summary">No study loaded</span>
+              </div>
+              <button class="section-toggle" data-section-toggle type="button" aria-expanded="false">+</button>
+            </div>
+            <div class="section-body">
+              <div class="inline-actions">
+                <button id="safe-decode-toggle-button" class="button tertiary" type="button">Safe Decode: Off</button>
+                <button id="safe-decode-reload-button" class="button tertiary" type="button">Rebuild Current Study</button>
+              </div>
+              <dl class="meta-list dicom-compat-list" id="dicom-compat-list">
+                <div class="meta-row">
+                  <dt>Status</dt>
+                  <dd>Load a DICOM study to view compatibility diagnostics.</dd>
+                </div>
+              </dl>
+              <p class="hint">
+                `Safe Decode` bypasses HAGRad’s fast direct raw-pixel path and uses the Cornerstone
+                decoder for future loads or for the current study after rebuild.
+              </p>
             </div>
           </section>
 
@@ -1179,10 +1222,11 @@
     <script src="/vendor/cornerstoneWADOImageLoaderNoWebWorkers.bundle.min.js"></script>
     <script src="/src/shared/hagrad-core.js"></script>
     <script src="/src/shared/hagrad-profile-analysis.js"></script>
+    <script src="/src/shared/hagrad-line-profile-raw.js?v=20260925-line-raw"></script>
     <script src="/src/shared/hagrad-export-studies.js?v=20260523-optional-backend-fallback"></script>
     <script src="/src/shared/hagrad-zip.js"></script>
     <script src="/src/shared/hagrad-overlay-style.js"></script>
     <script src="/src/shared/hagrad-workflow-switcher.js?v=20260519-workflow-shell"></script>
-    <script src="/src/viewer.js"></script>
+    <script src="/src/viewer.js?v=20260925-line-profile-raw"></script>
   </body>
 </html>
