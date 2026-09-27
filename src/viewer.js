@@ -5099,6 +5099,45 @@
     return getNearestVoxelValue(volume, worldToVolumeCoordinates(volume, world));
   }
 
+  function sampleRawProfileVoxelAtWorld(volume, world) {
+    if (!volume || !Array.isArray(world)) {
+      return {
+        hu: null,
+        rawStoredValue: null,
+        voxelX: null,
+        voxelY: null,
+        voxelZ: null,
+      };
+    }
+
+    const coordinates = worldToVolumeCoordinates(volume, world);
+    const x = Math.round(coordinates.x);
+    const y = Math.round(coordinates.y);
+    const z = Math.round(coordinates.z);
+    if (x < 0 || x >= volume.columns || y < 0 || y >= volume.rows || z < 0 || z >= volume.depth) {
+      return {
+        hu: null,
+        rawStoredValue: null,
+        voxelX: coordinates.x,
+        voxelY: coordinates.y,
+        voxelZ: coordinates.z,
+      };
+    }
+
+    const slice = volume.slices?.[z] || null;
+    const rawStoredValue = slice?.pixels?.[y * volume.columns + x];
+    const slope = Number.isFinite(slice?.slope) ? slice.slope : 1;
+    const intercept = Number.isFinite(slice?.intercept) ? slice.intercept : 0;
+    const hu = Number.isFinite(rawStoredValue) ? rawStoredValue * slope + intercept : null;
+    return {
+      hu: Number.isFinite(hu) ? hu : null,
+      rawStoredValue: Number.isFinite(rawStoredValue) ? rawStoredValue : null,
+      voxelX: coordinates.x,
+      voxelY: coordinates.y,
+      voxelZ: coordinates.z,
+    };
+  }
+
   function sampleVolumeForDisplayAtWorld(volume, world) {
     if (!volume) {
       return null;
@@ -8170,29 +8209,129 @@
     return getRawProfileSampleSpacingMm(annotation, reconstruction);
   }
 
+  function computeRawProfileStats(values) {
+    const finiteValues = (values || []).filter(Number.isFinite);
+    if (!finiteValues.length) {
+      return {
+        minHu: null,
+        maxHu: null,
+        meanHu: null,
+        sdHu: null,
+      };
+    }
+    const minHu = Math.min(...finiteValues);
+    const maxHu = Math.max(...finiteValues);
+    const meanHu = finiteValues.reduce((sum, value) => sum + value, 0) / finiteValues.length;
+    const variance = finiteValues.reduce((sum, value) => sum + (value - meanHu) ** 2, 0) / finiteValues.length;
+    return {
+      minHu,
+      maxHu,
+      meanHu,
+      sdHu: Math.sqrt(variance),
+    };
+  }
+
+  function sampleRawLineProfileWithViewerSampler(annotation, reconstruction, sampledProfile) {
+    const volume = reconstruction?.volume || null;
+    const startWorld = annotation.worldPoints?.[0];
+    const endWorld = annotation.worldPoints?.[1];
+    if (!volume || !Array.isArray(startWorld) || !Array.isArray(endWorld)) {
+      return null;
+    }
+
+    const vector = subtractVectors(endWorld, startWorld);
+    const lengthMm = vectorLength(vector);
+    if (!Number.isFinite(lengthMm) || lengthMm <= 0) {
+      return null;
+    }
+
+    const sampleSpacingMm = Number.isFinite(sampledProfile?.sampleSpacingMm)
+      ? sampledProfile.sampleSpacingMm
+      : getRawProfileSampleSpacingMm(annotation, reconstruction);
+    const segmentCount = Math.max(1, Math.ceil(lengthMm / sampleSpacingMm));
+    const sampleCount = segmentCount + 1;
+    const interpolationMethod = sampledProfile?.interpolationMethod || annotation.rawProfile?.interpolationMethod || "nearest";
+    const plane = annotation.plane || annotation.frame?.plane || "";
+    const samples = [];
+
+    for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex += 1) {
+      const distanceMm = sampleIndex === sampleCount - 1 ? lengthMm : Math.min(lengthMm, sampleIndex * sampleSpacingMm);
+      const normalizedPosition = lengthMm > 0 ? distanceMm / lengthMm : 0;
+      const world = addVectors(startWorld, scaleVector(vector, normalizedPosition));
+      const voxel = worldToVolumeCoordinates(volume, world);
+      const nearest = sampleRawProfileVoxelAtWorld(volume, world);
+      const huTrilinear = getLinearVoxelValue(volume, voxel);
+      const huNearest = nearest.hu;
+      const primaryHu = interpolationMethod === "trilinear" && Number.isFinite(huTrilinear) ? huTrilinear : huNearest;
+      samples.push({
+        sampleIndex,
+        distanceMm,
+        normalizedPosition,
+        hu: Number.isFinite(primaryHu) ? primaryHu : null,
+        huNearest: Number.isFinite(huNearest) ? huNearest : null,
+        huTrilinear: Number.isFinite(huTrilinear) ? huTrilinear : null,
+        rawStoredValue: Number.isFinite(nearest.rawStoredValue) ? nearest.rawStoredValue : null,
+        worldX: world[0],
+        worldY: world[1],
+        worldZ: world[2],
+        voxelX: voxel?.x ?? null,
+        voxelY: voxel?.y ?? null,
+        voxelZ: voxel?.z ?? null,
+        plane,
+        interpolationMethod,
+        sampleSpacingMm,
+      });
+    }
+
+    const valuesHu = samples.map((sample) => sample.hu);
+    return {
+      lengthMm,
+      sampleCount,
+      sampleSpacingMm,
+      interpolationMethod,
+      distancesMm: samples.map((sample) => sample.distanceMm),
+      valuesHu,
+      smoothHu: [],
+      rawSamples: samples,
+      samplingSource: "viewer_sampler_fallback",
+      ...computeRawProfileStats(valuesHu),
+    };
+  }
+
   function sampleRawLineProfile(annotation, reconstruction) {
     const sampler = window.HAGRadLineProfileRaw;
-    if (!sampler?.sampleLineProfile || !reconstruction?.volume) {
+    if (!reconstruction?.volume) {
       return null;
     }
-    const sampled = sampler.sampleLineProfile({
-      volume: reconstruction.volume,
-      startWorld: annotation.worldPoints?.[0],
-      endWorld: annotation.worldPoints?.[1],
-      sampleSpacingMm: getRawProfileSampleSpacingMm(annotation, reconstruction),
-      plane: annotation.plane || annotation.frame?.plane || "",
-      interpolationMethod: annotation.rawProfile?.interpolationMethod || "nearest",
-    });
-    if (!sampled) {
+    const sampled = sampler?.sampleLineProfile
+      ? sampler.sampleLineProfile({
+          volume: reconstruction.volume,
+          startWorld: annotation.worldPoints?.[0],
+          endWorld: annotation.worldPoints?.[1],
+          sampleSpacingMm: getRawProfileSampleSpacingMm(annotation, reconstruction),
+          plane: annotation.plane || annotation.frame?.plane || "",
+          interpolationMethod: annotation.rawProfile?.interpolationMethod || "nearest",
+        })
+      : null;
+    const sampledValues = Array.isArray(sampled?.valuesHu) ? sampled.valuesHu : [];
+    const profile = !sampled
+      ? sampleRawLineProfileWithViewerSampler(annotation, reconstruction, null)
+      : sampledValues.some(Number.isFinite)
+        ? { ...sampled, samplingSource: sampled.samplingSource || "shared_sampler" }
+        : sampleRawLineProfileWithViewerSampler(annotation, reconstruction, sampled) || {
+            ...sampled,
+            samplingSource: sampled.samplingSource || "shared_sampler_empty",
+          };
+    if (!profile) {
       return null;
     }
-    const rawValues = Array.isArray(sampled.valuesHu) ? sampled.valuesHu : [];
+    const rawValues = Array.isArray(profile.valuesHu) ? profile.valuesHu : [];
     const displaySmoothHu = rawValues.length >= 3 ? smoothSeries(rawValues, 1) : [];
     return {
       mode: "line_raw",
       profileFamily: "raw_line_profile",
       profileSubtype: "raw_research_export",
-      ...sampled,
+      ...profile,
       smoothHu: displaySmoothHu,
       displaySmoothingRadius: displaySmoothHu.length ? 1 : 0,
     };
@@ -9257,6 +9396,12 @@
           <dt>Chart</dt>
           <dd>Yellow is light display smoothing only; raw HU samples remain unchanged for stats and export.</dd>
         </div>
+        ${analysis.samplingSource === "viewer_sampler_fallback" ? `
+        <div class="meta-row">
+          <dt>HU Source</dt>
+          <dd>Viewer voxel sampler fallback.</dd>
+        </div>
+        ` : ""}
         <div class="meta-row">
           <dt>Use</dt>
           <dd>Raw research export only. Not diagnostic output.</dd>
