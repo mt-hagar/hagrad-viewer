@@ -1,4 +1,4 @@
-# HAGRad Viewer v0.9.3-research-preview
+# HAGRad Viewer v0.9.4-research-preview
 
 ## Release Type
 
@@ -10,6 +10,8 @@ This release is intended to make HAGRad citable, downloadable, and testable by c
 
 This build refreshes the HAGRad Viewer workflow shell and adds new research tools:
 
+- Promotes `Line Profile Raw` to the first Interface Tool menu action and rebuilds the menu from the canonical viewer tool order so the raw profile tool stays visible and stable.
+- Adds profile-linked workbook exports: measurement/rest sheets now include `profile_raw_sheet`, and generated workbooks include a `profile_sheets` index plus one raw sample worksheet per profile annotation.
 - Fixes Line Profile Raw HU sampling by falling back to the viewer voxel sampler when the shared raw sampler returns no finite HU values, preserving raw stored values, voxel coordinates, and research-export metadata.
 - Adds a shared true `.xlsx` workbook export engine used across HAGRad Viewer, Image Quality / CCTA IQ, EAT, QCA, NoiseLab, and Noise Power outputs.
 - Replaces the main Viewer's separate measurement, raw-profile, baseline, cine, and finish/close actions with one Study ID-driven ZIP export dialog.
@@ -98,7 +100,7 @@ See `DISCLAIMER.md` and `LICENSE.md` before use.
 
 ## Suggested Software Citation
 
-HAGRad Viewer, version 0.9.3-research-preview. HAGRad contributors, 2026. Research-use software for local cardiovascular image analysis.
+HAGRad Viewer, version 0.9.4-research-preview. HAGRad contributors, 2026. Research-use software for local cardiovascular image analysis.
 
 ## Known Limitations
 

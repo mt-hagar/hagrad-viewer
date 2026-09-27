@@ -41,7 +41,7 @@ Current packaging targets:
 
 Latest release:
 
-[HAGRad Viewer v0.9.3 Research Preview](https://github.com/mt-hagar/hagrad-viewer/releases/tag/v0.9.3-research-preview)
+[HAGRad Viewer v0.9.4 Research Preview](https://github.com/mt-hagar/hagrad-viewer/releases/tag/v0.9.4-research-preview)
 
 ## Running Locally
 
@@ -86,7 +86,7 @@ A formal citation and manuscript reference will be added after publication.
 
 Suggested placeholder citation:
 
-> Hagar T. HAGRad: Open-Source Framework for Advanced Cardiac CT Research. Version 0.9.3 research preview. 2026.
+> Hagar T. HAGRad: Open-Source Framework for Advanced Cardiac CT Research. Version 0.9.4 research preview. 2026.
 
 See [`CITATION.cff`](CITATION.cff) for machine-readable citation metadata.
 

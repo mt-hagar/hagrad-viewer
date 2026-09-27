@@ -2,8 +2,8 @@
 
 ## Target Release
 
-- Version: `v0.9.3-research-preview`
-- Release title: `HAGRad Viewer v0.9.3 Research Preview`
+- Version: `v0.9.4-research-preview`
+- Release title: `HAGRad Viewer v0.9.4 Research Preview`
 - Release type: pre-release / research preview
 
 ## Required Release Assets
@@ -17,7 +17,7 @@ python3 scripts/build_release_bundle.py --platform source
 Expected output:
 
 ```text
-dist/hagrad-viewer-v0.9.3-research-preview.zip
+dist/hagrad-viewer-v0.9.4-research-preview.zip
 ```
 
 Create the macOS app and DMG on macOS:
@@ -61,7 +61,7 @@ For example:
 python3 scripts/publish_github_release.py --repo YOUR_GITHUB_NAME/hagrad-viewer --visibility public
 ```
 
-The helper creates the GitHub repository if it does not exist, refuses to overwrite a non-empty repository, pushes the clean release source, tags `v0.9.3-research-preview`, and creates a GitHub pre-release with available release assets attached. If `dist/HAGRad-Viewer-macOS.dmg` exists, it is preferred over the macOS zip.
+The helper creates the GitHub repository if it does not exist, refuses to overwrite a non-empty repository, pushes the clean release source, tags `v0.9.4-research-preview`, and creates a GitHub pre-release with available release assets attached. If `dist/HAGRad-Viewer-macOS.dmg` exists, it is preferred over the macOS zip.
 
 ## What The Bundle Includes
 
@@ -104,5 +104,5 @@ Use the contents of `RELEASE_NOTES.md` as the release text.
 ## Suggested Tag
 
 ```text
-v0.9.3-research-preview
+v0.9.4-research-preview
 ```

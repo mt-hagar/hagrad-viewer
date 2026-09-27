@@ -9,7 +9,7 @@ import zipfile
 
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-DEFAULT_VERSION = "v0.9.3-research-preview"
+DEFAULT_VERSION = "v0.9.4-research-preview"
 PACKAGE_PREFIX = "hagrad-viewer"
 BUILT_MACOS_APP = ROOT / "dist" / "macos" / "HAGRad Viewer.app"
 BUILT_WINDOWS_EXE = ROOT / "dist" / "windows" / "HAGRad Viewer.exe"

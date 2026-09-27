@@ -213,16 +213,16 @@
     eraser: "Eraser",
   };
   const INTERFACE_TOOL_KEYS = [
-    "lineProfile",
     "lineProfileRaw",
+    "lineProfile",
     "squareProfile",
     "plaqueLineProfile",
     "plaqueNoncalcifiedLineProfile",
     "vascularLineProfile",
   ];
   const INTERFACE_TOOL_LABELS = {
-    lineProfile: "Stent Line",
     lineProfileRaw: "Line Profile Raw",
+    lineProfile: "Stent Line",
     squareProfile: "Stent Square",
     plaqueLineProfile: "Plaque Calcified",
     plaqueNoncalcifiedLineProfile: "Plaque Noncalcified",
@@ -617,6 +617,22 @@
     return Boolean(getRawDecodeBypassReason(record, options));
   }
 
+  function renderInterfaceToolMenuItems() {
+    if (!els.interfaceToolMenu) {
+      return;
+    }
+    els.interfaceToolMenu.innerHTML = "";
+    INTERFACE_TOOL_KEYS.forEach((toolKey) => {
+      const button = document.createElement("button");
+      button.className = "tool-submenu-button";
+      button.dataset.tool = toolKey;
+      button.type = "button";
+      button.setAttribute("role", "menuitem");
+      button.textContent = INTERFACE_TOOL_LABELS[toolKey] || getToolActionLabel(toolKey) || toolKey;
+      els.interfaceToolMenu.appendChild(button);
+    });
+  }
+
   function cacheElements() {
     els.app = document.querySelector(".app");
     els.dicomInput = document.getElementById("dicom-input");
@@ -644,13 +660,14 @@
     els.projectRestoreSessionButton = document.getElementById("project-restore-session-button");
     els.projectSessionNote = document.getElementById("project-session-note");
     els.layoutButtons = Array.from(document.querySelectorAll("[data-layout]"));
-    els.toolButtons = Array.from(document.querySelectorAll("[data-tool]"));
     els.roiToolTrigger = document.getElementById("roi-tool-trigger");
     els.roiToolMenu = document.getElementById("roi-tool-menu");
     els.roiToolActiveLabel = document.getElementById("roi-tool-active-label");
     els.interfaceToolTrigger = document.getElementById("interface-tool-trigger");
     els.interfaceToolMenu = document.getElementById("interface-tool-menu");
     els.interfaceToolActiveLabel = document.getElementById("interface-tool-active-label");
+    renderInterfaceToolMenuItems();
+    els.toolButtons = Array.from(document.querySelectorAll("[data-tool]"));
     els.toolGroupTriggers = Array.from(document.querySelectorAll("[data-tool-group-toggle]"));
     els.toolSubmenus = Array.from(document.querySelectorAll("[data-tool-submenu]"));
     els.toolContextNote = document.getElementById("tool-context-note");
@@ -8156,22 +8173,47 @@
 
     const stepMm = Math.max(0.2, Math.min(annotation.frame.metrics.spacingX, annotation.frame.metrics.spacingY) / 2);
     const sampleCount = Math.max(24, Math.ceil(lengthMm / stepMm) + 1);
+    const actualSampleSpacingMm = sampleCount > 1 ? lengthMm / (sampleCount - 1) : lengthMm;
     const distancesMm = [];
     const valuesHu = [];
+    const rawSamples = [];
 
     for (let index = 0; index < sampleCount; index += 1) {
       const t = index / (sampleCount - 1);
       const world = addVectors(start, scaleVector(vector, t));
+      const nearest = sampleRawProfileVoxelAtWorld(reconstruction.volume, world);
+      const hu = nearest.hu;
       distancesMm.push(lengthMm * t);
-      valuesHu.push(sampleVolumeAtWorld(reconstruction.volume, world));
+      valuesHu.push(hu);
+      rawSamples.push({
+        sampleIndex: index,
+        distanceMm: lengthMm * t,
+        normalizedPosition: t,
+        hu: Number.isFinite(hu) ? hu : null,
+        rawStoredValue: Number.isFinite(nearest.rawStoredValue) ? nearest.rawStoredValue : null,
+        worldX: world[0],
+        worldY: world[1],
+        worldZ: world[2],
+        voxelX: nearest.voxelX,
+        voxelY: nearest.voxelY,
+        voxelZ: nearest.voxelZ,
+        plane: annotation.plane || annotation.frame?.plane || "",
+        interpolationMethod: "nearest",
+        samplingSource: "source_voxel_nearest",
+        sampleSpacingMm: actualSampleSpacingMm,
+      });
     }
 
     return {
       mode: "line",
       lengthMm,
       sampleCount,
+      sampleSpacingMm: actualSampleSpacingMm,
       distancesMm,
       valuesHu,
+      rawSamples,
+      interpolationMethod: "nearest",
+      samplingSource: "source_voxel_nearest",
     };
   }
 
@@ -8386,8 +8428,10 @@
     const secondaryLengthMm = horizontal ? heightMm : widthMm;
     const primaryCount = Math.max(24, Math.ceil(primaryLengthMm / sampleStepMm) + 1);
     const secondaryCount = Math.max(3, Math.ceil(secondaryLengthMm / sampleStepMm) + 1);
+    const actualSampleSpacingMm = primaryCount > 1 ? primaryLengthMm / (primaryCount - 1) : primaryLengthMm;
     const distancesMm = [];
     const valuesHu = [];
+    const rawSamples = [];
 
     for (let primaryIndex = 0; primaryIndex < primaryCount; primaryIndex += 1) {
       const primaryMm = (primaryIndex / (primaryCount - 1)) * primaryLengthMm;
@@ -8413,8 +8457,36 @@
         }
       }
 
+      const centeredPoint = horizontal
+        ? { xMm: centeredPrimaryMm, yMm: 0 }
+        : { xMm: 0, yMm: centeredPrimaryMm };
+      const rotatedCenterPoint = rotatePlanePoint(centeredPoint, box.angleRadians);
+      const centerWorld = planePointToWorld(
+        annotation.frame,
+        box.centerXmm + rotatedCenterPoint.xMm,
+        box.centerYmm + rotatedCenterPoint.yMm
+      );
+      const centerVoxel = worldToVolumeCoordinates(reconstruction.volume, centerWorld);
+      const averagedHu = samples.length ? samples.reduce((sum, value) => sum + value, 0) / samples.length : Number.NaN;
       distancesMm.push(primaryMm);
-      valuesHu.push(samples.length ? samples.reduce((sum, value) => sum + value, 0) / samples.length : Number.NaN);
+      valuesHu.push(averagedHu);
+      rawSamples.push({
+        sampleIndex: primaryIndex,
+        distanceMm: primaryMm,
+        normalizedPosition: primaryLengthMm > 0 ? primaryMm / primaryLengthMm : 0,
+        hu: Number.isFinite(averagedHu) ? averagedHu : null,
+        rawStoredValue: null,
+        worldX: centerWorld[0],
+        worldY: centerWorld[1],
+        worldZ: centerWorld[2],
+        voxelX: centerVoxel?.x ?? null,
+        voxelY: centerVoxel?.y ?? null,
+        voxelZ: centerVoxel?.z ?? null,
+        plane: annotation.plane || annotation.frame?.plane || "",
+        interpolationMethod: "nearest_band_mean",
+        samplingSource: "square_profile_band_mean",
+        sampleSpacingMm: actualSampleSpacingMm,
+      });
     }
 
     return {
@@ -8423,8 +8495,12 @@
       lengthMm: primaryLengthMm,
       widthMm: secondaryLengthMm,
       sampleCount: primaryCount,
+      sampleSpacingMm: actualSampleSpacingMm,
       distancesMm,
       valuesHu,
+      rawSamples,
+      interpolationMethod: "nearest_band_mean",
+      samplingSource: "square_profile_band_mean",
       box,
     };
   }
@@ -11800,8 +11876,9 @@
     };
   }
 
-  function buildMeasurementsTable(entries, studyId) {
+  function buildMeasurementsTable(entries, studyId, options = {}) {
     const researchStudy = getSelectedExportStudyMetadata();
+    const profileSheetMap = options.profileSheetMap || new Map();
     const headers = [
       "study_id",
       "research_study_id",
@@ -11858,6 +11935,7 @@
       "profile_axis",
       "profile_samples",
       "profile_family",
+      "profile_raw_sheet",
       "profile_adjustment_mode",
       "vascular_peak_hu",
       "vascular_background_hu",
@@ -11975,6 +12053,7 @@
         profile_axis: entry.summary.profileAxis || "",
         profile_samples: entry.summary.sampleCount != null ? entry.summary.sampleCount : "",
         profile_family: entry.summary.profileFamily || "",
+        profile_raw_sheet: profileSheetMap.get(getMeasurementEntryKey(entry)) || "",
         profile_adjustment_mode: entry.summary.profileAdjustmentMode || "",
         vascular_peak_hu: entry.summary.vascularPeakHu != null ? entry.summary.vascularPeakHu.toFixed(1) : "",
         vascular_background_hu: entry.summary.vascularBackgroundHu != null ? entry.summary.vascularBackgroundHu.toFixed(1) : "",
@@ -12100,6 +12179,205 @@
     };
   }
 
+  function getMeasurementEntryKey(entry) {
+    return `${entry?.reconstruction?.id || ""}::${entry?.annotation?.id ?? ""}`;
+  }
+
+  function getProfileExportLabel(entry) {
+    return entry?.annotation?.customName || entry?.displayName || entry?.label || `Profile ${entry?.annotation?.id || ""}`;
+  }
+
+  function sanitizeProfileSheetSeriesToken(seriesNumber) {
+    const cleaned = safeString(seriesNumber).replace(/[^a-z0-9]+/gi, "");
+    return (cleaned || "na").slice(0, 8);
+  }
+
+  function makeProfileRawSheetName(profileIndex, seriesNumber, usedNames) {
+    const order = String(profileIndex + 1).padStart(3, "0");
+    const seriesToken = sanitizeProfileSheetSeriesToken(seriesNumber);
+    const base = `profile_${order}_s${seriesToken}`
+      .replace(/[\\/?*\[\]:]/g, "_")
+      .slice(0, 31) || `profile_${order}`;
+    let sheetName = base;
+    let suffix = 2;
+    while (usedNames.has(sheetName.toLowerCase())) {
+      const suffixText = `_${suffix}`;
+      sheetName = `${base.slice(0, Math.max(1, 31 - suffixText.length))}${suffixText}`;
+      suffix += 1;
+    }
+    return sheetName;
+  }
+
+  function getProfileSampleSpacingMm(analysis, distancesMm, sampleIndex) {
+    const explicitSpacing = Number(analysis?.sampleSpacingMm);
+    if (Number.isFinite(explicitSpacing) && explicitSpacing > 0) {
+      return explicitSpacing;
+    }
+    if (sampleIndex > 0) {
+      const previous = Number(distancesMm?.[sampleIndex - 1]);
+      const current = Number(distancesMm?.[sampleIndex]);
+      if (Number.isFinite(previous) && Number.isFinite(current)) {
+        return Math.abs(current - previous);
+      }
+    }
+    const first = Number(distancesMm?.[0]);
+    const second = Number(distancesMm?.[1]);
+    return Number.isFinite(first) && Number.isFinite(second) ? Math.abs(second - first) : null;
+  }
+
+  function buildProfileRawSampleRows(entry, studyId, sheetName) {
+    if (!PROFILE_TYPES.has(entry?.annotation?.type)) {
+      return null;
+    }
+    const analysis = buildProfileAnalysis(entry.annotation, entry.reconstruction);
+    const distancesMm = Array.isArray(analysis?.distancesMm) ? analysis.distancesMm : [];
+    const valuesHu = Array.isArray(analysis?.valuesHu) ? analysis.valuesHu : [];
+    const sampleCount = Math.min(distancesMm.length, valuesHu.length);
+    if (!analysis || sampleCount <= 0) {
+      return null;
+    }
+
+    const context = getReconstructionExportContext(entry);
+    const profileLabel = getProfileExportLabel(entry);
+    const profileFamily = analysis.profileFamily || entry.summary?.profileFamily || "";
+    const profileType = formatMeasurementType(entry.annotation);
+    const rawSamples = Array.isArray(analysis.rawSamples) ? analysis.rawSamples : [];
+    const smoothHu = Array.isArray(analysis.smoothHu) ? analysis.smoothHu : [];
+    const headers = [
+      "study_id",
+      "series_number",
+      "series_description",
+      "reconstruction",
+      "reconstruction_order",
+      "convolution_kernel",
+      "annotation_id",
+      "profile_label",
+      "profile_family",
+      "profile_type",
+      "sample_index",
+      "x_distance_mm",
+      "y_hu",
+      "raw_y_hu",
+      "display_smoothed_hu",
+      "raw_stored_value",
+      "world_x_mm",
+      "world_y_mm",
+      "world_z_mm",
+      "voxel_x",
+      "voxel_y",
+      "voxel_z",
+      "plane",
+      "sample_spacing_mm",
+      "interpolation_method",
+      "sampling_source",
+    ];
+
+    const rows = [];
+    for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex += 1) {
+      const sample = rawSamples[sampleIndex] || {};
+      const rawValue = valuesHu[sampleIndex];
+      const smoothValue = smoothHu[sampleIndex];
+      const rawHu = rawValue == null || rawValue === "" ? NaN : Number(rawValue);
+      const displayHu = smoothValue == null || smoothValue === "" ? NaN : Number(smoothValue);
+      rows.push({
+        study_id: studyId || "",
+        series_number: context.series_number,
+        series_description: context.series_description,
+        reconstruction: context.reconstruction,
+        reconstruction_order: context.reconstruction_order,
+        convolution_kernel: context.convolution_kernel,
+        annotation_id: entry.annotation.id,
+        profile_label: profileLabel,
+        profile_family: profileFamily,
+        profile_type: profileType,
+        sample_index: sampleIndex,
+        x_distance_mm: workbookNumber(distancesMm[sampleIndex], 6),
+        y_hu: workbookNumber(rawHu, 6),
+        raw_y_hu: workbookNumber(rawHu, 6),
+        display_smoothed_hu: Number.isFinite(displayHu) ? workbookNumber(displayHu, 6) : "",
+        raw_stored_value: workbookNumber(sample.rawStoredValue, 6),
+        world_x_mm: workbookNumber(sample.worldX, 6),
+        world_y_mm: workbookNumber(sample.worldY, 6),
+        world_z_mm: workbookNumber(sample.worldZ, 6),
+        voxel_x: workbookNumber(sample.voxelX, 6),
+        voxel_y: workbookNumber(sample.voxelY, 6),
+        voxel_z: workbookNumber(sample.voxelZ, 6),
+        plane: sample.plane || entry.annotation.plane || "",
+        sample_spacing_mm: workbookNumber(sample.sampleSpacingMm ?? getProfileSampleSpacingMm(analysis, distancesMm, sampleIndex), 6),
+        interpolation_method: sample.interpolationMethod || analysis.interpolationMethod || (analysis.mode === "square" ? "nearest_band_mean" : "nearest"),
+        sampling_source: sample.samplingSource || analysis.samplingSource || `${analysis.mode || "profile"}_valuesHu`,
+      });
+    }
+
+    return {
+      sheetName,
+      headers,
+      rows,
+      indexRow: {
+        sheet_name: sheetName,
+        annotation_id: entry.annotation.id,
+        profile_label: profileLabel,
+        profile_family: profileFamily,
+        series_number: context.series_number,
+        series_description: context.series_description,
+        reconstruction: context.reconstruction,
+        sample_count: sampleCount,
+        x_axis: "distance_mm",
+        y_axis: "HU",
+      },
+    };
+  }
+
+  function buildProfileRawSheetBundle(entries, studyId) {
+    const indexHeaders = [
+      "sheet_name",
+      "annotation_id",
+      "profile_label",
+      "profile_family",
+      "series_number",
+      "series_description",
+      "reconstruction",
+      "sample_count",
+      "x_axis",
+      "y_axis",
+    ];
+    const usedNames = new Set(["summary", "raw_samples", "dicom_metadata", "rest", "profile_sheets"]);
+    const sheetByEntryKey = new Map();
+    const indexRows = [];
+    const profileSheets = [];
+    let profileIndex = 0;
+
+    (entries || []).forEach((entry) => {
+      if (!PROFILE_TYPES.has(entry?.annotation?.type)) {
+        return;
+      }
+      const context = getReconstructionExportContext(entry);
+      const sheetName = makeProfileRawSheetName(profileIndex, context.series_number, usedNames);
+      const profileSheet = buildProfileRawSampleRows(entry, studyId, sheetName);
+      if (!profileSheet?.rows?.length) {
+        return;
+      }
+      usedNames.add(sheetName.toLowerCase());
+      profileIndex += 1;
+      sheetByEntryKey.set(getMeasurementEntryKey(entry), sheetName);
+      indexRows.push(profileSheet.indexRow);
+      profileSheets.push({
+        name: sheetName,
+        rows: rowsForHeaders(profileSheet.headers, profileSheet.rows),
+      });
+    });
+
+    return {
+      sheetByEntryKey,
+      indexSheet: {
+        name: "profile_sheets",
+        rows: rowsForHeaders(indexHeaders, indexRows),
+      },
+      indexRows,
+      profileSheets,
+    };
+  }
+
   async function buildMeasurementThumbnailImages(entries) {
     const images = [];
     for (const [index, entry] of entries.entries()) {
@@ -12136,24 +12414,37 @@
     return images;
   }
 
-  async function buildRestMeasurementsWorkbookFile(entries, studyId) {
-    const table = buildMeasurementsTable(entries, studyId);
+  async function buildRestMeasurementsWorkbookFile(entries, studyId, options = {}) {
+    const profileSheetBundle = options.profileSheetBundle || buildProfileRawSheetBundle(entries, studyId);
+    const table = buildMeasurementsTable(entries, studyId, {
+      profileSheetMap: profileSheetBundle.sheetByEntryKey,
+    });
     const images = await buildMeasurementThumbnailImages(entries);
+    const sheets = [
+      {
+        name: "rest",
+        headers: table.headers,
+        rows: table.rows,
+        images,
+      },
+    ];
+    if (profileSheetBundle.profileSheets.length) {
+      sheets.push(
+        rowsSheetToXlsxSheet(profileSheetBundle.indexSheet),
+        ...profileSheetBundle.profileSheets.map((sheet) => rowsSheetToXlsxSheet(sheet))
+      );
+    }
     const workbookFile = await xlsxExportApi.buildXlsxFile({
       filename: buildExportFilename("rest_measurements", "xlsx", { studyId }),
-      sheets: [
-        {
-          name: "rest",
-          headers: table.headers,
-          rows: table.rows,
-          images,
-        },
-      ],
+      sheets,
     });
-    return { ...workbookFile, table, images };
+    return { ...workbookFile, table, images, profileSheetBundle };
   }
 
   function workbookNumber(value, decimals) {
+    if (value == null || value === "") {
+      return "";
+    }
     const number = Number(value);
     if (!Number.isFinite(number)) {
       return "";
@@ -12325,6 +12616,9 @@
     if (options.restTable?.headers?.length) {
       sheets.push({ name: "rest", rows: rowsForHeaders(options.restTable.headers, options.restTable.rows || []) });
     }
+    if (options.profileSheetBundle?.profileSheets?.length) {
+      sheets.push(options.profileSheetBundle.indexSheet, ...options.profileSheetBundle.profileSheets);
+    }
     return sheets;
   }
 
@@ -12360,10 +12654,14 @@
       throw new Error("Enter a Study ID before exporting raw profiles.");
     }
     const measurementEntries = buildMeasurementEntries();
-    const restWorkbook = await buildRestMeasurementsWorkbookFile(measurementEntries, studyId);
+    const profileSheetBundle = buildProfileRawSheetBundle(measurementEntries, studyId);
+    const restWorkbook = await buildRestMeasurementsWorkbookFile(measurementEntries, studyId, {
+      profileSheetBundle,
+    });
     const workbookFile = await buildRawProfileWorkbookFile(entries, studyId, {
       restTable: restWorkbook.table,
       restImages: restWorkbook.images,
+      profileSheetBundle,
     });
     const files = [workbookFile];
     if (measurementEntries.length) {
@@ -12648,6 +12946,7 @@
     const filesByName = new Map();
     const selectedLabels = [];
     const projectExports = [];
+    const profileSheetBundle = buildProfileRawSheetBundle(measurementEntries, studyId);
     let restWorkbook = null;
     let restPngFile = null;
 
@@ -12656,7 +12955,9 @@
         return null;
       }
       if (!restWorkbook) {
-        restWorkbook = await buildRestMeasurementsWorkbookFile(measurementEntries, studyId);
+        restWorkbook = await buildRestMeasurementsWorkbookFile(measurementEntries, studyId, {
+          profileSheetBundle,
+        });
       }
       return restWorkbook;
     };
@@ -12696,6 +12997,7 @@
       const rawWorkbook = await buildRawProfileWorkbookFile(rawEntries, studyId, {
         restTable: rawRestWorkbook?.table,
         restImages: rawRestWorkbook?.images || [],
+        profileSheetBundle,
       });
       addExportFile(filesByName, rawWorkbook);
       addExportFile(filesByName, await ensureRestPngFile());
