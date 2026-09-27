@@ -198,6 +198,10 @@
 
   const els = {};
   const exportStudyApi = window.HAGRadExportStudies || null;
+  const xlsxExportApi = window.HAGRadXlsxExport;
+  if (!xlsxExportApi) {
+    throw new Error("Missing shared XLSX export script: /src/shared/hagrad-xlsx-export.js");
+  }
   let guideTargetHighlightTimer = null;
 
   function cacheElements() {
@@ -3122,7 +3126,7 @@
       copy =
         state.reconstructions.length > 1
           ? "The workflow is ready for simultaneous multi-reconstruction export."
-          : "The workflow is ready for final PDF-ready report and CSV export.";
+          : "The workflow is ready for final PDF-ready report and data export.";
     }
 
     const steps = GUIDE_STEPS.map((label, index) => ({
@@ -3713,7 +3717,7 @@
     if (!state.project.cases.length) {
       const note = document.createElement("div");
       note.className = "hint";
-      note.textContent = "No project cases yet. The next CSV export will start the list.";
+      note.textContent = "No project cases yet. The next data export will start the list.";
       els.projectCaseList.appendChild(note);
       return;
     }
@@ -3787,7 +3791,7 @@
     }
     if (els.projectStatusNote) {
       els.projectStatusNote.textContent = exportStudy.id
-        ? `Finish & Close will open a PDF-ready report and mirror CSV exports into ${getExportStudyDirectoryLabel(exportStudy.id)}.`
+        ? `Finish & Close will open a PDF-ready report and mirror data exports into ${getExportStudyDirectoryLabel(exportStudy.id)}.`
         : "Choose or create the research study in the Finish & Close popup to mirror exports into a dedicated outbox folder.";
     }
   }
@@ -7656,17 +7660,17 @@
     }
     if (action === "csv") {
       return {
-        title: "Export CSV",
-        copy: "Assign a Study ID to prepend to the CSV rows before the export starts.",
-        hint: "The Study ID becomes the first CSV column for reconstruction and slice measurements.",
-        confirmLabel: "Export CSV",
-        busyLabel: "Exporting CSV...",
+        title: "Export Workbook + CSV",
+        copy: "Assign a Study ID to prepend to the workbook and CSV rows before the export starts.",
+        hint: "The Study ID becomes the first column for reconstruction and slice measurements.",
+        confirmLabel: "Export Data",
+        busyLabel: "Exporting Data...",
       };
     }
     return {
       title: "Finish & Close",
-      copy: "Assign a Study ID, open the PDF-ready report, export CSV, then clear the current patient from the viewer.",
-      hint: "Finish & Close opens the report print dialog, mirrors CSV into the selected research study outbox when chosen, and resets the viewer for the next patient.",
+      copy: "Assign a Study ID, open the PDF-ready report, export workbook/CSV data, then clear the current patient from the viewer.",
+      hint: "Finish & Close opens the report print dialog, mirrors data exports into the selected research study outbox when chosen, and resets the viewer for the next patient.",
       confirmLabel: "Finish & Close",
       busyLabel: "Finishing...",
     };
@@ -7951,6 +7955,11 @@
       report.report_color = normalizeReportColor(pref?.color, EXPORT_REPORT_PALETTE[index % EXPORT_REPORT_PALETTE.length]);
       report.report_order = pref?.order ?? index;
       report.series_number = getSeriesNumberLabel(reconstruction, state.reconstructions.indexOf(reconstruction));
+      report.series_number_raw = Number.isFinite(reconstruction.records?.[0]?.seriesNumber)
+        ? String(reconstruction.records[0].seriesNumber)
+        : "";
+      report.series_description = reconstruction.records?.[0]?.seriesDescription || reconstruction.label || "";
+      report.convolution_kernel = reconstruction.records?.find((record) => record.convolutionKernel)?.convolutionKernel || "";
       report.dicom_rows = getImportantDicomRows(reconstruction);
       report.radiation_dose_rows = getRadiationDoseRows(reconstruction);
       reports.push(report);
@@ -7992,6 +8001,9 @@
       "research_study_id",
       "research_study_label",
       "reconstruction",
+      "series_number",
+      "series_description",
+      "convolution_kernel",
       "transfer_source",
       "transfer_mode",
       "acquired",
@@ -8010,6 +8022,9 @@
       "research_study_id",
       "research_study_label",
       "reconstruction",
+      "series_number",
+      "series_description",
+      "convolution_kernel",
       "transfer_source",
       "transfer_mode",
       "slice_number",
@@ -8046,6 +8061,15 @@
             if (key === "reconstruction") {
               return csvEscape(report.reconstruction_label);
             }
+            if (key === "series_number") {
+              return csvEscape(report.series_number_raw || report.series_number || "");
+            }
+            if (key === "series_description") {
+              return csvEscape(report.series_description || "");
+            }
+            if (key === "convolution_kernel") {
+              return csvEscape(report.convolution_kernel || "");
+            }
             if (key === "transfer_source") {
               return csvEscape(report.transfer_source || "");
             }
@@ -8076,6 +8100,15 @@
               if (key === "reconstruction") {
                 return csvEscape(report.reconstruction_label);
               }
+              if (key === "series_number") {
+                return csvEscape(report.series_number_raw || report.series_number || "");
+              }
+              if (key === "series_description") {
+                return csvEscape(report.series_description || "");
+              }
+              if (key === "convolution_kernel") {
+                return csvEscape(report.convolution_kernel || "");
+              }
               if (key === "transfer_source") {
                 return csvEscape(report.transfer_source || "");
               }
@@ -8089,6 +8122,107 @@
       });
     });
     return lines.join("\n");
+  }
+
+  function buildCombinedWorkbookSheets(reportSet) {
+    const referenceSummary = reportSet.referenceReport.summary;
+    const summaryRows = [
+      ["Study ID", reportSet.studyId || ""],
+      ["Research Study ID", reportSet.researchStudyId || ""],
+      ["Research Study Label", reportSet.researchStudyLabel || ""],
+      ["Patient Name", referenceSummary.patient_name],
+      ["Patient ID", referenceSummary.patient_id],
+      ["Reconstructions Exported", reportSet.reports.length],
+      ["Top Slice", referenceSummary.top_slice],
+      ["Bottom Slice", referenceSummary.bottom_slice],
+      ["Threshold Min HU", referenceSummary.threshold_min_hu],
+      ["Threshold Max HU", referenceSummary.threshold_max_hu],
+      ["Mean EAT Density HU", referenceSummary.mean_eat_density_hu ?? ""],
+      ["SD EAT Density HU", referenceSummary.sd_eat_density_hu ?? ""],
+    ];
+    const reconstructionHeader = [
+      "study_id",
+      "research_study_id",
+      "research_study_label",
+      "reconstruction",
+      "series_number",
+      "series_description",
+      "convolution_kernel",
+      "transfer_source",
+      "transfer_mode",
+      "acquired",
+      "total_slices",
+      "top_slice",
+      "bottom_slice",
+      "reviewed_slices",
+      "missing_slices",
+      "total_eat_volume_ml",
+      "total_rubber_excluded_volume_ml",
+      "mean_eat_density_hu",
+      "sd_eat_density_hu",
+    ];
+    const sliceHeader = [
+      "study_id",
+      "research_study_id",
+      "research_study_label",
+      "reconstruction",
+      "series_number",
+      "series_description",
+      "convolution_kernel",
+      "transfer_source",
+      "transfer_mode",
+      "slice_number",
+      "status",
+      "contour_source",
+      "contour_area_mm2",
+      "eat_area_mm2",
+      "eat_volume_ml",
+      "eat_pixel_count",
+      "rubber_excluded_area_mm2",
+      "rubber_excluded_volume_ml",
+      "rubber_excluded_pixel_count",
+      "mean_density_hu",
+      "density_sd_hu",
+      "min_density_hu",
+      "max_density_hu",
+    ];
+    const reconstructionRows = reportSet.reports.map((report) => {
+      const row = {
+        study_id: reportSet.studyId || "",
+        research_study_id: reportSet.researchStudyId || "",
+        research_study_label: reportSet.researchStudyLabel || "",
+        reconstruction: report.reconstruction_label,
+        series_number: report.series_number_raw || report.series_number || "",
+        series_description: report.series_description || "",
+        convolution_kernel: report.convolution_kernel || "",
+        transfer_source: report.transfer_source || "",
+        transfer_mode: report.transfer_mode || "",
+        ...report.summary,
+      };
+      return reconstructionHeader.map((key) => row[key] == null ? "" : row[key]);
+    });
+    const sliceRows = reportSet.reports.flatMap((report) =>
+      report.slices.map((slice) => {
+        const row = {
+          study_id: reportSet.studyId || "",
+          research_study_id: reportSet.researchStudyId || "",
+          research_study_label: reportSet.researchStudyLabel || "",
+          reconstruction: report.reconstruction_label,
+          series_number: report.series_number_raw || report.series_number || "",
+          series_description: report.series_description || "",
+          convolution_kernel: report.convolution_kernel || "",
+          transfer_source: report.transfer_source || "",
+          transfer_mode: report.transfer_mode || "",
+          ...slice,
+        };
+        return sliceHeader.map((key) => row[key] == null ? "" : row[key]);
+      })
+    );
+    return [
+      { name: "summary", rows: [["field", "value"], ...summaryRows] },
+      { name: "reconstructions", rows: [reconstructionHeader, ...reconstructionRows] },
+      { name: "slices", rows: [sliceHeader, ...sliceRows] },
+    ];
   }
 
   function csvEscape(value) {
@@ -9486,7 +9620,7 @@
     ctx.fillText(`Density SD: ${report.summary.sd_eat_density_hu != null ? `${formatNumber(report.summary.sd_eat_density_hu, 1)} HU` : "-"}`, 550, 432 + tableHeight);
     ctx.fillText(`Transfer Mode: ${formatTransferModeLabel(report.transfer_mode)}`, 900, 432 + tableHeight);
     ctx.fillText(
-      report.transfer_warning || "Use the CSV export for the full slice-by-slice measurement table across all reconstructions.",
+      report.transfer_warning || "Use the data export for the full slice-by-slice measurement table across all reconstructions.",
       550,
       458 + tableHeight
     );
@@ -9522,6 +9656,13 @@
       filename: buildExportFilename("hagrad_eat", "csv", reportSet.studyId),
       blob: new Blob([buildCombinedCsv(reportSet)], { type: "text/csv;charset=utf-8" }),
     };
+  }
+
+  async function exportReportWorkbook(reportSet) {
+    return xlsxExportApi.buildXlsxFile({
+      filename: buildExportFilename("hagrad_eat", "xlsx", reportSet.studyId),
+      sheets: buildCombinedWorkbookSheets(reportSet),
+    });
   }
 
   function buildPrintReportFigures(reportSet) {
@@ -9694,14 +9835,15 @@
   }
 
   async function exportCsv(studyId, options) {
-    setStatus("Preparing CSV export...");
+    setStatus("Preparing workbook and CSV export...");
     const reportSet = options?.reportSet || (await buildCombinedExportReportSet({ studyId }));
     const csvFile = await exportReportCsv(reportSet);
-    await downloadExportBundle([csvFile], buildExportFilename("hagrad_eat", "zip", studyId), {
+    const workbookFile = await exportReportWorkbook(reportSet);
+    await downloadExportBundle([workbookFile, csvFile], buildExportFilename("hagrad_eat", "zip", studyId), {
       patientStudyId: studyId,
     });
     if (!options?.silent) {
-      setStatus(`CSV ZIP export complete for Study ID ${studyId}.`);
+      setStatus(`Workbook and CSV ZIP export complete for Study ID ${studyId}.`);
     }
     return { reportSet };
   }
@@ -9718,17 +9860,18 @@
       return;
     }
 
-    setStatus("Preparing PDF-ready report and CSV export...");
+    setStatus("Preparing PDF-ready report and workbook/CSV export...");
     const reportSet = await buildCombinedExportReportSet({ studyId });
     await printPdfReport(studyId, { reportSet, silent: true });
     const csvFile = await exportReportCsv(reportSet);
+    const workbookFile = await exportReportWorkbook(reportSet);
     await downloadExportBundle(
-      [csvFile],
+      [workbookFile, csvFile],
       buildExportFilename("hagrad_eat_finish_close", "zip", studyId),
       { patientStudyId: studyId }
     );
     clearStudy();
-    setStatus(`Finished Study ID ${studyId}. Report opened, CSV ZIP exported, and the current patient was closed.`);
+    setStatus(`Finished Study ID ${studyId}. Report opened, workbook/CSV ZIP exported, and the current patient was closed.`);
   }
 
   async function exportSession() {

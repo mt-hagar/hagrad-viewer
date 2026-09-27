@@ -31,7 +31,7 @@ It is not a validated commercial QCA system and is not trying to replace 3Mensio
   - reference diameter
   - percent diameter stenosis
   - lesion length
-- PNG and CSV export
+- PNG and XLSX workbook export
 
 ### Phase 2
 

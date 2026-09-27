@@ -335,19 +335,15 @@ const fileNames = bundle.files.map((file) => file.name).sort();
   "README.txt",
   "analysis_metadata.json",
   "nps_2d_matrix.json",
-  "noise_power_data.xls",
+  "square_roi_summary.csv",
+  "square_roi_profiles.csv",
+  "ttf_metrics.csv",
+  "ttf_curves.csv",
+  "nps_roi_summary.csv",
+  "nps_curve_1d.csv",
+  "nps_metrics.csv",
 ].forEach((name) => assert(fileNames.indexOf(name) >= 0, "Missing mandatory export file: " + name));
-assert(!fileNames.some((name) => /\.csv$/i.test(name)), "Tabular export should be consolidated into one Excel workbook, not separate CSV files.");
-const workbookFile = bundle.files.find((file) => file.name === "noise_power_data.xls");
-[
-  'ss:Name="Square ROI Summary"',
-  'ss:Name="Square ROI Profiles"',
-  'ss:Name="TTF Metrics"',
-  'ss:Name="TTF Curves"',
-  'ss:Name="NPS ROI Summary"',
-  'ss:Name="NPS Curve 1D"',
-  'ss:Name="NPS Metrics"',
-].forEach((marker) => assert(workbookFile.content.indexOf(marker) >= 0, "Excel workbook missing sheet marker: " + marker));
+assert(fileNames.some((name) => /\.csv$/i.test(name)), "Core export should preserve CSV tables for workbook conversion.");
 assert(bundle.squareRows.length === 1, "Export should include one square ROI summary row.");
 assert(bundle.ttfMetricsRows.length === 1, "Export should include one TTF metrics row per square ROI.");
 assert(bundle.npsRoiRows.length === exportLayout.rois.length, "Export should include one NPS ROI row per generated square.");

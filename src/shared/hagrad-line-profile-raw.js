@@ -97,10 +97,18 @@
     if (!volume || !Array.isArray(world)) {
       return null;
     }
-    const origin = Array.isArray(volume.origin) ? volume.origin : [0, 0, 0];
+    const origin = Array.isArray(volume.originWorld)
+      ? volume.originWorld
+      : Array.isArray(volume.origin)
+        ? volume.origin
+        : [0, 0, 0];
     const rowDirection = Array.isArray(volume.rowDirection) ? volume.rowDirection : [1, 0, 0];
     const columnDirection = Array.isArray(volume.columnDirection) ? volume.columnDirection : [0, 1, 0];
-    const normal = Array.isArray(volume.normal) ? volume.normal : [0, 0, 1];
+    const normal = Array.isArray(volume.normalDirection)
+      ? volume.normalDirection
+      : Array.isArray(volume.normal)
+        ? volume.normal
+        : [0, 0, 1];
     const columnSpacing = toNumber(volume.columnSpacing, toNumber(volume.spacingX, 1)) || 1;
     const rowSpacing = toNumber(volume.rowSpacing, toNumber(volume.spacingY, 1)) || 1;
     const sliceSpacing = toNumber(volume.sliceSpacing, toNumber(volume.spacingZ, 1)) || 1;

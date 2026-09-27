@@ -1,4 +1,4 @@
-# HAGRad Viewer v0.9.1-research-preview
+# HAGRad Viewer v0.9.2-research-preview
 
 ## Release Type
 
@@ -10,6 +10,11 @@ This release is intended to make HAGRad citable, downloadable, and testable by c
 
 This build refreshes the HAGRad Viewer workflow shell and adds new research tools:
 
+- Adds a shared true `.xlsx` workbook export engine used across HAGRad Viewer, Image Quality / CCTA IQ, EAT, QCA, NoiseLab, and Noise Power outputs.
+- Replaces the main Viewer's separate measurement, raw-profile, baseline, cine, and finish/close actions with one Study ID-driven ZIP export dialog.
+- Adds workbook-ready `rest` sheets, source-series metadata, reconstruction descriptions, convolution kernels, and optional embedded measurement thumbnails for downstream research review.
+- Adds workbook companions for NoiseLab and Noise Power CSV table exports while preserving local ZIP export behavior.
+- Updates QCA, EAT, and CCTA IQ exports to use real `.xlsx` workbook files instead of legacy Excel XML `.xls` files.
 - Adds `Line Profile Raw` for source-voxel HU sampling along user-drawn research profile lines.
 - Adds `Export Raw Profiles`, an Excel-readable research workbook export with summary rows, raw sample tables, and DICOM metadata sheets.
 - Adds DICOM compatibility diagnostics for transfer syntax, pixel storage, lossy compression tags, and direct-volume sampling support.
@@ -42,7 +47,7 @@ This build refreshes the HAGRad Viewer workflow shell and adds new research tool
 
 ## Public Website Draft
 
-This release bundle includes a static `website/` folder for a future HAGRad public landing page. The
+This release bundle includes the static `docs/` website used by GitHub Pages. The
 page contains workflow summaries, research-use-only language, citation positioning, and configurable
 macOS/Windows download buttons that can be connected to GitHub release assets.
 
@@ -92,7 +97,7 @@ See `DISCLAIMER.md` and `LICENSE.md` before use.
 
 ## Suggested Software Citation
 
-HAGRad Viewer, version 0.9.1-research-preview. HAGRad contributors, 2026. Research-use software for local cardiovascular image analysis.
+HAGRad Viewer, version 0.9.2-research-preview. HAGRad contributors, 2026. Research-use software for local cardiovascular image analysis.
 
 ## Known Limitations
 

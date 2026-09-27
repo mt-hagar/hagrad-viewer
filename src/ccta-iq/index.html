@@ -887,7 +887,7 @@
             <div class="section-header">
               <div class="section-header-main">
                 <h2>Export</h2>
-                <span class="section-note">PNG and CSV output</span>
+                <span class="section-note">PNG and workbook output</span>
               </div>
               <button class="section-toggle" data-section-toggle type="button" aria-expanded="false">+</button>
             </div>
@@ -906,14 +906,14 @@
                 </button>
               </div>
               <p class="hint">
-                `Export Measurements` downloads one combined PNG plus a CSV that opens in Excel.
+                `Export Measurements` downloads one combined PNG plus an Excel-readable workbook.
               </p>
               <p class="hint">
                 Before measurement export, HAGRad asks for a `Study ID`. That value is written into
-                the PNG header and becomes the first column in the measurement CSV.
+                the PNG header and becomes the first column in the measurement workbook.
               </p>
               <p class="hint">
-                `Export Baseline Characteristics` creates a structured CSV from the loaded DICOM
+                `Export Baseline Characteristics` creates a structured workbook from the loaded DICOM
                 headers, reconstruction metadata, computed scan geometry, and any dose or contrast
                 reports that were included in the loaded files.
               </p>
@@ -1554,7 +1554,7 @@
             <p class="eyebrow">HAGRad Viewer</p>
             <h2 id="measurement-export-title">Export Measurements</h2>
             <p id="measurement-export-copy" class="modal-text">
-              Assign a `Study ID` before exporting. HAGRad will place it into the first CSV column
+              Assign a `Study ID` before exporting. HAGRad will place it into the first workbook column
               and show it in the exported PNG header.
             </p>
           </div>
@@ -1601,7 +1601,7 @@
 
         <footer class="modal-actions">
           <button id="measurement-export-cancel-button" class="button secondary" type="button">Cancel</button>
-          <button id="measurement-export-confirm-button" class="button primary" type="button">Export PNG + CSV</button>
+          <button id="measurement-export-confirm-button" class="button primary" type="button">Export PNG + Workbook</button>
         </footer>
       </section>
     </div>
@@ -1620,7 +1620,7 @@
             <p class="eyebrow">HAGRad Viewer</p>
             <h2 id="baseline-export-title">Export Baseline Characteristics</h2>
             <p id="baseline-export-copy" class="modal-text">
-              Choose which broad groups should be included in the CSV. All groups are enabled by
+              Choose which broad groups should be included in the workbook. All groups are enabled by
               default, and you can turn off sections like contrast or radiation before export.
             </p>
           </div>
@@ -1661,7 +1661,7 @@
             />
           </label>
           <p class="hint">
-            This `Study ID` will be added to the CSV filename and written into the first CSV column.
+            This `Study ID` will be added to the workbook filename and written into the first workbook column.
           </p>
 
           <label class="modal-option-card" for="baseline-group-patient-study">
@@ -1699,7 +1699,7 @@
 
         <footer class="modal-actions">
           <button id="baseline-export-cancel-button" class="button secondary" type="button">Cancel</button>
-          <button id="baseline-export-confirm-button" class="button primary" type="button">Export CSV</button>
+          <button id="baseline-export-confirm-button" class="button primary" type="button">Export Workbook</button>
         </footer>
       </section>
     </div>
@@ -1713,6 +1713,7 @@
     <script src="/src/shared/hagrad-profile-analysis.js"></script>
     <script src="/src/shared/hagrad-export-studies.js?v=20260523-optional-backend-fallback"></script>
     <script src="/src/shared/hagrad-zip.js"></script>
+    <script src="/src/shared/hagrad-xlsx-export.js?v=20260926-real-xlsx"></script>
     <script src="/src/shared/hagrad-overlay-style.js"></script>
     <script src="/src/shared/hagrad-workflow-switcher.js?v=20260519-workflow-shell"></script>
     <script src="/src/ccta-iq/ccta-iq.js?v=20260517-mpr-sync-footerless"></script>

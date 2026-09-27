@@ -2502,6 +2502,10 @@
     analyzeProfileSamples,
   } = sharedProfileAnalysis;
   const exportStudyApi = window.HAGRadExportStudies || null;
+  const xlsxExportApi = window.HAGRadXlsxExport;
+  if (!xlsxExportApi) {
+    throw new Error("Missing shared XLSX export script: /src/shared/hagrad-xlsx-export.js");
+  }
   const overlayStyle = window.HAGRadOverlayStyle || null;
 
   function readDicomNumber(dataSet, tag) {
@@ -12904,14 +12908,6 @@
     setStatus(`Cine clip exported as a ZIP bundle containing ${cineFormat.extension.toUpperCase()}.`);
   }
 
-  function csvEscape(value) {
-    if (value == null || value === "") {
-      return "";
-    }
-    const text = String(value);
-    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-  }
-
   function mergeSourceRecords(existingRecords, nextRecords) {
     const byKey = new Map((existingRecords || []).map((record) => [record.sourceKey, record]));
     (nextRecords || []).forEach((record) => {
@@ -13365,46 +13361,6 @@
     return rows.filter((row) => enabledGroups.has(getBaselineExportGroupForRow(row)));
   }
 
-  function buildBaselineCharacteristicsCsv(rows, studyId) {
-    const headers = [
-      "study_id",
-      "research_study_id",
-      "research_study_label",
-      "section",
-      "scope_type",
-      "scope_label",
-      "reconstruction_label",
-      "source_file",
-      "modality",
-      "field_group",
-      "field_name",
-      "value",
-      "unit",
-      "source",
-      "notes",
-    ];
-
-    const csvRows = rows.map((row) => [
-      studyId || "",
-      row.research_study_id || "",
-      row.research_study_label || "",
-      row.section,
-      row.scope_type,
-      row.scope_label,
-      row.reconstruction_label,
-      row.source_file,
-      row.modality,
-      row.field_group,
-      row.field_name,
-      row.value,
-      row.unit,
-      row.source,
-      row.notes,
-    ]);
-
-    return [headers, ...csvRows].map((row) => row.map(csvEscape).join(",")).join("\n");
-  }
-
   function getBaselineCharacteristicsHeaders() {
     return [
       "study_id",
@@ -13731,6 +13687,16 @@
     return formatNumberForCsv(seriesNumber, 0);
   }
 
+  function getReconstructionSeriesDescriptionForExport(reconstruction) {
+    const record = reconstruction?.records?.[0] || {};
+    return record.seriesDescription || reconstruction?.label || "";
+  }
+
+  function getReconstructionConvolutionKernelForExport(reconstruction) {
+    const record = reconstruction?.records?.find((entry) => entry.convolutionKernel) || reconstruction?.records?.[0] || {};
+    return record.convolutionKernel || "";
+  }
+
   function buildIqObjectiveExportBaseRow(researchStudyId, patientStudyId, exportStudy, summary, reconstruction, seriesNumber) {
     return {
       research_study_id: researchStudyId,
@@ -13741,6 +13707,8 @@
       objective_model_label: summary.modelLabel,
       reconstruction_label: reconstruction.label,
       series_number: seriesNumber,
+      series_description: getReconstructionSeriesDescriptionForExport(reconstruction),
+      convolution_kernel: getReconstructionConvolutionKernelForExport(reconstruction),
     };
   }
 
@@ -13810,6 +13778,8 @@
       "objective_model_label",
       "reconstruction_label",
       "series_number",
+      "series_description",
+      "convolution_kernel",
       "target_order",
       "target_id",
       "target_rule_label",
@@ -13924,6 +13894,8 @@
       "export_study_label",
       "reconstruction_label",
       "series_number",
+      "series_description",
+      "convolution_kernel",
       "category_order",
       "question_key",
       "question_label",
@@ -13937,6 +13909,8 @@
     const rows = [];
     state.reconstructions.forEach((reconstruction) => {
       const seriesNumber = getReconstructionSeriesNumberForExport(reconstruction);
+      const seriesDescription = getReconstructionSeriesDescriptionForExport(reconstruction);
+      const convolutionKernel = getReconstructionConvolutionKernelForExport(reconstruction);
       const scores = getIqSubjectiveScoresForReconstruction(reconstruction.id);
       IQ_SUBJECTIVE_FIELDS.forEach((field, index) => {
         const score = scores[field.key];
@@ -13948,6 +13922,8 @@
           exportStudy.label,
           reconstruction.label,
           seriesNumber,
+          seriesDescription,
+          convolutionKernel,
           index + 1,
           field.key,
           field.label,
@@ -13961,65 +13937,6 @@
       });
     });
     return [headers, ...rows];
-  }
-
-  function xmlEscape(value) {
-    return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&apos;");
-  }
-
-  function normalizeWorkbookCellValue(value) {
-    if (value == null) {
-      return "";
-    }
-    return typeof value === "string" ? value : String(value);
-  }
-
-  function getWorkbookCellType(value) {
-    return typeof value === "number" && Number.isFinite(value) ? "Number" : "String";
-  }
-
-  function buildSpreadsheetWorkbookXml(sheets) {
-    const validSheets = (sheets || []).filter((sheet) => safeString(sheet?.name) && Array.isArray(sheet?.rows) && sheet.rows.length);
-    const worksheetXml = validSheets.map((sheet) => {
-      const sheetName = safeString(sheet.name).replace(/[\\/:*?\[\]]/g, "_").slice(0, 31) || "Sheet";
-      const maxColumns = Math.max(...sheet.rows.map((row) => row.length), 0);
-      const rowXml = sheet.rows.map((row, rowIndex) => {
-        const cells = row.map((cell) => {
-          const cellValue = normalizeWorkbookCellValue(cell);
-          const type = rowIndex === 0 ? "String" : getWorkbookCellType(cell);
-          const styleId = rowIndex === 0 ? ' ss:StyleID="Header"' : "";
-          return `<Cell${styleId}><Data ss:Type="${type}">${xmlEscape(cellValue)}</Data></Cell>`;
-        }).join("");
-        return `<Row>${cells}</Row>`;
-      }).join("");
-      return `<Worksheet ss:Name="${xmlEscape(sheetName)}"><Table ss:ExpandedColumnCount="${maxColumns}" ss:ExpandedRowCount="${sheet.rows.length}" x:FullColumns="1" x:FullRows="1">${rowXml}</Table></Worksheet>`;
-    }).join("");
-
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:o="urn:schemas-microsoft-com:office:office"
- xmlns:x="urn:schemas-microsoft-com:office:excel"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:html="http://www.w3.org/TR/REC-html40">
- <Styles>
-  <Style ss:ID="Default" ss:Name="Normal">
-   <Alignment ss:Vertical="Center"/>
-   <Font ss:FontName="Aptos" ss:Size="11" ss:Color="#0b1720"/>
-   <Interior/>
-  </Style>
-  <Style ss:ID="Header">
-   <Font ss:FontName="Aptos" ss:Size="11" ss:Bold="1" ss:Color="#f4f8fb"/>
-   <Interior ss:Color="#0f2230" ss:Pattern="Solid"/>
-  </Style>
- </Styles>
- ${worksheetXml}
-</Workbook>`;
   }
 
   function buildIqReviewCanvas() {
@@ -14348,10 +14265,10 @@
 
     const exportFiles = [];
     if (workbookSheets.length) {
-      exportFiles.push({
-        filename: `${buildIqExportBaseName(patientStudyId, "iq_results")}.xls`,
-        blob: new Blob([buildSpreadsheetWorkbookXml(workbookSheets)], { type: "application/vnd.ms-excel;charset=utf-8" }),
-      });
+      exportFiles.push(await xlsxExportApi.buildXlsxFile({
+        filename: `${buildIqExportBaseName(patientStudyId, "iq_results")}.xlsx`,
+        sheets: workbookSheets,
+      }));
     }
     if (shouldExportSummaryPng) {
       exportFiles.push({
@@ -14421,9 +14338,9 @@
     };
     els.measurementExportTitle.textContent = finishClose ? "Finish & Close" : "Export Measurements";
     els.measurementExportCopy.textContent = finishClose
-      ? "Assign a Study ID before exporting. HAGRad will export the measurement PNG and CSV, then close the current patient."
-      : "Assign a Study ID before exporting. HAGRad will place it into the first CSV column and show it in the exported PNG header.";
-    els.measurementExportConfirmButton.textContent = finishClose ? "Export, Finish & Close" : "Export PNG + CSV";
+      ? "Assign a Study ID before exporting. HAGRad will export the measurement PNG and workbook, then close the current patient."
+      : "Assign a Study ID before exporting. HAGRad will place it into the first workbook column and show it in the exported PNG header.";
+    els.measurementExportConfirmButton.textContent = finishClose ? "Export, Finish & Close" : "Export PNG + Workbook";
     els.measurementExportStudyIdInput.value = suggestMeasurementStudyId();
     refreshExportStudyOptions().catch((error) => {
       console.error(error);
@@ -14472,25 +14389,28 @@
 
     const headers = getBaselineCharacteristicsHeaders();
     const researchStudy = getSelectedExportStudyMetadata();
-    const enrichedRows = filteredRows.map((row) => ({
-      ...row,
-      research_study_id: researchStudy.id || "",
-      research_study_label: researchStudy.label || "",
-    }));
-    const csv = buildBaselineCharacteristicsCsv(enrichedRows, studyId);
-    const csvFilename = buildExportFilename("baseline_characteristics", "csv", { studyId });
-    await downloadExportBundle(
-      [{ filename: csvFilename, blob: new Blob([csv], { type: "text/csv;charset=utf-8" }) }],
-      buildExportFilename("baseline_characteristics", "zip", { studyId }),
-      { patientStudyId: studyId }
-    );
-
     const projectRows = filteredRows.map((row) => ({
       study_id: studyId || "",
       research_study_id: researchStudy.id || "",
       research_study_label: researchStudy.label || "",
       ...row,
     }));
+    const workbookFile = await xlsxExportApi.buildXlsxFile({
+      filename: buildExportFilename("baseline_characteristics", "xlsx", { studyId }),
+      sheets: [
+        {
+          name: "baseline_characteristics",
+          headers,
+          rows: projectRows,
+        },
+      ],
+    });
+    await downloadExportBundle(
+      [workbookFile],
+      buildExportFilename("baseline_characteristics", "zip", { studyId }),
+      { patientStudyId: studyId }
+    );
+
     const projectResult = await appendExportToActiveProject("baseline_characteristics", headers, projectRows);
     if (projectResult?.case) {
       const existing = getMatchingProjectCase(projectResult.case.case_id) || {};
@@ -14507,7 +14427,7 @@
     setStatus(
       projectResult
         ? `Baseline characteristics ZIP exported for ${studyId || "the current study"} and appended to ${projectResult.project.name} as ${projectResult.case.case_id}.`
-        : `Exported baseline characteristics ZIP with ${filteredRows.length} CSV row${filteredRows.length === 1 ? "" : "s"} from ${state.reconstructions.length} reconstruction${state.reconstructions.length === 1 ? "" : "s"} and ${reportCount} report file${reportCount === 1 ? "" : "s"}${studyId ? ` for ${studyId}` : ""}.`
+        : `Exported baseline characteristics workbook ZIP with ${filteredRows.length} row${filteredRows.length === 1 ? "" : "s"} from ${state.reconstructions.length} reconstruction${state.reconstructions.length === 1 ? "" : "s"} and ${reportCount} report file${reportCount === 1 ? "" : "s"}${studyId ? ` for ${studyId}` : ""}.`
     );
   }
 
@@ -14547,7 +14467,10 @@
       "display_name",
       "type",
       "plane",
+      "series_number",
+      "series_description",
       "reconstruction",
+      "convolution_kernel",
       "length_mm",
       "probe_hu",
       "mean_hu",
@@ -14592,69 +14515,71 @@
       "lower_slope_kurtosis",
     ];
 
-    const rows = entries.map((entry) => ({
-      study_id: studyId || "",
-      research_study_id: researchStudy.id || "",
-      research_study_label: researchStudy.label || "",
-      label: entry.label,
-      order: entry.order,
-      annotation_id: entry.annotation.id,
-      custom_name: entry.annotation.customName || "",
-      display_name: entry.displayName || "",
-      type: formatMeasurementType(entry.annotation),
-      plane: entry.annotation.plane,
-      reconstruction: entry.reconstruction?.label || "",
-      length_mm: entry.summary.lengthMm != null ? entry.summary.lengthMm.toFixed(2) : "",
-      probe_hu: entry.summary.hu != null ? Math.round(entry.summary.hu) : "",
-      mean_hu: entry.summary.mean != null ? entry.summary.mean.toFixed(2) : "",
-      sd_hu: entry.summary.sd != null ? entry.summary.sd.toFixed(2) : "",
-      area_mm2: entry.summary.areaMm2 != null ? entry.summary.areaMm2.toFixed(2) : "",
-      vertex_count: entry.summary.vertexCount != null ? entry.summary.vertexCount : "",
-      profile_length_mm: entry.summary.profileLengthMm != null ? entry.summary.profileLengthMm.toFixed(2) : "",
-      profile_width_mm: entry.summary.profileWidthMm != null ? entry.summary.profileWidthMm.toFixed(2) : "",
-      profile_axis: entry.summary.profileAxis || "",
-      profile_samples: entry.summary.sampleCount != null ? entry.summary.sampleCount : "",
-      profile_adjustment_mode: entry.summary.profileAdjustmentMode || "",
-      left_outer_anchor_mm: entry.summary.leftOuterAnchorMm != null ? entry.summary.leftOuterAnchorMm.toFixed(3) : "",
-      left_peak_anchor_mm: entry.summary.leftPeakAnchorMm != null ? entry.summary.leftPeakAnchorMm.toFixed(3) : "",
-      lumen_anchor_mm: entry.summary.lumenAnchorMm != null ? entry.summary.lumenAnchorMm.toFixed(3) : "",
-      right_peak_anchor_mm: entry.summary.rightPeakAnchorMm != null ? entry.summary.rightPeakAnchorMm.toFixed(3) : "",
-      right_outer_anchor_mm: entry.summary.rightOuterAnchorMm != null ? entry.summary.rightOuterAnchorMm.toFixed(3) : "",
-      peak1_hu: entry.summary.peak1Hu != null ? entry.summary.peak1Hu.toFixed(1) : "",
-      peak2_hu: entry.summary.peak2Hu != null ? entry.summary.peak2Hu.toFixed(1) : "",
-      lumen_baseline_hu: entry.summary.lumenBaselineHu != null ? entry.summary.lumenBaselineHu.toFixed(1) : "",
-      stent_fwhm_left_mm: entry.summary.stentFwhmLeftMm != null ? entry.summary.stentFwhmLeftMm.toFixed(3) : "",
-      stent_fwhm_right_mm: entry.summary.stentFwhmRightMm != null ? entry.summary.stentFwhmRightMm.toFixed(3) : "",
-      stent_fwhm_mean_mm: entry.summary.stentFwhmMeanMm != null ? entry.summary.stentFwhmMeanMm.toFixed(3) : "",
-      lumen_fwhm_mm: entry.summary.lumenFwhmMm != null ? entry.summary.lumenFwhmMm.toFixed(3) : "",
-      edge_left_rise_10_90_mm: entry.summary.edgeLeftRise10To90Mm != null ? entry.summary.edgeLeftRise10To90Mm.toFixed(3) : "",
-      edge_left_slope_hu_per_mm: entry.summary.edgeLeftSlopeHuPerMm != null ? entry.summary.edgeLeftSlopeHuPerMm.toFixed(3) : "",
-      edge_left_kurtosis: entry.summary.edgeLeftKurtosis != null ? entry.summary.edgeLeftKurtosis.toFixed(4) : "",
-      edge_right_rise_10_90_mm: entry.summary.edgeRightRise10To90Mm != null ? entry.summary.edgeRightRise10To90Mm.toFixed(3) : "",
-      edge_right_slope_hu_per_mm: entry.summary.edgeRightSlopeHuPerMm != null ? entry.summary.edgeRightSlopeHuPerMm.toFixed(3) : "",
-      edge_right_kurtosis: entry.summary.edgeRightKurtosis != null ? entry.summary.edgeRightKurtosis.toFixed(4) : "",
-      edge1_fwhm_mm: entry.summary.edge1FwhmMm != null ? entry.summary.edge1FwhmMm.toFixed(3) : "",
-      edge1_rise_10_90_mm: entry.summary.edge1Rise10To90Mm != null ? entry.summary.edge1Rise10To90Mm.toFixed(3) : "",
-      edge1_slope_hu_per_mm: entry.summary.edge1SlopeHuPerMm != null ? entry.summary.edge1SlopeHuPerMm.toFixed(3) : "",
-      edge1_kurtosis: entry.summary.edge1Kurtosis != null ? entry.summary.edge1Kurtosis.toFixed(4) : "",
-      edge2_fwhm_mm: entry.summary.edge2FwhmMm != null ? entry.summary.edge2FwhmMm.toFixed(3) : "",
-      edge2_rise_10_90_mm: entry.summary.edge2Rise10To90Mm != null ? entry.summary.edge2Rise10To90Mm.toFixed(3) : "",
-      edge2_slope_hu_per_mm: entry.summary.edge2SlopeHuPerMm != null ? entry.summary.edge2SlopeHuPerMm.toFixed(3) : "",
-      edge2_kurtosis: entry.summary.edge2Kurtosis != null ? entry.summary.edge2Kurtosis.toFixed(4) : "",
-      lower_slope_edge: entry.summary.lowerSlopeEdgeLabel || "",
-      lower_slope_fwhm_mm: entry.summary.lowerSlopeFwhmMm != null ? entry.summary.lowerSlopeFwhmMm.toFixed(3) : "",
-      lower_slope_rise_10_90_mm: entry.summary.lowerSlopeRise10To90Mm != null ? entry.summary.lowerSlopeRise10To90Mm.toFixed(3) : "",
-      lower_slope_hu_per_mm: entry.summary.lowerSlopeHuPerMm != null ? entry.summary.lowerSlopeHuPerMm.toFixed(3) : "",
-      lower_slope_kurtosis: entry.summary.lowerSlopeKurtosis != null ? entry.summary.lowerSlopeKurtosis.toFixed(4) : "",
-    }));
+    const rows = entries.map((entry) => {
+      const seriesNumber = getReconstructionSeriesNumberForExport(entry.reconstruction);
+      const seriesDescription = getReconstructionSeriesDescriptionForExport(entry.reconstruction);
+      const convolutionKernel = getReconstructionConvolutionKernelForExport(entry.reconstruction);
+      return {
+        study_id: studyId || "",
+        research_study_id: researchStudy.id || "",
+        research_study_label: researchStudy.label || "",
+        label: entry.label,
+        order: entry.order,
+        annotation_id: entry.annotation.id,
+        custom_name: entry.annotation.customName || "",
+        display_name: entry.displayName || "",
+        type: formatMeasurementType(entry.annotation),
+        plane: entry.annotation.plane,
+        series_number: seriesNumber,
+        series_description: seriesDescription,
+        reconstruction: entry.reconstruction?.label || "",
+        convolution_kernel: convolutionKernel,
+        length_mm: entry.summary.lengthMm != null ? entry.summary.lengthMm.toFixed(2) : "",
+        probe_hu: entry.summary.hu != null ? Math.round(entry.summary.hu) : "",
+        mean_hu: entry.summary.mean != null ? entry.summary.mean.toFixed(2) : "",
+        sd_hu: entry.summary.sd != null ? entry.summary.sd.toFixed(2) : "",
+        area_mm2: entry.summary.areaMm2 != null ? entry.summary.areaMm2.toFixed(2) : "",
+        vertex_count: entry.summary.vertexCount != null ? entry.summary.vertexCount : "",
+        profile_length_mm: entry.summary.profileLengthMm != null ? entry.summary.profileLengthMm.toFixed(2) : "",
+        profile_width_mm: entry.summary.profileWidthMm != null ? entry.summary.profileWidthMm.toFixed(2) : "",
+        profile_axis: entry.summary.profileAxis || "",
+        profile_samples: entry.summary.sampleCount != null ? entry.summary.sampleCount : "",
+        profile_adjustment_mode: entry.summary.profileAdjustmentMode || "",
+        left_outer_anchor_mm: entry.summary.leftOuterAnchorMm != null ? entry.summary.leftOuterAnchorMm.toFixed(3) : "",
+        left_peak_anchor_mm: entry.summary.leftPeakAnchorMm != null ? entry.summary.leftPeakAnchorMm.toFixed(3) : "",
+        lumen_anchor_mm: entry.summary.lumenAnchorMm != null ? entry.summary.lumenAnchorMm.toFixed(3) : "",
+        right_peak_anchor_mm: entry.summary.rightPeakAnchorMm != null ? entry.summary.rightPeakAnchorMm.toFixed(3) : "",
+        right_outer_anchor_mm: entry.summary.rightOuterAnchorMm != null ? entry.summary.rightOuterAnchorMm.toFixed(3) : "",
+        peak1_hu: entry.summary.peak1Hu != null ? entry.summary.peak1Hu.toFixed(1) : "",
+        peak2_hu: entry.summary.peak2Hu != null ? entry.summary.peak2Hu.toFixed(1) : "",
+        lumen_baseline_hu: entry.summary.lumenBaselineHu != null ? entry.summary.lumenBaselineHu.toFixed(1) : "",
+        stent_fwhm_left_mm: entry.summary.stentFwhmLeftMm != null ? entry.summary.stentFwhmLeftMm.toFixed(3) : "",
+        stent_fwhm_right_mm: entry.summary.stentFwhmRightMm != null ? entry.summary.stentFwhmRightMm.toFixed(3) : "",
+        stent_fwhm_mean_mm: entry.summary.stentFwhmMeanMm != null ? entry.summary.stentFwhmMeanMm.toFixed(3) : "",
+        lumen_fwhm_mm: entry.summary.lumenFwhmMm != null ? entry.summary.lumenFwhmMm.toFixed(3) : "",
+        edge_left_rise_10_90_mm: entry.summary.edgeLeftRise10To90Mm != null ? entry.summary.edgeLeftRise10To90Mm.toFixed(3) : "",
+        edge_left_slope_hu_per_mm: entry.summary.edgeLeftSlopeHuPerMm != null ? entry.summary.edgeLeftSlopeHuPerMm.toFixed(3) : "",
+        edge_left_kurtosis: entry.summary.edgeLeftKurtosis != null ? entry.summary.edgeLeftKurtosis.toFixed(4) : "",
+        edge_right_rise_10_90_mm: entry.summary.edgeRightRise10To90Mm != null ? entry.summary.edgeRightRise10To90Mm.toFixed(3) : "",
+        edge_right_slope_hu_per_mm: entry.summary.edgeRightSlopeHuPerMm != null ? entry.summary.edgeRightSlopeHuPerMm.toFixed(3) : "",
+        edge_right_kurtosis: entry.summary.edgeRightKurtosis != null ? entry.summary.edgeRightKurtosis.toFixed(4) : "",
+        edge1_fwhm_mm: entry.summary.edge1FwhmMm != null ? entry.summary.edge1FwhmMm.toFixed(3) : "",
+        edge1_rise_10_90_mm: entry.summary.edge1Rise10To90Mm != null ? entry.summary.edge1Rise10To90Mm.toFixed(3) : "",
+        edge1_slope_hu_per_mm: entry.summary.edge1SlopeHuPerMm != null ? entry.summary.edge1SlopeHuPerMm.toFixed(3) : "",
+        edge1_kurtosis: entry.summary.edge1Kurtosis != null ? entry.summary.edge1Kurtosis.toFixed(4) : "",
+        edge2_fwhm_mm: entry.summary.edge2FwhmMm != null ? entry.summary.edge2FwhmMm.toFixed(3) : "",
+        edge2_rise_10_90_mm: entry.summary.edge2Rise10To90Mm != null ? entry.summary.edge2Rise10To90Mm.toFixed(3) : "",
+        edge2_slope_hu_per_mm: entry.summary.edge2SlopeHuPerMm != null ? entry.summary.edge2SlopeHuPerMm.toFixed(3) : "",
+        edge2_kurtosis: entry.summary.edge2Kurtosis != null ? entry.summary.edge2Kurtosis.toFixed(4) : "",
+        lower_slope_edge: entry.summary.lowerSlopeEdgeLabel || "",
+        lower_slope_fwhm_mm: entry.summary.lowerSlopeFwhmMm != null ? entry.summary.lowerSlopeFwhmMm.toFixed(3) : "",
+        lower_slope_rise_10_90_mm: entry.summary.lowerSlopeRise10To90Mm != null ? entry.summary.lowerSlopeRise10To90Mm.toFixed(3) : "",
+        lower_slope_hu_per_mm: entry.summary.lowerSlopeHuPerMm != null ? entry.summary.lowerSlopeHuPerMm.toFixed(3) : "",
+        lower_slope_kurtosis: entry.summary.lowerSlopeKurtosis != null ? entry.summary.lowerSlopeKurtosis.toFixed(4) : "",
+      };
+    });
 
     return { headers, rows };
-  }
-
-  function buildMeasurementsCsv(entries, studyId) {
-    const table = buildMeasurementsTable(entries, studyId);
-    const csvRows = table.rows.map((row) => table.headers.map((header) => row[header] ?? ""));
-    return [table.headers, ...csvRows].map((row) => row.map(csvEscape).join(",")).join("\n");
   }
 
   function drawMeasurementTag(ctx, label) {
@@ -14790,13 +14715,18 @@
 
     const pngFile = await exportMeasurementsPng(entries, studyId, { returnFile: true });
     const table = buildMeasurementsTable(entries, studyId);
-    const csv = buildMeasurementsCsv(entries, studyId);
-    const csvFile = {
-      filename: buildExportFilename("measurements", "csv", { studyId }),
-      blob: new Blob([csv], { type: "text/csv;charset=utf-8" }),
-    };
+    const workbookFile = await xlsxExportApi.buildXlsxFile({
+      filename: buildExportFilename("measurements", "xlsx", { studyId }),
+      sheets: [
+        {
+          name: "measurements",
+          headers: table.headers,
+          rows: table.rows,
+        },
+      ],
+    });
     await downloadExportBundle(
-      [pngFile, csvFile],
+      [pngFile, workbookFile],
       buildExportFilename("measurements", "zip", { studyId }),
       { patientStudyId: studyId }
     );
@@ -14815,7 +14745,7 @@
     const statusMessage =
       projectResult
         ? `Measurement ZIP exported and appended to ${projectResult.project.name} as ${projectResult.case.case_id}.`
-        : `Exported ${entries.length} measurements from ${reconstructionCount} reconstruction${reconstructionCount === 1 ? "" : "s"} as a ZIP bundle with PNG and CSV for ${studyId}.`;
+        : `Exported ${entries.length} measurements from ${reconstructionCount} reconstruction${reconstructionCount === 1 ? "" : "s"} as a ZIP bundle with PNG and workbook for ${studyId}.`;
     if (options?.closeAfterExport) {
       clearStudy();
       setStatus(`Exported a measurement ZIP for ${studyId} and closed the current study.`);

@@ -375,6 +375,7 @@
     },
     exportStudies: [],
     currentExportStudyId: "",
+    pendingExport: null,
     uiMode: "advanced",
     activeSidebarTab: "case",
     activeReconId: null,
@@ -487,6 +488,10 @@
   const sharedCore = window.HAGRadCore;
   if (!sharedCore) {
     throw new Error("Missing shared core script: /src/shared/hagrad-core.js");
+  }
+  const xlsxExportApi = window.HAGRadXlsxExport;
+  if (!xlsxExportApi) {
+    throw new Error("Missing shared XLSX export script: /src/shared/hagrad-xlsx-export.js");
   }
   const {
     clamp,
@@ -712,31 +717,21 @@
     els.shortcutResetButton = document.getElementById("shortcut-reset-button");
     els.shortcutTableBody = document.getElementById("shortcut-table-body");
     els.voiReadout = document.getElementById("voi-readout");
-    els.exportCineButton = document.getElementById("export-cine-button");
-    els.exportMeasurementsButton = document.getElementById("export-measurements-button");
-    els.exportRawProfilesButton = document.getElementById("export-raw-profiles-button");
-    els.finishCloseButton = document.getElementById("finish-close-button");
-    els.exportBaselineButton = document.getElementById("export-baseline-button");
-    els.measurementExportModal = document.getElementById("measurement-export-modal");
-    els.measurementExportCloseButton = document.getElementById("measurement-export-close-button");
-    els.measurementExportCancelButton = document.getElementById("measurement-export-cancel-button");
-    els.measurementExportConfirmButton = document.getElementById("measurement-export-confirm-button");
-    els.measurementExportStudyIdInput = document.getElementById("measurement-export-study-id-input");
-    els.measurementExportStudySelect = document.getElementById("measurement-export-study-select");
-    els.measurementExportStudyCreateInput = document.getElementById("measurement-export-study-create-input");
-    els.measurementExportStudyCreateButton = document.getElementById("measurement-export-study-create-button");
-    els.measurementExportStudyTargetNote = document.getElementById("measurement-export-study-target-note");
-    els.measurementExportTitle = document.getElementById("measurement-export-title");
-    els.measurementExportCopy = document.getElementById("measurement-export-copy");
-    els.baselineExportModal = document.getElementById("baseline-export-modal");
-    els.baselineExportCloseButton = document.getElementById("baseline-export-close-button");
-    els.baselineExportCancelButton = document.getElementById("baseline-export-cancel-button");
-    els.baselineExportConfirmButton = document.getElementById("baseline-export-confirm-button");
-    els.baselineExportStudyIdInput = document.getElementById("baseline-export-study-id-input");
-    els.baselineExportStudySelect = document.getElementById("baseline-export-study-select");
-    els.baselineExportStudyCreateInput = document.getElementById("baseline-export-study-create-input");
-    els.baselineExportStudyCreateButton = document.getElementById("baseline-export-study-create-button");
-    els.baselineExportStudyTargetNote = document.getElementById("baseline-export-study-target-note");
+    els.exportButton = document.getElementById("export-button");
+    els.exportModal = document.getElementById("export-modal");
+    els.exportModalCloseButton = document.getElementById("export-modal-close-button");
+    els.exportModalCancelButton = document.getElementById("export-modal-cancel-button");
+    els.exportModalConfirmButton = document.getElementById("export-modal-confirm-button");
+    els.exportStudyIdInput = document.getElementById("export-study-id-input");
+    els.exportStudySelect = document.getElementById("export-study-select");
+    els.exportStudyCreateInput = document.getElementById("export-study-create-input");
+    els.exportStudyCreateButton = document.getElementById("export-study-create-button");
+    els.exportStudyTargetNote = document.getElementById("export-study-target-note");
+    els.exportOptionMeasurements = document.getElementById("export-option-measurements");
+    els.exportOptionRawProfiles = document.getElementById("export-option-raw-profiles");
+    els.exportOptionBaseline = document.getElementById("export-option-baseline");
+    els.exportOptionCine = document.getElementById("export-option-cine");
+    els.exportOptionFinishClose = document.getElementById("export-option-finish-close");
     els.baselineExportGroupInputs = BASELINE_EXPORT_GROUPS.reduce((accumulator, group) => {
       accumulator[group.id] = document.getElementById(group.inputId);
       return accumulator;
@@ -8191,11 +8186,15 @@
     if (!sampled) {
       return null;
     }
+    const rawValues = Array.isArray(sampled.valuesHu) ? sampled.valuesHu : [];
+    const displaySmoothHu = rawValues.length >= 3 ? smoothSeries(rawValues, 1) : [];
     return {
       mode: "line_raw",
       profileFamily: "raw_line_profile",
       profileSubtype: "raw_research_export",
       ...sampled,
+      smoothHu: displaySmoothHu,
+      displaySmoothingRadius: displaySmoothHu.length ? 1 : 0,
     };
   }
 
@@ -8675,8 +8674,13 @@
         ctx.lineTo(x, y);
       }
     });
-    ctx.strokeStyle = profile.profileFamily === "raw_line_profile" ? "#57c8ff" : "rgba(87, 200, 255, 0.45)";
-    ctx.lineWidth = profile.profileFamily === "raw_line_profile" ? 2.1 : 1.5;
+    const hasDisplaySmooth = profile.profileFamily === "raw_line_profile" && smoothValues.some(Number.isFinite);
+    ctx.strokeStyle = profile.profileFamily === "raw_line_profile"
+      ? (hasDisplaySmooth ? "rgba(87, 200, 255, 0.42)" : "#57c8ff")
+      : "rgba(87, 200, 255, 0.45)";
+    ctx.lineWidth = profile.profileFamily === "raw_line_profile"
+      ? (hasDisplaySmooth ? 1.2 : 2.1)
+      : 1.5;
     ctx.stroke();
 
     ctx.beginPath();
@@ -9248,6 +9252,10 @@
         <div class="meta-row">
           <dt>Interpolation</dt>
           <dd>${analysis.interpolationMethod || "nearest"} primary; nearest and trilinear columns export separately.</dd>
+        </div>
+        <div class="meta-row">
+          <dt>Chart</dt>
+          <dd>Yellow is light display smoothing only; raw HU samples remain unchanged for stats and export.</dd>
         </div>
         <div class="meta-row">
           <dt>Use</dt>
@@ -10710,7 +10718,7 @@
     return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate.mimeType)) || null;
   }
 
-  async function exportCineClip() {
+  async function buildCineClipFile(options = {}) {
     const reconstruction = getActiveReconstruction();
     if (!reconstruction) {
       throw new Error("Load a DICOM series first.");
@@ -10776,70 +10784,17 @@
     recorder.stop();
     await finished;
     const blob = new Blob(chunks, { type: cineFormat.mimeType });
-    const filename = buildExportFilename("cine", cineFormat.extension);
+    const filename = buildExportFilename("cine", cineFormat.extension, { studyId: options.studyId });
+    return { filename, blob, extension: cineFormat.extension };
+  }
+
+  async function exportCineClip(options = {}) {
+    const file = await buildCineClipFile(options);
     await downloadExportBundle(
-      [{ filename, blob }],
-      window.HAGRadZip?.zipNameFrom ? window.HAGRadZip.zipNameFrom(filename) : buildExportFilename("cine", "zip")
+      [file],
+      window.HAGRadZip?.zipNameFrom ? window.HAGRadZip.zipNameFrom(file.filename) : buildExportFilename("cine", "zip", options)
     );
-    setStatus(`Cine clip exported as a ZIP bundle containing ${cineFormat.extension.toUpperCase()}.`);
-  }
-
-  function csvEscape(value) {
-    if (value == null || value === "") {
-      return "";
-    }
-    const text = String(value);
-    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-  }
-
-  function xmlEscape(value) {
-    if (value == null) {
-      return "";
-    }
-    return String(value)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
-  function sanitizeWorksheetName(name, fallback) {
-    const sanitized = safeString(name)
-      .replace(/[\\/?*\[\]:]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    return (sanitized || fallback || "Sheet").slice(0, 31);
-  }
-
-  function workbookCellXml(value) {
-    if (value == null || value === "") {
-      return "<Cell><Data ss:Type=\"String\"></Data></Cell>";
-    }
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return `<Cell><Data ss:Type="Number">${value}</Data></Cell>`;
-    }
-    if (typeof value === "boolean") {
-      return `<Cell><Data ss:Type="String">${value ? "true" : "false"}</Data></Cell>`;
-    }
-    return `<Cell><Data ss:Type="String">${xmlEscape(value)}</Data></Cell>`;
-  }
-
-  function buildSpreadsheetWorkbookXml(sheets) {
-    const worksheets = (sheets || [])
-      .map((sheet) => {
-        const rows = (sheet.rows || [])
-          .map((row) => `<Row>${row.map(workbookCellXml).join("")}</Row>`)
-          .join("");
-        return `<Worksheet ss:Name="${xmlEscape(sanitizeWorksheetName(sheet.name, "Sheet"))}"><Table>${rows}</Table></Worksheet>`;
-      })
-      .join("");
-    return `<?xml version="1.0"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:o="urn:schemas-microsoft-com:office:office"
- xmlns:x="urn:schemas-microsoft-com:office:excel"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:html="http://www.w3.org/TR/REC-html40">${worksheets}</Workbook>`;
+    setStatus(`Cine clip exported as a ZIP bundle containing ${file.extension.toUpperCase()}.`);
   }
 
   function mergeSourceRecords(existingRecords, nextRecords) {
@@ -11295,46 +11250,6 @@
     return rows.filter((row) => enabledGroups.has(getBaselineExportGroupForRow(row)));
   }
 
-  function buildBaselineCharacteristicsCsv(rows, studyId) {
-    const headers = [
-      "study_id",
-      "research_study_id",
-      "research_study_label",
-      "section",
-      "scope_type",
-      "scope_label",
-      "reconstruction_label",
-      "source_file",
-      "modality",
-      "field_group",
-      "field_name",
-      "value",
-      "unit",
-      "source",
-      "notes",
-    ];
-
-    const csvRows = rows.map((row) => [
-      studyId || "",
-      row.research_study_id || "",
-      row.research_study_label || "",
-      row.section,
-      row.scope_type,
-      row.scope_label,
-      row.reconstruction_label,
-      row.source_file,
-      row.modality,
-      row.field_group,
-      row.field_name,
-      row.value,
-      row.unit,
-      row.source,
-      row.notes,
-    ]);
-
-    return [headers, ...csvRows].map((row) => row.map(csvEscape).join(",")).join("\n");
-  }
-
   function getBaselineCharacteristicsHeaders() {
     return [
       "study_id",
@@ -11428,22 +11343,16 @@
     const text = study
       ? `Mirrored exports will also be saved to ${getExportStudyDirectoryLabel(study.id)}.`
       : "Mirrored exports will also be saved to exports_outbox/viewer until a study is selected.";
-    if (els.measurementExportStudyTargetNote) {
-      els.measurementExportStudyTargetNote.textContent = text;
-    }
-    if (els.baselineExportStudyTargetNote) {
-      els.baselineExportStudyTargetNote.textContent = text;
+    if (els.exportStudyTargetNote) {
+      els.exportStudyTargetNote.textContent = text;
     }
   }
 
   function applyExportStudyPayload(payload) {
     state.exportStudies = Array.isArray(payload?.studies) ? payload.studies : [];
     state.currentExportStudyId = safeString(payload?.currentStudyId) || "";
-    if (els.measurementExportStudySelect) {
-      exportStudyApi?.populateSelect(els.measurementExportStudySelect, state.exportStudies, state.currentExportStudyId, "No study selected");
-    }
-    if (els.baselineExportStudySelect) {
-      exportStudyApi?.populateSelect(els.baselineExportStudySelect, state.exportStudies, state.currentExportStudyId, "No study selected");
+    if (els.exportStudySelect) {
+      exportStudyApi?.populateSelect(els.exportStudySelect, state.exportStudies, state.currentExportStudyId, "No study selected");
     }
     updateExportStudyTargetNotes();
   }
@@ -11483,31 +11392,6 @@
     setStatus(`Selected export study ${created?.label || state.currentExportStudyId}.`);
   }
 
-  function openBaselineExportModal() {
-    const rows = buildBaselineCharacteristicsRows();
-    if (!rows.length) {
-      throw new Error("Load a study first.");
-    }
-
-    syncBaselineExportInputsFromState();
-    if (els.baselineExportStudyIdInput) {
-      els.baselineExportStudyIdInput.value = suggestMeasurementStudyId();
-    }
-    refreshExportStudyOptions().catch((error) => {
-      console.error(error);
-      setStatus(error.message || "Could not load export studies.", "error");
-    });
-    els.baselineExportModal.classList.remove("is-hidden");
-    els.baselineExportModal.setAttribute("aria-hidden", "false");
-    document.body.classList.add("is-modal-open");
-    if (els.baselineExportStudyIdInput) {
-      els.baselineExportStudyIdInput.focus();
-      els.baselineExportStudyIdInput.select();
-    } else {
-      els.baselineExportConfirmButton.focus();
-    }
-  }
-
   function suggestMeasurementStudyId() {
     const reconstruction = getActiveReconstruction();
     const record = reconstruction?.records?.[0] || {};
@@ -11519,53 +11403,76 @@
     );
   }
 
-  function openMeasurementExportModal(mode) {
-    const entries = buildMeasurementEntries();
-    if (!entries.length) {
-      throw new Error("Create at least one measurement first.");
+  function openViewerExportModal(options = {}) {
+    if (!state.reconstructions.length) {
+      throw new Error("Load a study first.");
     }
-
-    const finishClose = mode === "finishClose";
-    state.pendingMeasurementExport = {
+    const entries = buildMeasurementEntries();
+    const rawEntries = entries.filter((entry) => entry.annotation.type === "lineProfileRaw");
+    const baselineRows = buildBaselineCharacteristicsRows();
+    const finishClose = Boolean(options.finishClose);
+    state.pendingExport = {
       finishClose,
     };
-    els.measurementExportTitle.textContent = finishClose ? "Finish & Close" : "Export Measurements";
-    els.measurementExportCopy.textContent = finishClose
-      ? "Assign a Study ID before exporting. HAGRad will export the measurement PNG and CSV, then close the current patient."
-      : "Assign a Study ID before exporting. HAGRad will place it into the first CSV column and show it in the exported PNG header.";
-    els.measurementExportConfirmButton.textContent = finishClose ? "Export, Finish & Close" : "Export PNG + CSV";
-    els.measurementExportStudyIdInput.value = suggestMeasurementStudyId();
+    syncBaselineExportInputsFromState();
+    if (els.exportOptionMeasurements) {
+      els.exportOptionMeasurements.checked = options.measurements ?? entries.length > 0;
+      els.exportOptionMeasurements.disabled = !entries.length;
+    }
+    if (els.exportOptionRawProfiles) {
+      els.exportOptionRawProfiles.checked = options.rawProfiles ?? rawEntries.length > 0;
+      els.exportOptionRawProfiles.disabled = !rawEntries.length;
+    }
+    if (els.exportOptionBaseline) {
+      els.exportOptionBaseline.checked = options.baseline ?? false;
+      els.exportOptionBaseline.disabled = !baselineRows.length;
+    }
+    if (els.exportOptionCine) {
+      els.exportOptionCine.checked = options.cine ?? false;
+      els.exportOptionCine.disabled = !getActiveReconstruction();
+    }
+    if (els.exportOptionFinishClose) {
+      els.exportOptionFinishClose.checked = finishClose;
+    }
+    syncViewerExportOptionState();
+    if (els.exportStudyIdInput) {
+      els.exportStudyIdInput.value = suggestMeasurementStudyId();
+    }
     refreshExportStudyOptions().catch((error) => {
       console.error(error);
       setStatus(error.message || "Could not load export studies.", "error");
     });
-    els.measurementExportModal.classList.remove("is-hidden");
-    els.measurementExportModal.setAttribute("aria-hidden", "false");
+    els.exportModal.classList.remove("is-hidden");
+    els.exportModal.setAttribute("aria-hidden", "false");
     document.body.classList.add("is-modal-open");
-    els.measurementExportStudyIdInput.focus();
-    els.measurementExportStudyIdInput.select();
+    els.exportStudyIdInput?.focus();
+    els.exportStudyIdInput?.select();
   }
 
-  function closeMeasurementExportModal() {
-    if (!els.measurementExportModal) {
+  function openMeasurementExportModal(mode) {
+    openViewerExportModal({
+      measurements: true,
+      finishClose: mode === "finishClose",
+    });
+  }
+
+  function openBaselineExportModal() {
+    openViewerExportModal({
+      baseline: true,
+    });
+  }
+
+  function closeViewerExportModal() {
+    if (!els.exportModal) {
       return;
     }
-    els.measurementExportModal.classList.add("is-hidden");
-    els.measurementExportModal.setAttribute("aria-hidden", "true");
+    els.exportModal.classList.add("is-hidden");
+    els.exportModal.setAttribute("aria-hidden", "true");
     document.body.classList.remove("is-modal-open");
-    state.pendingMeasurementExport = null;
+    state.pendingExport = null;
   }
 
-  function closeBaselineExportModal() {
-    if (!els.baselineExportModal) {
-      return;
-    }
-    els.baselineExportModal.classList.add("is-hidden");
-    els.baselineExportModal.setAttribute("aria-hidden", "true");
-    document.body.classList.remove("is-modal-open");
-  }
-
-  async function exportBaselineCharacteristics(selectedGroups, options) {
+  async function buildBaselineCharacteristicsExport(selectedGroups, options = {}) {
     const rows = buildBaselineCharacteristicsRows();
     if (!rows.length) {
       throw new Error("Load a study first.");
@@ -11580,26 +11487,47 @@
 
     const headers = getBaselineCharacteristicsHeaders();
     const researchStudy = getSelectedExportStudyMetadata();
-    const enrichedRows = filteredRows.map((row) => ({
-      ...row,
-      research_study_id: researchStudy.id || "",
-      research_study_label: researchStudy.label || "",
-    }));
-    const csv = buildBaselineCharacteristicsCsv(enrichedRows, studyId);
-    const csvFilename = buildExportFilename("baseline_characteristics", "csv", { studyId });
-    await downloadExportBundle(
-      [{ filename: csvFilename, blob: new Blob([csv], { type: "text/csv;charset=utf-8" }) }],
-      buildExportFilename("baseline_characteristics", "zip", { studyId }),
-      { patientStudyId: studyId }
-    );
-
     const projectRows = filteredRows.map((row) => ({
       study_id: studyId || "",
       research_study_id: researchStudy.id || "",
       research_study_label: researchStudy.label || "",
       ...row,
     }));
-    const projectResult = await appendExportToActiveProject("baseline_characteristics", headers, projectRows);
+    const workbookFile = await xlsxExportApi.buildXlsxFile({
+      filename: buildExportFilename("baseline_characteristics", "xlsx", { studyId }),
+      sheets: [
+        {
+          name: "baseline_characteristics",
+          headers,
+          rows: projectRows,
+        },
+      ],
+    });
+    const reportCount = state.sourceRecords.filter((record) => !record.hasPixelData).length;
+    return {
+      headers,
+      rows: filteredRows,
+      projectRows,
+      rowCount: filteredRows.length,
+      reportCount,
+      file: workbookFile,
+    };
+  }
+
+  async function exportBaselineCharacteristics(selectedGroups, options) {
+    const studyId = safeString(options?.studyId);
+    const baselineExport = await buildBaselineCharacteristicsExport(selectedGroups, { studyId });
+    await downloadExportBundle(
+      [baselineExport.file],
+      buildExportFilename("baseline_characteristics", "zip", { studyId }),
+      { patientStudyId: studyId }
+    );
+
+    const projectResult = await appendExportToActiveProject(
+      "baseline_characteristics",
+      baselineExport.headers,
+      baselineExport.projectRows
+    );
     if (projectResult?.case) {
       const existing = getMatchingProjectCase(projectResult.case.case_id) || {};
       upsertProjectCaseInState({
@@ -11611,11 +11539,10 @@
       renderProjectCases();
     }
 
-    const reportCount = state.sourceRecords.filter((record) => !record.hasPixelData).length;
     setStatus(
       projectResult
-        ? `Baseline characteristics ZIP exported for ${studyId || "the current study"} and appended to ${projectResult.project.name} as ${projectResult.case.case_id}.`
-        : `Exported baseline characteristics ZIP with ${filteredRows.length} CSV row${filteredRows.length === 1 ? "" : "s"} from ${state.reconstructions.length} reconstruction${state.reconstructions.length === 1 ? "" : "s"} and ${reportCount} report file${reportCount === 1 ? "" : "s"}${studyId ? ` for ${studyId}` : ""}.`
+        ? `Baseline characteristics workbook exported for ${studyId || "the current study"} and appended to ${projectResult.project.name} as ${projectResult.case.case_id}.`
+        : `Exported baseline characteristics workbook with ${baselineExport.rowCount} row${baselineExport.rowCount === 1 ? "" : "s"} from ${state.reconstructions.length} reconstruction${state.reconstructions.length === 1 ? "" : "s"} and ${baselineExport.reportCount} report file${baselineExport.reportCount === 1 ? "" : "s"}${studyId ? ` for ${studyId}` : ""}.`
     );
   }
 
@@ -11667,6 +11594,23 @@
       measurement_slice_index:
         Number.isFinite(rawIndex) && metrics?.count ? String(clamp(Math.round(rawIndex), 0, metrics.count - 1) + 1) : "",
       measurement_slice_count: metrics?.count ? String(metrics.count) : "",
+    };
+  }
+
+  function getReconstructionOrder(reconstruction) {
+    const index = state.reconstructions.findIndex((item) => item.id === reconstruction?.id);
+    return index >= 0 ? index + 1 : "";
+  }
+
+  function getReconstructionExportContext(entry) {
+    const reconstruction = entry?.reconstruction || null;
+    const record = reconstruction?.records?.[0] || {};
+    return {
+      reconstruction: reconstruction?.label || "",
+      reconstruction_order: getReconstructionOrder(reconstruction),
+      series_number: Number.isFinite(record.seriesNumber) ? String(record.seriesNumber) : "",
+      series_description: record.seriesDescription || "",
+      convolution_kernel: record.convolutionKernel || "",
     };
   }
 
@@ -11751,11 +11695,13 @@
       "label",
       "order",
       "annotation_id",
+      "HAGRad_image",
       "custom_name",
       "display_name",
       "type",
       "plane",
       "reconstruction",
+      "reconstruction_order",
       "length_mm",
       "probe_hu",
       "mean_hu",
@@ -11857,6 +11803,7 @@
 
     const rows = entries.map((entry) => {
       const metadata = getMeasurementExportMetadata(entry);
+      const context = getReconstructionExportContext(entry);
       return {
         study_id: studyId || "",
         research_study_id: researchStudy.id || "",
@@ -11865,11 +11812,13 @@
         label: entry.label,
         order: entry.order,
         annotation_id: entry.annotation.id,
+        HAGRad_image: `${entry.label || `M${entry.annotation.id}`}_thumbnail.png`,
         custom_name: entry.annotation.customName || "",
         display_name: entry.displayName || "",
         type: formatMeasurementType(entry.annotation),
         plane: entry.annotation.plane,
-        reconstruction: entry.reconstruction?.label || "",
+        reconstruction: context.reconstruction,
+        reconstruction_order: context.reconstruction_order,
         length_mm: entry.summary.lengthMm != null ? entry.summary.lengthMm.toFixed(2) : "",
         probe_hu: entry.summary.hu != null ? Math.round(entry.summary.hu) : "",
         mean_hu: entry.summary.mean != null ? entry.summary.mean.toFixed(2) : "",
@@ -11973,10 +11922,90 @@
     return { headers, rows };
   }
 
-  function buildMeasurementsCsv(entries, studyId) {
+  function rowsForHeaders(headers, rows) {
+    return [headers, ...rows.map((row) => headers.map((header) => row[header] ?? ""))];
+  }
+
+  function appendUniqueHeaders(baseHeaders, extraHeaders) {
+    const seen = new Set(baseHeaders);
+    const headers = [...baseHeaders];
+    (extraHeaders || []).forEach((header) => {
+      if (!seen.has(header)) {
+        seen.add(header);
+        headers.push(header);
+      }
+    });
+    return headers;
+  }
+
+  function rowsSheetToXlsxSheet(sheet, options = {}) {
+    const rows = sheet.rows || [];
+    const headers = rows[0] || [];
+    return {
+      name: sheet.name,
+      headers,
+      rows: rows.slice(1).map((row) => {
+        const objectRow = {};
+        headers.forEach((header, index) => {
+          objectRow[header] = row[index] ?? "";
+        });
+        return objectRow;
+      }),
+      images: options.images || [],
+    };
+  }
+
+  async function buildMeasurementThumbnailImages(entries) {
+    const images = [];
+    for (const [index, entry] of entries.entries()) {
+      if (!entry?.reconstruction || !entry?.annotation?.frame) {
+        continue;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = 260;
+      canvas.height = 180;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#000000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const viewportState = {
+        zoom: 1,
+        panX: 0,
+        panY: 0,
+        bufferCanvas: document.createElement("canvas"),
+      };
+      drawPlaneScene(ctx, entry.reconstruction, entry.annotation.frame, canvas.width, canvas.height, viewportState, {
+        includeAnnotations: true,
+        annotationList: [entry.annotation],
+        storeGeometry: false,
+      });
+      drawHeaderBar(ctx, 0, 0, canvas.width, entry.label || `M${index + 1}`, entry.reconstruction.label || "");
+      const filename = `${entry.label || `M${entry.annotation.id}`}_thumbnail.png`;
+      images.push({
+        rowIndex: index,
+        column: "HAGRad_image",
+        filename,
+        name: filename,
+        data: await canvasToPngBlob(canvas),
+      });
+    }
+    return images;
+  }
+
+  async function buildRestMeasurementsWorkbookFile(entries, studyId) {
     const table = buildMeasurementsTable(entries, studyId);
-    const csvRows = table.rows.map((row) => table.headers.map((header) => row[header] ?? ""));
-    return [table.headers, ...csvRows].map((row) => row.map(csvEscape).join(",")).join("\n");
+    const images = await buildMeasurementThumbnailImages(entries);
+    const workbookFile = await xlsxExportApi.buildXlsxFile({
+      filename: buildExportFilename("rest_measurements", "xlsx", { studyId }),
+      sheets: [
+        {
+          name: "rest",
+          headers: table.headers,
+          rows: table.rows,
+          images,
+        },
+      ],
+    });
+    return { ...workbookFile, table, images };
   }
 
   function workbookNumber(value, decimals) {
@@ -11998,14 +12027,18 @@
     return entry.annotation.customName || entry.displayName || entry.label || `Raw Profile ${entry.annotation.id}`;
   }
 
-  function buildRawProfileWorkbookSheets(entries, studyId) {
+  function buildRawProfileWorkbookSheets(entries, studyId, options = {}) {
     const researchStudy = getSelectedExportStudyMetadata();
     const exportNote = "Raw research export only. Not diagnostic output.";
     const summaryHeaders = [
       "study_id",
       "research_study_id",
       "research_study_label",
+      "series_number",
+      "series_description",
       "reconstruction",
+      "reconstruction_order",
+      "convolution_kernel",
       "annotation_id",
       "profile_label",
       "plane",
@@ -12021,7 +12054,11 @@
     ];
     const sampleHeaders = [
       "study_id",
+      "series_number",
+      "series_description",
       "reconstruction",
+      "reconstruction_order",
+      "convolution_kernel",
       "annotation_id",
       "profile_label",
       "sample_index",
@@ -12052,12 +12089,16 @@
         return;
       }
       const profileLabel = getRawProfileLabel(entry);
-      const reconstructionLabel = entry.reconstruction?.label || "";
+      const context = getReconstructionExportContext(entry);
       summaryRows.push({
         study_id: studyId || "",
         research_study_id: researchStudy.id || "",
         research_study_label: researchStudy.label || "",
-        reconstruction: reconstructionLabel,
+        series_number: context.series_number,
+        series_description: context.series_description,
+        reconstruction: context.reconstruction,
+        reconstruction_order: context.reconstruction_order,
+        convolution_kernel: context.convolution_kernel,
         annotation_id: entry.annotation.id,
         profile_label: profileLabel,
         plane: entry.annotation.plane || "",
@@ -12074,7 +12115,11 @@
       analysis.rawSamples.forEach((sample) => {
         sampleRows.push({
           study_id: studyId || "",
-          reconstruction: reconstructionLabel,
+          series_number: context.series_number,
+          series_description: context.series_description,
+          reconstruction: context.reconstruction,
+          reconstruction_order: context.reconstruction_order,
+          convolution_kernel: context.convolution_kernel,
           annotation_id: entry.annotation.id,
           profile_label: profileLabel,
           sample_index: sample.sampleIndex,
@@ -12102,7 +12147,11 @@
         study_id: studyId || "",
         research_study_id: researchStudy.id || "",
         research_study_label: researchStudy.label || "",
-        reconstruction: reconstructionLabel,
+        series_number: context.series_number,
+        series_description: context.series_description,
+        reconstruction: context.reconstruction,
+        reconstruction_order: context.reconstruction_order,
+        convolution_kernel: context.convolution_kernel,
         annotation_id: entry.annotation.id,
         profile_label: profileLabel,
         export_note: exportNote,
@@ -12110,22 +12159,50 @@
       });
     });
 
-    const metadataHeaders = [
+    const metadataHeaders = appendUniqueHeaders([
       "study_id",
       "research_study_id",
       "research_study_label",
+      "series_number",
+      "series_description",
       "reconstruction",
+      "reconstruction_order",
+      "convolution_kernel",
       "annotation_id",
       "profile_label",
       "export_note",
-      ...Array.from(metadataKeySet),
-    ];
-    const rowsForHeaders = (headers, rows) => [headers, ...rows.map((row) => headers.map((header) => row[header] ?? ""))];
-    return [
+    ], Array.from(metadataKeySet));
+    const sheets = [
       { name: "summary", rows: rowsForHeaders(summaryHeaders, summaryRows) },
       { name: "raw_samples", rows: rowsForHeaders(sampleHeaders, sampleRows) },
       { name: "dicom_metadata", rows: rowsForHeaders(metadataHeaders, metadataRows) },
     ];
+    if (options.restTable?.headers?.length) {
+      sheets.push({ name: "rest", rows: rowsForHeaders(options.restTable.headers, options.restTable.rows || []) });
+    }
+    return sheets;
+  }
+
+  async function buildRawProfileWorkbookFile(entries, studyId, options = {}) {
+    const sheets = buildRawProfileWorkbookSheets(entries, studyId, options);
+    const rawSamplesSheet = sheets.find((sheet) => sheet.name === "raw_samples");
+    const rawSampleCount = Math.max(0, (rawSamplesSheet?.rows?.length || 1) - 1);
+    if (!rawSampleCount) {
+      throw new Error("No valid raw profile samples were available to export.");
+    }
+    const workbookFile = await xlsxExportApi.buildXlsxFile({
+      filename: buildExportFilename("line_profile_raw", "xlsx", { studyId }),
+      sheets: sheets.map((sheet) =>
+        rowsSheetToXlsxSheet(sheet, {
+          images: sheet.name === "rest" ? options.restImages || [] : [],
+        })
+      ),
+    });
+    return {
+      ...workbookFile,
+      rawSampleCount,
+      profileCount: entries.length,
+    };
   }
 
   async function exportRawProfileWorkbook(options) {
@@ -12137,23 +12214,25 @@
     if (!studyId) {
       throw new Error("Enter a Study ID before exporting raw profiles.");
     }
-    const sheets = buildRawProfileWorkbookSheets(entries, studyId);
-    const rawSampleCount = Math.max(0, (sheets[1]?.rows?.length || 1) - 1);
-    if (!rawSampleCount) {
-      throw new Error("No valid raw profile samples were available to export.");
+    const measurementEntries = buildMeasurementEntries();
+    const restWorkbook = await buildRestMeasurementsWorkbookFile(measurementEntries, studyId);
+    const workbookFile = await buildRawProfileWorkbookFile(entries, studyId, {
+      restTable: restWorkbook.table,
+      restImages: restWorkbook.images,
+    });
+    const files = [workbookFile];
+    if (measurementEntries.length) {
+      files.push(await exportMeasurementsPng(measurementEntries, studyId, {
+        returnFile: true,
+        filenamePrefix: "rest_measurements",
+      }));
     }
-    const workbookXml = buildSpreadsheetWorkbookXml(sheets);
-    const filename = buildExportFilename("line_profile_raw", "xls", { studyId });
-    const workbookFile = {
-      filename,
-      blob: new Blob([workbookXml], { type: "application/vnd.ms-excel;charset=utf-8" }),
-    };
     await downloadExportBundle(
-      [workbookFile],
+      files,
       buildExportFilename("line_profile_raw", "zip", { studyId }),
       { patientStudyId: studyId }
     );
-    setStatus(`Exported ${entries.length} raw profile${entries.length === 1 ? "" : "s"} with ${rawSampleCount} samples as an Excel-readable workbook for ${studyId}.`);
+    setStatus(`Exported ${entries.length} raw profile${entries.length === 1 ? "" : "s"} with ${workbookFile.rawSampleCount} samples as an Excel-readable workbook for ${studyId}.`);
   }
 
   function drawMeasurementTag(ctx, label) {
@@ -12175,7 +12254,8 @@
         `Spacing: ${formatMetricValue(analysis.sampleSpacingMm, "mm", 3)} | Primary HU: ${analysis.interpolationMethod || "nearest"}`,
         `HU min/max: ${formatMetricValue(analysis.minHu, "HU", 0)} / ${formatMetricValue(analysis.maxHu, "HU", 0)}`,
         `Mean/SD: ${formatMetricValue(analysis.meanHu, "HU", 1)} / ${formatMetricValue(analysis.sdHu, "HU", 1)}`,
-        "Use Export Raw Profiles for the full unsmoothed sample table.",
+        "Chart smoothing: display-only 3-point average; raw sample rows are unchanged.",
+        "Use Export > Line Profile Raw workbook for the full unsmoothed sample table.",
       ];
     }
     if (analysis?.profileFamily === "vascular_lumen_profile") {
@@ -12306,7 +12386,8 @@
       ctx.restore();
     });
 
-    const filename = buildExportFilename("measurements", "png", { studyId });
+    const filenamePrefix = safeString(options?.filenamePrefix) || "measurements";
+    const filename = buildExportFilename(filenamePrefix, "png", { studyId });
     const blob = await canvasToPngBlob(exportCanvas);
     if (options?.returnFile) {
       return { filename, blob };
@@ -12328,15 +12409,14 @@
       throw new Error("Enter a Study ID before exporting measurements.");
     }
 
-    const pngFile = await exportMeasurementsPng(entries, studyId, { returnFile: true });
-    const table = buildMeasurementsTable(entries, studyId);
-    const csv = buildMeasurementsCsv(entries, studyId);
-    const csvFile = {
-      filename: buildExportFilename("measurements", "csv", { studyId }),
-      blob: new Blob([csv], { type: "text/csv;charset=utf-8" }),
-    };
+    const pngFile = await exportMeasurementsPng(entries, studyId, {
+      returnFile: true,
+      filenamePrefix: "rest_measurements",
+    });
+    const restWorkbook = await buildRestMeasurementsWorkbookFile(entries, studyId);
+    const table = restWorkbook.table;
     await downloadExportBundle(
-      [pngFile, csvFile],
+      [restWorkbook, pngFile],
       buildExportFilename("measurements", "zip", { studyId }),
       { patientStudyId: studyId }
     );
@@ -12355,13 +12435,176 @@
     const statusMessage =
       projectResult
         ? `Measurement ZIP exported and appended to ${projectResult.project.name} as ${projectResult.case.case_id}.`
-        : `Exported ${entries.length} measurements from ${reconstructionCount} reconstruction${reconstructionCount === 1 ? "" : "s"} as a ZIP bundle with PNG and CSV for ${studyId}.`;
+        : `Exported ${entries.length} measurements from ${reconstructionCount} reconstruction${reconstructionCount === 1 ? "" : "s"} as a ZIP bundle with rest workbook and PNG for ${studyId}.`;
     if (options?.closeAfterExport) {
       clearStudy();
-      setStatus(`Exported a measurement ZIP for ${studyId} and closed the current study.`);
+      setStatus(`Exported a measurement ZIP with rest workbook for ${studyId} and closed the current study.`);
       return;
     }
     setStatus(statusMessage);
+  }
+
+  function getViewerExportOptionsFromInputs() {
+    return {
+      measurements: Boolean(els.exportOptionMeasurements?.checked && !els.exportOptionMeasurements.disabled),
+      rawProfiles: Boolean(els.exportOptionRawProfiles?.checked && !els.exportOptionRawProfiles.disabled),
+      baseline: Boolean(els.exportOptionBaseline?.checked && !els.exportOptionBaseline.disabled),
+      cine: Boolean(els.exportOptionCine?.checked && !els.exportOptionCine.disabled),
+      finishClose: Boolean(els.exportOptionFinishClose?.checked),
+      baselineGroups: getSelectedBaselineExportGroups(),
+      studyId: safeString(els.exportStudyIdInput?.value),
+    };
+  }
+
+  function syncViewerExportOptionState() {
+    const baselineEnabled = Boolean(els.exportOptionBaseline?.checked && !els.exportOptionBaseline.disabled);
+    BASELINE_EXPORT_GROUPS.forEach((group) => {
+      const input = els.baselineExportGroupInputs?.[group.id];
+      if (input) {
+        input.disabled = !baselineEnabled;
+      }
+    });
+  }
+
+  async function appendExportToProjectAndRender(exportType, headers, rows) {
+    const projectResult = await appendExportToActiveProject(exportType, headers, rows);
+    if (projectResult?.case) {
+      const existing = getMatchingProjectCase(projectResult.case.case_id) || {};
+      upsertProjectCaseInState({
+        ...existing,
+        ...projectResult.case,
+        export_count: Number(existing.export_count || 0) + 1,
+        last_export_at: projectResult.exportTimestamp || "",
+      });
+      renderProjectCases();
+    }
+    return projectResult;
+  }
+
+  function addExportFile(fileMap, file) {
+    if (file?.filename && file?.blob) {
+      fileMap.set(file.filename, file);
+    }
+  }
+
+  async function exportViewerBundle(options = {}) {
+    const studyId = safeString(options.studyId);
+    if (!studyId) {
+      throw new Error("Enter a Study ID before exporting.");
+    }
+
+    const selectedCount = ["measurements", "rawProfiles", "baseline", "cine"].filter((key) => options[key]).length;
+    if (!selectedCount) {
+      throw new Error("Select at least one export option first.");
+    }
+
+    const measurementEntries = buildMeasurementEntries();
+    const rawEntries = measurementEntries.filter((entry) => entry.annotation.type === "lineProfileRaw");
+    const filesByName = new Map();
+    const selectedLabels = [];
+    const projectExports = [];
+    let restWorkbook = null;
+    let restPngFile = null;
+
+    const ensureRestWorkbook = async () => {
+      if (!measurementEntries.length) {
+        return null;
+      }
+      if (!restWorkbook) {
+        restWorkbook = await buildRestMeasurementsWorkbookFile(measurementEntries, studyId);
+      }
+      return restWorkbook;
+    };
+    const ensureRestPngFile = async () => {
+      if (!measurementEntries.length) {
+        return null;
+      }
+      if (!restPngFile) {
+        restPngFile = await exportMeasurementsPng(measurementEntries, studyId, {
+          returnFile: true,
+          filenamePrefix: "rest_measurements",
+        });
+      }
+      return restPngFile;
+    };
+
+    if (options.measurements) {
+      if (!measurementEntries.length) {
+        throw new Error("Create at least one measurement first.");
+      }
+      const measurementWorkbook = await ensureRestWorkbook();
+      addExportFile(filesByName, measurementWorkbook);
+      addExportFile(filesByName, await ensureRestPngFile());
+      projectExports.push({
+        exportType: "measurements",
+        headers: measurementWorkbook.table.headers,
+        rows: measurementWorkbook.table.rows,
+      });
+      selectedLabels.push("measurements");
+    }
+
+    if (options.rawProfiles) {
+      if (!rawEntries.length) {
+        throw new Error("Create at least one Line Profile Raw annotation first.");
+      }
+      const rawRestWorkbook = await ensureRestWorkbook();
+      const rawWorkbook = await buildRawProfileWorkbookFile(rawEntries, studyId, {
+        restTable: rawRestWorkbook?.table,
+        restImages: rawRestWorkbook?.images || [],
+      });
+      addExportFile(filesByName, rawWorkbook);
+      addExportFile(filesByName, await ensureRestPngFile());
+      selectedLabels.push(`raw profiles (${rawWorkbook.rawSampleCount} samples)`);
+    }
+
+    if (options.baseline) {
+      const baselineExport = await buildBaselineCharacteristicsExport(options.baselineGroups, { studyId });
+      addExportFile(filesByName, baselineExport.file);
+      projectExports.push({
+        exportType: "baseline_characteristics",
+        headers: baselineExport.headers,
+        rows: baselineExport.projectRows,
+      });
+      selectedLabels.push(`baseline (${baselineExport.rowCount} rows)`);
+    }
+
+    if (options.cine) {
+      const cineFile = await buildCineClipFile({ studyId });
+      addExportFile(filesByName, cineFile);
+      selectedLabels.push(`cine ${cineFile.extension.toUpperCase()}`);
+    }
+
+    if (measurementEntries.length && !options.rawProfiles && !options.measurements) {
+      addExportFile(filesByName, await ensureRestWorkbook());
+      addExportFile(filesByName, await ensureRestPngFile());
+    }
+
+    const files = Array.from(filesByName.values());
+    await downloadExportBundle(files, buildExportFilename("viewer_export", "zip", { studyId }), {
+      patientStudyId: studyId,
+    });
+
+    let projectAppendCount = 0;
+    for (const projectExport of projectExports) {
+      const projectResult = await appendExportToProjectAndRender(
+        projectExport.exportType,
+        projectExport.headers,
+        projectExport.rows
+      );
+      if (projectResult) {
+        projectAppendCount += 1;
+      }
+    }
+
+    if (options.finishClose) {
+      clearStudy();
+      setStatus(`Exported viewer ZIP for ${studyId} and closed the current study.`);
+      return;
+    }
+
+    const detail = selectedLabels.length ? `: ${selectedLabels.join(", ")}` : "";
+    const projectDetail = projectAppendCount ? ` Appended ${projectAppendCount} table${projectAppendCount === 1 ? "" : "s"} to the active project.` : "";
+    setStatus(`Exported viewer ZIP with ${files.length} file${files.length === 1 ? "" : "s"} for ${studyId}${detail}.${projectDetail}`);
   }
 
   function mapWorldPointBetweenFrames(sourceFrame, targetFrame, worldPoint) {
@@ -15301,167 +15544,68 @@
 
     els.cineButton.addEventListener("click", toggleCine);
 
-    els.exportCineButton.addEventListener("click", async () => {
+    els.exportButton?.addEventListener("click", () => {
       try {
-        await exportCineClip();
+        openViewerExportModal();
       } catch (error) {
         console.error(error);
-        setStatus(error.message || "Cine export failed.", "error");
-      }
-    });
-
-    els.exportMeasurementsButton.addEventListener("click", async () => {
-      try {
-        openMeasurementExportModal("export");
-      } catch (error) {
-        console.error(error);
-        setStatus(error.message || "Measurement export failed.", "error");
-      }
-    });
-    els.exportRawProfilesButton?.addEventListener("click", async () => {
-      try {
-        const studyId = window.prompt("Study ID for Line Profile Raw export", suggestMeasurementStudyId());
-        if (studyId === null) {
-          return;
-        }
-        await exportRawProfileWorkbook({ studyId: safeString(studyId) });
-      } catch (error) {
-        console.error(error);
-        setStatus(error.message || "Raw profile export failed.", "error");
-      }
-    });
-    els.finishCloseButton?.addEventListener("click", () => {
-      try {
-        openMeasurementExportModal("finishClose");
-      } catch (error) {
-        console.error(error);
-        setStatus(error.message || "Finish & Close failed.", "error");
-      }
-    });
-    els.exportBaselineButton.addEventListener("click", () => {
-      try {
-        openBaselineExportModal();
-      } catch (error) {
-        console.error(error);
-        setStatus(error.message || "Baseline characteristics export failed.", "error");
+        setStatus(error.message || "Export failed.", "error");
       }
     });
     [
-      els.measurementExportCloseButton,
-      els.measurementExportCancelButton,
-      ...Array.from(document.querySelectorAll("[data-measurement-modal-close]")),
+      els.exportModalCloseButton,
+      els.exportModalCancelButton,
+      ...Array.from(document.querySelectorAll("[data-export-modal-close]")),
     ].forEach((element) => {
-      element?.addEventListener("click", closeMeasurementExportModal);
+      element?.addEventListener("click", closeViewerExportModal);
     });
-    els.measurementExportConfirmButton?.addEventListener("click", async () => {
+    els.exportModalConfirmButton?.addEventListener("click", async () => {
       try {
-        const studyId = safeString(els.measurementExportStudyIdInput?.value);
-        await exportMeasurementsReport({
-          studyId,
-          closeAfterExport: Boolean(state.pendingMeasurementExport?.finishClose),
-        });
-        closeMeasurementExportModal();
+        await exportViewerBundle(getViewerExportOptionsFromInputs());
+        closeViewerExportModal();
       } catch (error) {
         console.error(error);
-        setStatus(error.message || "Measurement export failed.", "error");
+        setStatus(error.message || "Export failed.", "error");
       }
     });
-    els.measurementExportStudySelect?.addEventListener("change", () => {
-      handleExportStudySelectionChange(els.measurementExportStudySelect).catch((error) => {
+    els.exportStudySelect?.addEventListener("change", () => {
+      handleExportStudySelectionChange(els.exportStudySelect).catch((error) => {
         console.error(error);
         setStatus(error.message || "Could not change export study.", "error");
       });
     });
-    els.measurementExportStudyCreateButton?.addEventListener("click", () => {
-      createExportStudyFromInput(els.measurementExportStudyCreateInput).catch((error) => {
+    els.exportStudyCreateButton?.addEventListener("click", () => {
+      createExportStudyFromInput(els.exportStudyCreateInput).catch((error) => {
         console.error(error);
         setStatus(error.message || "Could not create export study.", "error");
       });
     });
-    els.measurementExportStudyCreateInput?.addEventListener("keydown", (event) => {
+    els.exportStudyCreateInput?.addEventListener("keydown", (event) => {
       if (event.key !== "Enter") {
         return;
       }
       event.preventDefault();
-      createExportStudyFromInput(els.measurementExportStudyCreateInput).catch((error) => {
+      createExportStudyFromInput(els.exportStudyCreateInput).catch((error) => {
         console.error(error);
         setStatus(error.message || "Could not create export study.", "error");
       });
     });
-    els.measurementExportStudyIdInput?.addEventListener("keydown", async (event) => {
+    els.exportStudyIdInput?.addEventListener("keydown", async (event) => {
       if (event.key !== "Enter") {
         return;
       }
       event.preventDefault();
       try {
-        const studyId = safeString(els.measurementExportStudyIdInput?.value);
-        await exportMeasurementsReport({
-          studyId,
-          closeAfterExport: Boolean(state.pendingMeasurementExport?.finishClose),
-        });
-        closeMeasurementExportModal();
+        await exportViewerBundle(getViewerExportOptionsFromInputs());
+        closeViewerExportModal();
       } catch (error) {
         console.error(error);
-        setStatus(error.message || "Measurement export failed.", "error");
+        setStatus(error.message || "Export failed.", "error");
       }
     });
-    [
-      els.baselineExportCloseButton,
-      els.baselineExportCancelButton,
-      ...Array.from(document.querySelectorAll("[data-baseline-modal-close]")),
-    ].forEach((element) => {
-      element?.addEventListener("click", closeBaselineExportModal);
-    });
+    els.exportOptionBaseline?.addEventListener("change", syncViewerExportOptionState);
     BASELINE_EXPORT_GROUPS.forEach((group) => {
       els.baselineExportGroupInputs[group.id]?.addEventListener("change", syncBaselineExportStateFromInputs);
-    });
-    els.baselineExportConfirmButton.addEventListener("click", async () => {
-      try {
-        const selectedGroups = getSelectedBaselineExportGroups();
-        const studyId = safeString(els.baselineExportStudyIdInput?.value);
-        await exportBaselineCharacteristics(selectedGroups, { studyId });
-        closeBaselineExportModal();
-      } catch (error) {
-        console.error(error);
-        setStatus(error.message || "Baseline characteristics export failed.", "error");
-      }
-    });
-    els.baselineExportStudySelect?.addEventListener("change", () => {
-      handleExportStudySelectionChange(els.baselineExportStudySelect).catch((error) => {
-        console.error(error);
-        setStatus(error.message || "Could not change export study.", "error");
-      });
-    });
-    els.baselineExportStudyCreateButton?.addEventListener("click", () => {
-      createExportStudyFromInput(els.baselineExportStudyCreateInput).catch((error) => {
-        console.error(error);
-        setStatus(error.message || "Could not create export study.", "error");
-      });
-    });
-    els.baselineExportStudyCreateInput?.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter") {
-        return;
-      }
-      event.preventDefault();
-      createExportStudyFromInput(els.baselineExportStudyCreateInput).catch((error) => {
-        console.error(error);
-        setStatus(error.message || "Could not create export study.", "error");
-      });
-    });
-    els.baselineExportStudyIdInput?.addEventListener("keydown", async (event) => {
-      if (event.key !== "Enter") {
-        return;
-      }
-      event.preventDefault();
-      try {
-        const selectedGroups = getSelectedBaselineExportGroups();
-        const studyId = safeString(els.baselineExportStudyIdInput?.value);
-        await exportBaselineCharacteristics(selectedGroups, { studyId });
-        closeBaselineExportModal();
-      } catch (error) {
-        console.error(error);
-        setStatus(error.message || "Baseline characteristics export failed.", "error");
-      }
     });
     els.profileResetAutoButton.addEventListener("click", () => {
       try {
@@ -15552,14 +15696,9 @@
         setComparisonLayoutMenuOpen(false);
         return;
       }
-      if (event.key === "Escape" && els.measurementExportModal && !els.measurementExportModal.classList.contains("is-hidden")) {
+      if (event.key === "Escape" && els.exportModal && !els.exportModal.classList.contains("is-hidden")) {
         event.preventDefault();
-        closeMeasurementExportModal();
-        return;
-      }
-      if (event.key === "Escape" && els.baselineExportModal && !els.baselineExportModal.classList.contains("is-hidden")) {
-        event.preventDefault();
-        closeBaselineExportModal();
+        closeViewerExportModal();
         return;
       }
 

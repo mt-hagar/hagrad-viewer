@@ -9,7 +9,7 @@ import zipfile
 
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-DEFAULT_VERSION = "v0.9.1-research-preview"
+DEFAULT_VERSION = "v0.9.2-research-preview"
 PACKAGE_PREFIX = "hagrad-viewer"
 BUILT_MACOS_APP = ROOT / "dist" / "macos" / "HAGRad Viewer.app"
 BUILT_WINDOWS_EXE = ROOT / "dist" / "windows" / "HAGRad Viewer.exe"
@@ -56,6 +56,7 @@ EXCLUDED_FILE_NAMES = {
     ".env",
     ".env.local",
     ".env.pointguard",
+    ".env.pointguard.example",
     ".Rhistory",
 }
 

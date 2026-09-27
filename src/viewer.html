@@ -608,45 +608,17 @@
             <div class="section-header">
               <div class="section-header-main">
                 <h2>Export</h2>
-                <span class="section-note">Cine, measurements, and CSV output</span>
+                <span class="section-note">Cine, workbooks, and local ZIP output</span>
               </div>
               <button class="section-toggle" data-section-toggle type="button" aria-expanded="false">+</button>
             </div>
             <div class="section-body">
               <div class="export-grid">
-                <button id="export-cine-button" class="button tertiary" type="button">Export Cine Clip</button>
-                <button id="export-measurements-button" class="button tertiary" type="button">
-                  Export Measurements
-                </button>
-                <button id="export-raw-profiles-button" class="button tertiary" type="button">
-                  Export Raw Profiles
-                </button>
-                <button id="finish-close-button" class="button primary" type="button">
-                  Finish &amp; Close
-                </button>
-                <button id="export-baseline-button" class="button tertiary" type="button">
-                  Export Baseline Characteristics
-                </button>
+                <button id="export-button" class="button primary" type="button">Export</button>
               </div>
               <p class="hint">
-                `Export Cine Clip` saves a short movie of the whole stack. The file type depends on what
-                your browser supports.
-              </p>
-              <p class="hint">
-                `Export Measurements` downloads one combined PNG plus a CSV that opens in Excel.
-              </p>
-              <p class="hint">
-                `Export Raw Profiles` saves Line Profile Raw annotations as an Excel-readable workbook
-                with summary, raw sample, and DICOM metadata sheets for research use.
-              </p>
-              <p class="hint">
-                Before measurement export, HAGRad asks for a `Study ID`. That value is written into
-                the PNG header and becomes the first column in the measurement CSV.
-              </p>
-              <p class="hint">
-                `Export Baseline Characteristics` creates a structured CSV from the loaded DICOM
-                headers, reconstruction metadata, computed scan geometry, and any dose or contrast
-                reports that were included in the loaded files.
+                Choose measurements, Line Profile Raw workbook, baseline characteristics, cine clip,
+                and optional Finish &amp; Close from one local ZIP export.
               </p>
             </div>
           </section>
@@ -1053,55 +1025,55 @@
       </section>
     </main>
 
-    <div id="measurement-export-modal" class="modal-shell is-hidden" aria-hidden="true">
-      <div class="modal-backdrop" data-measurement-modal-close></div>
+    <div id="export-modal" class="modal-shell is-hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-export-modal-close></div>
       <section
         class="modal-card"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="measurement-export-title"
-        aria-describedby="measurement-export-copy"
+        aria-labelledby="export-modal-title"
+        aria-describedby="export-modal-copy"
       >
         <header class="modal-header">
           <div class="modal-copy">
             <p class="eyebrow">HAGRad Viewer</p>
-            <h2 id="measurement-export-title">Export Measurements</h2>
-            <p id="measurement-export-copy" class="modal-text">
-              Assign a `Study ID` before exporting. HAGRad will place it into the first CSV column
-              and show it in the exported PNG header.
+            <h2 id="export-modal-title">Export</h2>
+            <p id="export-modal-copy" class="modal-text">
+              Select the local research outputs to include in one ZIP bundle. The same Study ID and
+              Research Study selection are written across selected exports.
             </p>
           </div>
           <button
-            id="measurement-export-close-button"
+            id="export-modal-close-button"
             class="button secondary modal-close-button"
             type="button"
-            aria-label="Close measurement export options"
+            aria-label="Close export options"
           >
             Close
           </button>
         </header>
 
         <div class="modal-option-list">
-          <label class="number-field" for="measurement-export-study-select">
+          <label class="number-field" for="export-study-select">
             <span>Research Study</span>
-            <select id="measurement-export-study-select">
+            <select id="export-study-select">
               <option value="">No study selected</option>
             </select>
           </label>
           <div class="inline-actions">
-            <label class="number-field" for="measurement-export-study-create-input">
+            <label class="number-field" for="export-study-create-input">
               <span>New Study</span>
-              <input id="measurement-export-study-create-input" type="text" placeholder="stent_clari" autocomplete="off" />
+              <input id="export-study-create-input" type="text" placeholder="stent_clari" autocomplete="off" />
             </label>
-            <button id="measurement-export-study-create-button" class="button tertiary" type="button">Create Study</button>
+            <button id="export-study-create-button" class="button tertiary" type="button">Create Study</button>
           </div>
-          <p class="hint" id="measurement-export-study-target-note">
+          <p class="hint" id="export-study-target-note">
             Mirrored exports go into the general viewer folder until a study is selected.
           </p>
-          <label class="number-field" for="measurement-export-study-id-input">
+          <label class="number-field" for="export-study-id-input">
             <span>Study ID</span>
             <input
-              id="measurement-export-study-id-input"
+              id="export-study-id-input"
               type="text"
               placeholder="study_001"
               autocomplete="off"
@@ -1110,72 +1082,30 @@
           <p class="hint">
             Example: `stent_clari_014`, `reader2_case07`, or any lab-specific study code.
           </p>
-        </div>
 
-        <footer class="modal-actions">
-          <button id="measurement-export-cancel-button" class="button secondary" type="button">Cancel</button>
-          <button id="measurement-export-confirm-button" class="button primary" type="button">Export PNG + CSV</button>
-        </footer>
-      </section>
-    </div>
-
-    <div id="baseline-export-modal" class="modal-shell is-hidden" aria-hidden="true">
-      <div class="modal-backdrop" data-baseline-modal-close></div>
-      <section
-        class="modal-card"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="baseline-export-title"
-        aria-describedby="baseline-export-copy"
-      >
-        <header class="modal-header">
-          <div class="modal-copy">
-            <p class="eyebrow">HAGRad Viewer</p>
-            <h2 id="baseline-export-title">Export Baseline Characteristics</h2>
-            <p id="baseline-export-copy" class="modal-text">
-              Choose which broad groups should be included in the CSV. All groups are enabled by
-              default, and you can turn off sections like contrast or radiation before export.
-            </p>
-          </div>
-          <button
-            id="baseline-export-close-button"
-            class="button secondary modal-close-button"
-            type="button"
-            aria-label="Close baseline export options"
-          >
-            Close
-          </button>
-        </header>
-
-        <div class="modal-option-list">
-          <label class="number-field" for="baseline-export-study-select">
-            <span>Research Study</span>
-            <select id="baseline-export-study-select">
-              <option value="">No study selected</option>
-            </select>
+          <label class="modal-option-card" for="export-option-measurements">
+            <input id="export-option-measurements" type="checkbox" checked />
+            <span class="modal-option-copy">
+              <strong>Measurements / Quantifications</strong>
+              <span>Excel-readable `rest` workbook sheet plus a report PNG for saved annotations and summary metrics.</span>
+            </span>
           </label>
-          <div class="inline-actions">
-            <label class="number-field" for="baseline-export-study-create-input">
-              <span>New Study</span>
-              <input id="baseline-export-study-create-input" type="text" placeholder="contrast_metrics" autocomplete="off" />
-            </label>
-            <button id="baseline-export-study-create-button" class="button tertiary" type="button">Create Study</button>
-          </div>
-          <p class="hint" id="baseline-export-study-target-note">
-            Mirrored exports go into the general viewer folder until a study is selected.
-          </p>
-          <label class="number-field" for="baseline-export-study-id-input">
-            <span>Study ID</span>
-            <input
-              id="baseline-export-study-id-input"
-              type="text"
-              placeholder="study_001"
-              autocomplete="off"
-            />
+
+          <label class="modal-option-card" for="export-option-raw-profiles">
+            <input id="export-option-raw-profiles" type="checkbox" />
+            <span class="modal-option-copy">
+              <strong>Line Profile Raw workbook</strong>
+              <span>Summary, raw HU samples, DICOM metadata, and a `rest` sheet for downstream analysis.</span>
+            </span>
           </label>
-          <p class="hint">
-            This `Study ID` will be added to the CSV filename and written into the first CSV column.
-          </p>
+
+          <label class="modal-option-card" for="export-option-baseline">
+            <input id="export-option-baseline" type="checkbox" />
+            <span class="modal-option-copy">
+              <strong>Baseline Characteristics</strong>
+              <span>DICOM header, reconstruction geometry, dose, contrast, and report metadata workbook.</span>
+            </span>
+          </label>
 
           <label class="modal-option-card" for="baseline-group-patient-study">
             <input id="baseline-group-patient-study" type="checkbox" checked />
@@ -1208,11 +1138,27 @@
               <span>Contrast agent, volume, flow, timing, and non-image report summaries or snippets.</span>
             </span>
           </label>
+
+          <label class="modal-option-card" for="export-option-cine">
+            <input id="export-option-cine" type="checkbox" />
+            <span class="modal-option-copy">
+              <strong>Cine Clip</strong>
+              <span>Presentation-stack movie using the browser-supported video format.</span>
+            </span>
+          </label>
+
+          <label class="modal-option-card" for="export-option-finish-close">
+            <input id="export-option-finish-close" type="checkbox" />
+            <span class="modal-option-copy">
+              <strong>Finish &amp; Close after export</strong>
+              <span>Close the current study after the selected ZIP bundle is saved.</span>
+            </span>
+          </label>
         </div>
 
         <footer class="modal-actions">
-          <button id="baseline-export-cancel-button" class="button secondary" type="button">Cancel</button>
-          <button id="baseline-export-confirm-button" class="button primary" type="button">Export CSV</button>
+          <button id="export-modal-cancel-button" class="button secondary" type="button">Cancel</button>
+          <button id="export-modal-confirm-button" class="button primary" type="button">Export ZIP</button>
         </footer>
       </section>
     </div>
@@ -1222,11 +1168,12 @@
     <script src="/vendor/cornerstoneWADOImageLoaderNoWebWorkers.bundle.min.js"></script>
     <script src="/src/shared/hagrad-core.js"></script>
     <script src="/src/shared/hagrad-profile-analysis.js"></script>
-    <script src="/src/shared/hagrad-line-profile-raw.js?v=20260925-line-raw"></script>
+    <script src="/src/shared/hagrad-line-profile-raw.js?v=20260926-line-raw-origin"></script>
     <script src="/src/shared/hagrad-export-studies.js?v=20260523-optional-backend-fallback"></script>
     <script src="/src/shared/hagrad-zip.js"></script>
+    <script src="/src/shared/hagrad-xlsx-export.js?v=20260926-real-xlsx"></script>
     <script src="/src/shared/hagrad-overlay-style.js"></script>
     <script src="/src/shared/hagrad-workflow-switcher.js?v=20260519-workflow-shell"></script>
-    <script src="/src/viewer.js?v=20260925-line-profile-raw"></script>
+    <script src="/src/viewer.js?v=20260926-line-raw-smooth"></script>
   </body>
 </html>

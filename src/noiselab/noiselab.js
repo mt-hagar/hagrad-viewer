@@ -4,10 +4,11 @@
   const sharedCore = window.HAGRadCore;
   const dicomApi = window.HAGRadDicom;
   const exportStudyApi = window.HAGRadExportStudies || null;
+  const xlsxExportApi = window.HAGRadXlsxExport;
   const core = window.HAGRadNoiseLabCore;
   const exportApi = window.HAGRadNoiseLabExport;
 
-  if (!sharedCore || !dicomApi || !core || !exportApi) {
+  if (!sharedCore || !dicomApi || !xlsxExportApi || !core || !exportApi) {
     throw new Error("NoiseLab dependencies are missing.");
   }
 
@@ -1322,6 +1323,33 @@
       return decodeBase64ToBytes(file.contentBase64);
     }
     return new TextEncoder().encode(String(file?.content || ""));
+  }
+
+  async function blobToBase64(blob) {
+    const buffer = await blob.arrayBuffer();
+    let binary = "";
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      const chunk = bytes.subarray(offset, offset + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+    return btoa(binary);
+  }
+
+  async function buildWorkbookFileFromExportFiles(files, filename) {
+    const sheets = (files || [])
+      .filter((file) => /\.csv$/i.test(file?.name || "") && typeof file.content === "string")
+      .map((file) => xlsxExportApi.sheetFromCsv(file.name, file.content));
+    if (!sheets.length) {
+      return null;
+    }
+    const workbook = await xlsxExportApi.buildXlsxFile({ filename, sheets });
+    return {
+      name: workbook.filename,
+      mimeType: workbook.mimeType,
+      contentBase64: await blobToBase64(workbook.blob),
+    };
   }
 
   function makeZipPath(...parts) {
@@ -3630,6 +3658,10 @@
       for (const file of bundle.files) {
         queueExportFile(file, folder, mirrorPrefix);
       }
+      const workbookFile = await buildWorkbookFileFromExportFiles(bundle.files, "noise_analysis_tables.xlsx");
+      if (workbookFile) {
+        queueExportFile(workbookFile, folder, mirrorPrefix);
+      }
 
       for (const analysisEntry of bundle.analyses) {
         const overlayFile = await exportApi.createOverlayPngFile(
@@ -3670,6 +3702,13 @@
     });
     for (const file of comparisonBundle.files) {
       queueExportFile(file, "comparison", "comparison");
+    }
+    const comparisonWorkbook = await buildWorkbookFileFromExportFiles(
+      comparisonBundle.files,
+      "reconstruction_comparison_tables.xlsx"
+    );
+    if (comparisonWorkbook) {
+      queueExportFile(comparisonWorkbook, "comparison", "comparison");
     }
     const comparisonFigure = await exportApi.createReconstructionComparisonPngFile(comparisonBundle);
     if (comparisonFigure) {

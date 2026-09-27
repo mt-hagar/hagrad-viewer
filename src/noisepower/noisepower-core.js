@@ -80,112 +80,6 @@
     return `${lines.join("\n")}\n`;
   }
 
-  function xmlEscape(value) {
-    return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
-  function sanitizeWorkbookSheetName(value, fallback = "Sheet") {
-    const cleaned = String(value || fallback)
-      .replace(/[\\/:*?\[\]]/g, "_")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 31);
-    return cleaned || fallback;
-  }
-
-  function workbookCellValue(column, value) {
-    if (value == null) {
-      return { type: "String", value: "" };
-    }
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return { type: "Number", value };
-    }
-    const text = String(value);
-    const columnName = String(column || "").toLowerCase();
-    const shouldStayText =
-      !text ||
-      columnName.includes("id") ||
-      columnName.includes("label") ||
-      columnName.includes("reconstruction") ||
-      columnName.includes("series_number") ||
-      columnName.includes("method") ||
-      columnName.includes("type") ||
-      columnName.includes("axis") ||
-      columnName.includes("units") ||
-      columnName.includes("warning") ||
-      columnName.includes("error") ||
-      columnName === "valid";
-    if (!shouldStayText && /^-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i.test(text)) {
-      return { type: "Number", value: Number(text) };
-    }
-    return { type: "String", value: text };
-  }
-
-  function rowsToWorkbookRows(columns, rows) {
-    return [
-      columns.slice(),
-      ...(rows || []).map((row) => columns.map((column) => workbookCellValue(column, row?.[column]))),
-    ];
-  }
-
-  function buildSpreadsheetWorkbookXml(sheets) {
-    const usedNames = new Set();
-    const validSheets = (sheets || []).filter((sheet) => sheet?.name && Array.isArray(sheet.rows) && sheet.rows.length);
-    const worksheetXml = validSheets
-      .map((sheet, sheetIndex) => {
-        const baseName = sanitizeWorkbookSheetName(sheet.name, `Sheet ${sheetIndex + 1}`);
-        let sheetName = baseName;
-        let suffix = 2;
-        while (usedNames.has(sheetName.toLowerCase())) {
-          const suffixText = ` ${suffix}`;
-          sheetName = `${baseName.slice(0, 31 - suffixText.length)}${suffixText}`;
-          suffix += 1;
-        }
-        usedNames.add(sheetName.toLowerCase());
-        const maxColumns = Math.max(...sheet.rows.map((row) => row.length), 0);
-        const rowXml = sheet.rows
-          .map((row, rowIndex) => {
-            const cells = row
-              .map((cell, columnIndex) => {
-                const column = sheet.rows[0]?.[columnIndex];
-                const normalizedCell = cell && typeof cell === "object" && "type" in cell ? cell : workbookCellValue(column, cell);
-                const type = rowIndex === 0 ? "String" : normalizedCell.type;
-                const styleId = rowIndex === 0 ? ' ss:StyleID="Header"' : "";
-                return `<Cell${styleId}><Data ss:Type="${type}">${xmlEscape(normalizedCell.value)}</Data></Cell>`;
-              })
-              .join("");
-            return `<Row>${cells}</Row>`;
-          })
-          .join("");
-        return `<Worksheet ss:Name="${xmlEscape(sheetName)}"><Table ss:ExpandedColumnCount="${maxColumns}" ss:ExpandedRowCount="${sheet.rows.length}" x:FullColumns="1" x:FullRows="1">${rowXml}</Table></Worksheet>`;
-      })
-      .join("");
-
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:o="urn:schemas-microsoft-com:office:office"
- xmlns:x="urn:schemas-microsoft-com:office:excel"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:html="http://www.w3.org/TR/REC-html40">
- <Styles>
-  <Style ss:ID="Default" ss:Name="Normal">
-   <Alignment ss:Vertical="Center"/>
-   <Font ss:FontName="Aptos" ss:Size="10" ss:Color="#0b1720"/>
-  </Style>
-  <Style ss:ID="Header">
-   <Font ss:FontName="Aptos" ss:Size="10" ss:Bold="1" ss:Color="#f4f8fb"/>
-   <Interior ss:Color="#0f2230" ss:Pattern="Solid"/>
-  </Style>
- </Styles>
- ${worksheetXml}
-</Workbook>`;
-  }
-
   function sanitizeFilePart(value, fallback) {
     const cleaned = String(value || "")
       .trim()
@@ -2401,7 +2295,7 @@
     return `${APP_NAME} Export Bundle
 
 Files
-- noise_power_data.xls: Excel workbook containing all tabular outputs in separate sheets:
+- *_tables.xlsx: true Excel workbook companion containing the CSV tables in separate sheets:
   - Square ROI Summary: one row per TTF Square ROI per reconstruction.
   - Square ROI Profiles: long-format horizontal and vertical center-profile samples.
   - TTF Metrics: one row per square ROI with in-plane TTFxy validity, contrast, CNR, f50, and f10.
@@ -2667,17 +2561,14 @@ This is a local 2D axial CT phantom noise workflow. Homogeneity and edge warning
       "warnings",
       "nps_units",
     ];
-    const workbookSheets = [
-      { name: "Square ROI Summary", rows: rowsToWorkbookRows(squareColumns, squareRows) },
-      { name: "Square ROI Profiles", rows: rowsToWorkbookRows(profileColumns, profileRows) },
-      { name: "TTF Metrics", rows: rowsToWorkbookRows(ttfMetricColumns, ttfMetricsRows) },
-      { name: "TTF Curves", rows: rowsToWorkbookRows(ttfCurveColumns, ttfCurveRows) },
-      { name: "NPS ROI Summary", rows: rowsToWorkbookRows(npsRoiColumns, npsRoiRows) },
-      { name: "NPS Curve 1D", rows: rowsToWorkbookRows(npsCurveColumns, npsCurveRows) },
-      { name: "NPS Metrics", rows: rowsToWorkbookRows(npsMetricColumns, npsMetricsRows) },
-    ];
     const files = [
-      makeTextFile("noise_power_data.xls", buildSpreadsheetWorkbookXml(workbookSheets), "application/vnd.ms-excel"),
+      makeTextFile("square_roi_summary.csv", toCsv(squareColumns, squareRows), "text/csv"),
+      makeTextFile("square_roi_profiles.csv", toCsv(profileColumns, profileRows), "text/csv"),
+      makeTextFile("ttf_metrics.csv", toCsv(ttfMetricColumns, ttfMetricsRows), "text/csv"),
+      makeTextFile("ttf_curves.csv", toCsv(ttfCurveColumns, ttfCurveRows), "text/csv"),
+      makeTextFile("nps_roi_summary.csv", toCsv(npsRoiColumns, npsRoiRows), "text/csv"),
+      makeTextFile("nps_curve_1d.csv", toCsv(npsCurveColumns, npsCurveRows), "text/csv"),
+      makeTextFile("nps_metrics.csv", toCsv(npsMetricColumns, npsMetricsRows), "text/csv"),
       makeTextFile("nps_2d_matrix.json", `${JSON.stringify(buildNps2dPayload(npsModels, context), null, 2)}\n`, "application/json"),
       makeTextFile(
         "analysis_metadata.json",
@@ -2696,7 +2587,6 @@ This is a local 2D axial CT phantom noise workflow. Homogeneity and edge warning
       npsRoiRows,
       npsCurveRows,
       npsMetricsRows,
-      workbookSheets,
       files,
     };
   }

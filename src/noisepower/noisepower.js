@@ -4,10 +4,11 @@
   const sharedCore = window.HAGRadCore;
   const dicomApi = window.HAGRadDicom;
   const zipApi = window.HAGRadZip;
+  const xlsxExportApi = window.HAGRadXlsxExport;
   const core = window.HAGRadNoisePowerCore;
   const exportApi = window.HAGRadNoisePowerExport;
 
-  if (!sharedCore || !dicomApi || !zipApi || !core || !exportApi) {
+  if (!sharedCore || !dicomApi || !zipApi || !xlsxExportApi || !core || !exportApi) {
     throw new Error("HAGRad Noise Power dependencies are missing.");
   }
 
@@ -4515,6 +4516,16 @@
     setStatus("Print report opened. Choose Save as PDF in the print dialog.");
   }
 
+  async function buildWorkbookFileFromExportFiles(files, filename) {
+    const sheets = (files || [])
+      .filter((file) => /\.csv$/i.test(file?.name || "") && typeof file.content === "string")
+      .map((file) => xlsxExportApi.sheetFromCsv(file.name, file.content));
+    if (!sheets.length) {
+      return null;
+    }
+    return xlsxExportApi.buildXlsxFile({ filename, sheets });
+  }
+
   async function exportBundle() {
     const researchStudyId = els.researchIdInput.value.trim();
     const patientStudyId = els.patientIdInput.value.trim();
@@ -4530,6 +4541,15 @@
       timestamp,
     });
     const files = model.files.map(exportTextFileToBlob);
+    const stamp = timestamp.replace(/[:.]/g, "-");
+    const seriesToken = exportSeriesTokenForDatasets(datasets);
+    const workbookFile = await buildWorkbookFileFromExportFiles(
+      model.files,
+      `HAGRad_Noise_Power_${sanitizeFilePart(researchStudyId, "study")}_${sanitizeFilePart(patientStudyId, "case")}_${seriesToken}_${stamp}_tables.xlsx`
+    );
+    if (workbookFile) {
+      files.push(workbookFile);
+    }
     const pngFiles = await exportApi.createNoisePowerPngFiles({
       datasets,
       rois,
@@ -4543,8 +4563,6 @@
       patientStudyId,
     });
     files.push(...pngFiles);
-    const stamp = timestamp.replace(/[:.]/g, "-");
-    const seriesToken = exportSeriesTokenForDatasets(datasets);
     const zipName = `HAGRad_Noise_Power_${sanitizeFilePart(researchStudyId, "study")}_${sanitizeFilePart(patientStudyId, "case")}_${seriesToken}_${stamp}.zip`;
     const result = await zipApi.downloadBundle(files, zipName);
     setStatus(`Exported ${result.fileCount} files. ZIP ready.`, "", `Exported ${result.fileCount} files to ${result.filename}.`);

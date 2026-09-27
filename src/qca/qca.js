@@ -330,6 +330,10 @@
 
   const els = {};
   const exportStudyApi = window.HAGRadExportStudies || null;
+  const xlsxExportApi = window.HAGRadXlsxExport;
+  if (!xlsxExportApi) {
+    throw new Error("Missing shared XLSX export script: /src/shared/hagrad-xlsx-export.js");
+  }
   let localizationPromptResolver = null;
   let finishClosePromptResolver = null;
 
@@ -8955,73 +8959,6 @@
     return value === "—" ? "" : value;
   }
 
-  function xmlEscape(value) {
-    return String(value ?? "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&apos;");
-  }
-
-  function sanitizeWorksheetName(value, fallback) {
-    const text = safeString(value)
-      .replace(/[\\/*?:[\]]/g, " ")
-      .trim();
-    return (text || fallback || "Sheet").slice(0, 31);
-  }
-
-  function buildSpreadsheetXmlWorkbook(sheets) {
-    const workbookHeader =
-      '<?xml version="1.0"?>\n' +
-      '<?mso-application progid="Excel.Sheet"?>\n' +
-      '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" ' +
-      'xmlns:o="urn:schemas-microsoft-com:office:office" ' +
-      'xmlns:x="urn:schemas-microsoft-com:office:excel" ' +
-      'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" ' +
-      'xmlns:html="http://www.w3.org/TR/REC-html40">\n' +
-      '  <Styles>\n' +
-      '    <Style ss:ID="Default" ss:Name="Normal">\n' +
-      '      <Alignment ss:Vertical="Center"/>\n' +
-      '      <Font ss:FontName="Aptos" ss:Size="10"/>\n' +
-      '    </Style>\n' +
-      '    <Style ss:ID="Header">\n' +
-      '      <Font ss:FontName="Aptos" ss:Size="10" ss:Bold="1" ss:Color="#F7F4FF"/>\n' +
-      '      <Interior ss:Color="#5E5566" ss:Pattern="Solid"/>\n' +
-      '    </Style>\n' +
-      '  </Styles>\n';
-    const workbookFooter = "</Workbook>";
-    const worksheetXml = (sheets || [])
-      .map((sheet) => {
-        const rows = Array.isArray(sheet?.rows) ? sheet.rows : [];
-        const columnCount = Math.max(1, ...rows.map((row) => (Array.isArray(row) ? row.length : 0)));
-        const rowXml = rows
-          .map((row, rowIndex) => {
-            const cells = Array.isArray(row) ? row : [];
-            const cellXml = cells
-              .map((cell) => {
-                const isNumber = typeof cell === "number" && Number.isFinite(cell);
-                const value = isNumber ? String(cell) : String(cell ?? "");
-                return `        <Cell${rowIndex === 0 ? ' ss:StyleID="Header"' : ""}><Data ss:Type="${
-                  isNumber ? "Number" : "String"
-                }">${xmlEscape(value)}</Data></Cell>`;
-              })
-              .join("");
-            return `      <Row>\n${cellXml || '        <Cell><Data ss:Type="String"></Data></Cell>'}\n      </Row>`;
-          })
-          .join("\n");
-        return (
-          `  <Worksheet ss:Name="${xmlEscape(sanitizeWorksheetName(sheet?.name, "Sheet"))}">\n` +
-          `    <Table ss:ExpandedColumnCount="${columnCount}" ss:ExpandedRowCount="${Math.max(1, rows.length)}" x:FullColumns="1" x:FullRows="1">\n` +
-          `${rowXml}\n` +
-          "    </Table>\n" +
-          "  </Worksheet>"
-        );
-      })
-      .join("\n");
-    return `${workbookHeader}${worksheetXml}\n${workbookFooter}`;
-  }
-
   function buildResultsWorkbookData(studyId) {
     const entries = buildReportExportEntries();
     const caseSummary = getCaseSummaryMetadata();
@@ -9216,26 +9153,25 @@
   async function exportResultsWorkbook(options) {
     const studyId = safeString(options?.studyId);
     const { entries, metadataRows, measurementRows } = buildResultsWorkbookData(studyId);
-    const workbookXml = buildSpreadsheetXmlWorkbook([
-      { name: "Metadata", rows: metadataRows },
-      { name: "Stenosis Measurements", rows: measurementRows },
-    ]);
-    const blob = new Blob([workbookXml], {
-      type: "application/vnd.ms-excel",
+    const workbookFile = await xlsxExportApi.buildXlsxFile({
+      filename: buildReportFilename("qca_results", "xlsx", entries.length, studyId),
+      sheets: [
+        { name: "Metadata", rows: metadataRows },
+        { name: "Stenosis Measurements", rows: measurementRows },
+      ],
     });
-    const filename = buildReportFilename("qca_results", "xls", entries.length, studyId);
     if (options?.returnFile) {
-      return { filename, blob };
+      return workbookFile;
     }
     await downloadExportBundle(
-      [{ filename, blob }],
-      window.HAGRadZip?.zipNameFrom ? window.HAGRadZip.zipNameFrom(filename) : buildReportFilename("qca_results", "zip", entries.length, studyId),
+      [workbookFile],
+      window.HAGRadZip?.zipNameFrom ? window.HAGRadZip.zipNameFrom(workbookFile.filename) : buildReportFilename("qca_results", "zip", entries.length, studyId),
       { patientStudyId: studyId }
     );
     if (!options?.silent) {
       setStatus(`Excel results exported as a ZIP for ${formatLesionCount(entries.length)}.`);
     }
-    return filename;
+    return workbookFile.filename;
   }
 
   async function exportCombinedResults(options) {

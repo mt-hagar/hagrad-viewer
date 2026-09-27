@@ -83,4 +83,30 @@ result.rawSamples.forEach((sample, index) => {
   assert.equal(sample.interpolationMethod, "nearest");
 });
 
+const hagradVolume = {
+  ...volume,
+  origin: undefined,
+  normal: undefined,
+  originWorld: [20, -30, 12],
+  normalDirection: [0, 0, 1],
+};
+const hagradStartWorld = [20, -30, 12];
+const hagradEndWorld = [26, -24, 16];
+const hagradResult = sampler.sampleLineProfile({
+  volume: hagradVolume,
+  startWorld: hagradStartWorld,
+  endWorld: hagradEndWorld,
+  sampleSpacingMm: totalLengthMm / 3,
+  plane: "axial",
+});
+
+assert.equal(hagradResult.sampleCount, 4);
+hagradResult.rawSamples.forEach((sample, index) => {
+  closeTo(sample.voxelX, expectedVoxel[index][0]);
+  closeTo(sample.voxelY, expectedVoxel[index][1]);
+  closeTo(sample.voxelZ, expectedVoxel[index][2]);
+  closeTo(sample.huNearest, expectedNearestHu[index], 1e-6);
+  closeTo(sample.hu, expectedNearestHu[index], 1e-6);
+});
+
 console.log("Line Profile Raw synthetic sampling test passed.");
