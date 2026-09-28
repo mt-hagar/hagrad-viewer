@@ -67,8 +67,8 @@ assert(
   "viewer.js should rebuild the interface menu from INTERFACE_TOOL_KEYS.",
 );
 assert(
-  /\/src\/viewer\.js\?v=20260927-line-raw-menu/.test(viewerHtml),
-  "viewer.html should bump the viewer.js cache tag for the Line Profile Raw menu fix.",
+  /\/src\/viewer\.js\?v=/.test(viewerHtml) && !/\/src\/viewer\.js\?v=20260926-line-raw-hu-fallback/.test(viewerHtml),
+  "viewer.html should keep a bumped viewer.js cache tag after the Line Profile Raw menu fix.",
 );
 
 console.log("Line Profile Raw interface menu regression check passed.");

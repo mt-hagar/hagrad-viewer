@@ -1207,6 +1207,157 @@ input[type="range"] {
   width: 100%;
 }
 
+.export-dropdown {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.export-trigger[aria-expanded="true"] {
+  border-color: var(--line-strong);
+  background: linear-gradient(180deg, rgba(99, 212, 197, 0.2), rgba(30, 167, 150, 0.12));
+}
+
+.export-popover {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 11px;
+  border-radius: 14px;
+  border: 1px solid rgba(145, 181, 201, 0.16);
+  background:
+    radial-gradient(circle at right top, rgba(255, 210, 127, 0.08), transparent 36%),
+    linear-gradient(180deg, rgba(12, 21, 28, 0.98), rgba(8, 14, 19, 0.99));
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.22);
+}
+
+.export-popover-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.export-popover-header h3 {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.export-popover-header p,
+.export-note {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.export-popover-close {
+  width: auto !important;
+  min-width: 64px;
+  padding-inline: 9px;
+}
+
+.export-popover-fields {
+  display: grid;
+  gap: 8px;
+}
+
+.compact-field {
+  gap: 4px;
+  font-size: 12px;
+}
+
+.compact-field input,
+.compact-field select {
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.export-study-create-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: end;
+}
+
+.export-study-create-row .button {
+  min-width: 70px;
+  padding: 7px 8px;
+}
+
+.export-option-list {
+  display: grid;
+  gap: 6px;
+}
+
+.export-option-row,
+.export-suboption-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 8px 9px;
+  border-radius: 10px;
+  border: 1px solid rgba(145, 181, 201, 0.1);
+  background: rgba(255, 255, 255, 0.035);
+  cursor: pointer;
+}
+
+.export-option-row input,
+.export-suboption-row input {
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  accent-color: var(--accent);
+}
+
+.export-option-row strong {
+  display: block;
+  font-size: 12.5px;
+  line-height: 1.25;
+}
+
+.export-option-row small {
+  display: block;
+  min-height: 0;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.3;
+}
+
+.export-option-row:has(input:disabled),
+.export-suboption-row:has(input:disabled) {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.export-suboptions {
+  display: grid;
+  gap: 5px;
+  margin-left: 17px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(145, 181, 201, 0.15);
+}
+
+.export-suboption-row {
+  padding: 7px 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.export-suboption-row span {
+  color: var(--muted-strong);
+  font-size: 11.5px;
+}
+
+.export-popover-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 8px;
+}
+
 .profile-chart-shell {
   border-radius: 14px;
   overflow: hidden;

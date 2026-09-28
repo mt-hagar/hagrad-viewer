@@ -107,7 +107,6 @@
 
   const DEFAULT_COLLAPSED_SECTIONS = {
     "annotate-actions": true,
-    "analysis-export": true,
     "reference-study": true,
     "reference-help": true,
   };
@@ -734,8 +733,11 @@
     els.shortcutResetButton = document.getElementById("shortcut-reset-button");
     els.shortcutTableBody = document.getElementById("shortcut-table-body");
     els.voiReadout = document.getElementById("voi-readout");
+    els.finishCloseButton = document.getElementById("finish-close-button");
     els.exportButton = document.getElementById("export-button");
     els.exportModal = document.getElementById("export-modal");
+    els.exportModalTitle = document.getElementById("export-modal-title");
+    els.exportModalCopy = document.getElementById("export-modal-copy");
     els.exportModalCloseButton = document.getElementById("export-modal-close-button");
     els.exportModalCancelButton = document.getElementById("export-modal-cancel-button");
     els.exportModalConfirmButton = document.getElementById("export-modal-confirm-button");
@@ -748,7 +750,15 @@
     els.exportOptionRawProfiles = document.getElementById("export-option-raw-profiles");
     els.exportOptionBaseline = document.getElementById("export-option-baseline");
     els.exportOptionCine = document.getElementById("export-option-cine");
-    els.exportOptionFinishClose = document.getElementById("export-option-finish-close");
+    els.exportOptionRest = document.getElementById("export-option-rest");
+    els.exportOptionNotes = {
+      measurements: document.getElementById("export-option-measurements-note"),
+      rawProfiles: document.getElementById("export-option-raw-profiles-note"),
+      baseline: document.getElementById("export-option-baseline-note"),
+      cine: document.getElementById("export-option-cine-note"),
+      rest: document.getElementById("export-option-rest-note"),
+    };
+    els.baselineExportGroups = document.getElementById("baseline-export-groups");
     els.baselineExportGroupInputs = BASELINE_EXPORT_GROUPS.reduce((accumulator, group) => {
       accumulator[group.id] = document.getElementById(group.inputId);
       return accumulator;
@@ -1249,6 +1259,15 @@
     });
   }
 
+  function ensureExportSectionExpanded() {
+    state.sidebarSections["analysis-export"] = false;
+    try {
+      window.localStorage?.setItem(getSectionStorageKey("analysis-export"), "0");
+    } catch (_error) {
+      // Ignore storage issues.
+    }
+  }
+
   function updateSidebarTabsUi() {
     els.sidebarTabButtons.forEach((button) => {
       button.classList.toggle("is-active", button.dataset.sidebarTabButton === state.activeSidebarTab);
@@ -1267,8 +1286,12 @@
 
   function setActiveSidebarTab(tabKey) {
     const nextTab = ["case", "annotate", "export"].includes(tabKey) ? tabKey : "case";
+    if (nextTab === "export") {
+      ensureExportSectionExpanded();
+    }
     if (state.activeSidebarTab === nextTab) {
       updateSidebarTabsUi();
+      updateSidebarSectionUi();
       updatePresentationFocusUi();
       return;
     }
@@ -11624,36 +11647,58 @@
     );
   }
 
-  function openViewerExportModal(options = {}) {
-    if (!state.reconstructions.length) {
-      throw new Error("Load a study first.");
+  function setExportOptionNote(key, message) {
+    const note = els.exportOptionNotes?.[key];
+    if (note) {
+      note.textContent = message || "";
     }
+  }
+
+  function openViewerExportModal(options = {}) {
     const entries = buildMeasurementEntries();
     const rawEntries = entries.filter((entry) => entry.annotation.type === "lineProfileRaw");
     const baselineRows = buildBaselineCharacteristicsRows();
-    const finishClose = Boolean(options.finishClose);
+    const activeReconstruction = getActiveReconstruction();
+    const finishClose = options?.finishClose === true;
     state.pendingExport = {
       finishClose,
     };
+    if (els.exportModalTitle) {
+      els.exportModalTitle.textContent = finishClose ? "Finish & Close" : "Export selected";
+    }
+    if (els.exportModalCopy) {
+      els.exportModalCopy.textContent = finishClose
+        ? "Select outputs to save, then close the current study."
+        : "Selected outputs save as one local ZIP.";
+    }
+    if (els.exportModalConfirmButton) {
+      els.exportModalConfirmButton.textContent = finishClose ? "Export & Close" : "Export Selected";
+    }
     syncBaselineExportInputsFromState();
     if (els.exportOptionMeasurements) {
       els.exportOptionMeasurements.checked = options.measurements ?? entries.length > 0;
       els.exportOptionMeasurements.disabled = !entries.length;
+      setExportOptionNote("measurements", entries.length ? `${entries.length} saved row${entries.length === 1 ? "" : "s"}` : "No saved annotations");
     }
     if (els.exportOptionRawProfiles) {
       els.exportOptionRawProfiles.checked = options.rawProfiles ?? rawEntries.length > 0;
       els.exportOptionRawProfiles.disabled = !rawEntries.length;
+      setExportOptionNote("rawProfiles", rawEntries.length ? `${rawEntries.length} raw profile${rawEntries.length === 1 ? "" : "s"}` : "No Line Profile Raw annotations");
     }
     if (els.exportOptionBaseline) {
       els.exportOptionBaseline.checked = options.baseline ?? false;
       els.exportOptionBaseline.disabled = !baselineRows.length;
+      setExportOptionNote("baseline", baselineRows.length ? `${baselineRows.length} row${baselineRows.length === 1 ? "" : "s"} available` : "No DICOM metadata loaded");
     }
     if (els.exportOptionCine) {
       els.exportOptionCine.checked = options.cine ?? false;
-      els.exportOptionCine.disabled = !getActiveReconstruction();
+      els.exportOptionCine.disabled = !activeReconstruction;
+      setExportOptionNote("cine", activeReconstruction ? "Presentation stack clip" : "Load a reconstruction first");
     }
-    if (els.exportOptionFinishClose) {
-      els.exportOptionFinishClose.checked = finishClose;
+    if (els.exportOptionRest) {
+      els.exportOptionRest.checked = entries.length > 0;
+      els.exportOptionRest.disabled = true;
+      setExportOptionNote("rest", entries.length ? "Included when annotations exist" : "No rest rows yet");
     }
     syncViewerExportOptionState();
     if (els.exportStudyIdInput) {
@@ -11663,9 +11708,9 @@
       console.error(error);
       setStatus(error.message || "Could not load export studies.", "error");
     });
-    els.exportModal.classList.remove("is-hidden");
-    els.exportModal.setAttribute("aria-hidden", "false");
-    document.body.classList.add("is-modal-open");
+    els.exportModal?.classList.remove("is-hidden");
+    els.exportModal?.setAttribute("aria-hidden", "false");
+    els.exportButton?.setAttribute("aria-expanded", "true");
     els.exportStudyIdInput?.focus();
     els.exportStudyIdInput?.select();
   }
@@ -11689,7 +11734,7 @@
     }
     els.exportModal.classList.add("is-hidden");
     els.exportModal.setAttribute("aria-hidden", "true");
-    document.body.classList.remove("is-modal-open");
+    els.exportButton?.setAttribute("aria-expanded", "false");
     state.pendingExport = null;
   }
 
@@ -12893,7 +12938,7 @@
       rawProfiles: Boolean(els.exportOptionRawProfiles?.checked && !els.exportOptionRawProfiles.disabled),
       baseline: Boolean(els.exportOptionBaseline?.checked && !els.exportOptionBaseline.disabled),
       cine: Boolean(els.exportOptionCine?.checked && !els.exportOptionCine.disabled),
-      finishClose: Boolean(els.exportOptionFinishClose?.checked),
+      finishClose: Boolean(state.pendingExport?.finishClose),
       baselineGroups: getSelectedBaselineExportGroups(),
       studyId: safeString(els.exportStudyIdInput?.value),
     };
@@ -12907,6 +12952,7 @@
         input.disabled = !baselineEnabled;
       }
     });
+    els.baselineExportGroups?.classList.toggle("is-hidden", !baselineEnabled);
   }
 
   async function appendExportToProjectAndRender(exportType, headers, rows) {
@@ -15991,9 +16037,21 @@
 
     els.cineButton.addEventListener("click", toggleCine);
 
+    els.finishCloseButton?.addEventListener("click", () => {
+      try {
+        openMeasurementExportModal("finishClose");
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message || "Finish & Close failed.", "error");
+      }
+    });
     els.exportButton?.addEventListener("click", () => {
       try {
-        openViewerExportModal();
+        if (els.exportModal && !els.exportModal.classList.contains("is-hidden")) {
+          closeViewerExportModal();
+          return;
+        }
+        openViewerExportModal({ finishClose: false });
       } catch (error) {
         console.error(error);
         setStatus(error.message || "Export failed.", "error");
@@ -16005,6 +16063,26 @@
       ...Array.from(document.querySelectorAll("[data-export-modal-close]")),
     ].forEach((element) => {
       element?.addEventListener("click", closeViewerExportModal);
+    });
+    document.addEventListener("click", (event) => {
+      if (!els.exportModal || els.exportModal.classList.contains("is-hidden")) {
+        return;
+      }
+      const target = event.target;
+      if (
+        els.exportModal.contains(target) ||
+        els.exportButton?.contains(target) ||
+        els.finishCloseButton?.contains(target) ||
+        els.focusFinishCloseButton?.contains(target)
+      ) {
+        return;
+      }
+      closeViewerExportModal();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && els.exportModal && !els.exportModal.classList.contains("is-hidden")) {
+        closeViewerExportModal();
+      }
     });
     els.exportModalConfirmButton?.addEventListener("click", async () => {
       try {
@@ -16261,6 +16339,9 @@
     loadSidebarSectionState();
     loadUiModePreference();
     loadSidebarTabPreference();
+    if (state.activeSidebarTab === "export") {
+      ensureExportSectionExpanded();
+    }
     loadPresentationSeriesLabelPreference();
     loadSafeDecodePreference();
     loadMprRenderQualityPreference();

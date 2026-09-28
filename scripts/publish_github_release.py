@@ -11,7 +11,7 @@ import zipfile
 
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-DEFAULT_VERSION = "v0.9.4-research-preview"
+DEFAULT_VERSION = "v0.9.5-research-preview"
 PACKAGE_PREFIX = "hagrad-viewer"
 PLATFORM_ASSET_GROUPS = (
     ("HAGRad-Viewer-macOS.dmg", "HAGRad-Viewer-macOS.zip"),
